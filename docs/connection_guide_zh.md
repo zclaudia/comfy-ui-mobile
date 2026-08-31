@@ -1,66 +1,120 @@
 [English](./connection_guide.md) | [한국어](./connection_guide_kor.md) | [日本語](./connection_guide_jp.md) | [简体中文](./connection_guide_zh.md)
 
-# ComfyUI Mobile UI 连接指南
+# Comfy Mobile 连接指南
 
-本指南说明了将移动设备连接到 ComfyUI 服务器的完整步骤。
+## 连接原则
 
-## 步骤 0: 访问 ComfyUI Mobile UI
-在配置服务器设置之前，必须先在移动浏览器中访问“Mobile UI”网页界面。
+Android App 和 Web UI 只连接 Comfy Mobile Gateway，不直接连接 ComfyUI：
 
-<div align="center">
-  <img src="./connection_guide_capture_1.png" width="100%" alt="Mobile UI Console" />
-</div>
+```text
+Android / 浏览器 → Gateway :8080 → ComfyUI :8188
+```
 
-> [!TIP]
-> 扩展程序启动时，请参考控制台显示的 **"🚀 ComfyUI Mobile API is ready!"** 下方的地址列表。
-> - **相同 WiFi 环境:** `http://192.168.x.x:9188` (使用 9188 端口)
-> - **外部/VPN 环境:** `http://100.x.x.x:9188` 等控制台中显示的可用网络地址
+- `8188` 是 Gateway 使用的内部上游地址。
+- `8080` 是客户端使用的 Gateway 地址。
+- 可选的旧 Launcher `9188` 也只能留在内部网络。
 
----
+不要将 `8188` 或 `9188` 直接做公网端口映射。仅改变外部端口号不能提供有效的认证或访问控制。
 
-## 步骤 1: 配置 ComfyUI 服务器连接
-访问 Mobile UI 后，在应用内的 **[Server Settings]** 菜单中连接到实际的 ComfyUI 引擎（默认 8188 端口）。
+## 1. 配置 Gateway
 
-## 📱 服务器连接界面
-<div align="center">
-  <img src="./connection_guide_capture_2.png" width="40%" alt="Server Connection Screen" />
-  <img src="./connection_guide_capture_3.png" width="40%" alt="Server Connection Screen2" />
-</div>
-> *在“Server Settings”菜单中，输入适合您环境的地址。*
+在仓库根目录执行：
 
-### 1. 在相同 WiFi (局域网) 环境下
-手机和电脑连接到同一个 WiFi 路由器时。
-- 请输入运行服务器的电脑的 **私有 IP (Private IP)**。
-- **输入示例:** `http://192.168.0.85:8188`
+```bash
+cp gateway/.env.example gateway/.env
+openssl rand -hex 32
+openssl rand -hex 32
+```
 
-### 2. 从外部网络连接时 (LTE/5G/外部 WiFi)
-若要在室外访问，服务器必须准备好接收外部请求。
-- **必要条件:** 启动 ComfyUI 时必须添加 `--listen` 或 `--listen 0.0.0.0` 参数。
-- **方法:** 使用 **Tailscale** 等 VPN 服务，或在路由器上设置 **端口转发**。
-- **核心点:** 无论使用何种工具，必须输入 **移动浏览器实际可以访问的 IP 地址**。(例如：`http://100.90.xx.xx:8188`)
+编辑 `gateway/.env`：
 
-> [!CAUTION]
-> **安全警告 (防止黑客攻击)**
-> 使用端口转发时，为了安全起见，强烈建议将路由器的 **外部端口 (External Port)** 设置为与电脑的 **内部端口 (8188)** 不同的数值。
-> (例如：将外部 12345 端口转发到内部 8188 端口)
+```dotenv
+COMFYUI_URL=http://192.168.2.150:8188
+GATEWAY_AUTH_TOKEN=第一个随机值
+GATEWAY_SESSION_SECRET=第二个随机值
+```
 
-### 3. 在 ComfyUI 中使用证书 (SSL/TLS) 时
-在启动参数中添加了 `--tls-keyfile` 和 `--tls-certfile` 的情况。
-- 在这种情况下，ComfyUI **仅允许 `https://` 连接**。
-- 必须在地址前加上 `https://`，并确认该地址在移动设备上可以进行 SSL 连接。
-- **输入示例:** `https://192.168.0.85:8188`
+`GATEWAY_AUTH_TOKEN` 是部署/管理令牌，至少 16 个字符。不要将它写进 APK、前端 `.env`、URL 或聊天记录。
 
-### 4. 使用 ComfyUI-Login
-如果服务器受 [ComfyUI-Login](https://github.com/liusida/ComfyUI-Login) 保护：
-- 最简单的方法：点击令牌输入框下方的**从服务器获取令牌**。这会打开 `<服务器>/comfymobile/api/auth/token`，使用 ComfyUI-Login 密码登录后即可看到带复制按钮的令牌。无需访问控制台或文件。
-- 或者复制 ComfyUI 控制台中 `For direct API calls, use token=` 之后输出的值。该值仅在启动时输出一次，重启后很容易错过。
-- 请使用生成的 API 令牌，而不是明文密码。也可以在 `<ComfyUI>/login/PASSWORD` 文件的第一行找到该令牌。
-- **在此设备上保持登录**默认开启。令牌会保存在设备上，关闭标签页后依然保留，并包含在浏览器数据备份中。在公用设备上关闭后，令牌仅保留在当前浏览器会话中。
+## 2. 启动并检查
 
-> [!WARNING]
-> 请像对待密码一样对待 API 令牌。在不受信任的网络上连接时请使用 HTTPS。
+推荐使用 Compose：
 
-> [!IMPORTANT]
-> 请使用不带值的 `--enable-cors-header` 启动 ComfyUI。如果指定了特定来源，
-> ComfyUI-Login 只会在带有该 `Origin` 头的请求中接受令牌，而图像和媒体请求不会发送
-> `Origin`，这会导致预览和缩略图无法加载。
+```bash
+docker compose -f docker-compose.gateway.yml up --build -d
+curl http://127.0.0.1:8080/api/gateway/health
+```
+
+也可以直接启动：
+
+```bash
+npm install
+npm run build
+node --env-file=gateway/.env gateway/index.js
+```
+
+Gateway 默认从 `dist/` 托管前端，并监听 `8080`。
+
+## 3. Android 首次注册
+
+1. 确保手机能够访问 Gateway；若它和 ComfyUI 在同一主机，地址可使用 `http://192.168.2.150:8080`。
+2. 在 App 的服务器设置中只填写 Gateway 地址，不要填写 `http://192.168.2.150:8188`。
+3. 输入一次 `GATEWAY_AUTH_TOKEN` 完成注册。
+4. 注册成功后，部署令牌会从输入框和运行内存中清除；App 将设备令牌加密保存在 Android Keystore 管理的本地存储中。
+
+以后启动 App 会自动恢复设备会话。设备令牌有有效期，默认 180 天；过期、被管理员撤销或服务端注册表丢失后，需要重新注册。
+
+## 4. 浏览器登录
+
+浏览器打开 Gateway 地址，例如 `http://192.168.2.150:8080`，在登录页输入部署令牌。Gateway 会换取 HttpOnly 会话 Cookie；浏览器不会直接持有 Android 设备令牌。
+
+开发时可分别启动 Gateway 和 Vite：
+
+```bash
+node --env-file=gateway/.env gateway/index.js
+npm run dev
+```
+
+然后打开 `http://localhost:5173`。Vite 默认把 ComfyUI 兼容请求代理到 `http://127.0.0.1:8080`。
+
+## 5. 管理与撤销设备
+
+列出已注册设备：
+
+```bash
+curl -H "Authorization: Bearer $GATEWAY_AUTH_TOKEN" \
+  http://127.0.0.1:8080/api/gateway/devices
+```
+
+撤销指定设备：
+
+```bash
+curl -X DELETE \
+  -H "Authorization: Bearer $GATEWAY_AUTH_TOKEN" \
+  http://127.0.0.1:8080/api/gateway/devices/DEVICE_ID
+```
+
+App 正常退出登录时会使用自己的设备令牌调用 `DELETE /api/gateway/device`，立即撤销当前设备。
+
+Compose 使用 `gateway-data` volume 保存设备注册表。删除或丢失该数据会使全部设备令牌失效；轮换 `GATEWAY_AUTH_TOKEN` 不会自动撤销已经签发的设备令牌，需要按设备撤销或重建设备注册表。
+
+## 6. 外网访问
+
+公网或不可信网络必须使用以下任一方案：
+
+- VPN/Tailscale/WireGuard，只在私有网络暴露 Gateway；或
+- 在 Gateway 前部署 Caddy/Nginx/负载均衡器，以 `https://` / `wss://` 提供服务。
+
+只有反向代理是唯一入口并正确设置 `X-Forwarded-*` 请求头时，才启用 `GATEWAY_TRUST_PROXY=true`。正式环境设置 `GATEWAY_SECURE_COOKIES=true`，防火墙继续阻止客户端访问 ComfyUI `8188`。
+
+## 7. 可选 Python 扩展
+
+生成、队列、历史、上传和输出媒体使用 ComfyUI 原生 API，不要求安装扩展。模型/文件管理、远程下载、快照、工作流链等高级能力需要 `comfy-mobile-ui-api-extension`。它是内部 API 增强层，不负责客户端认证，也不能替代 Gateway。
+
+## 故障排查
+
+- Gateway 无法启动：检查令牌是否至少 16 个字符、`gateway/.env` 是否存在。
+- Gateway 健康但无法生成：从 Gateway 主机测试 `curl http://192.168.2.150:8188/system_stats`。
+- 手机无法连接：确认手机访问的是 Gateway 主机地址和 `8080`，且局域网/防火墙允许该端口。
+- 注册后出现 `401`：设备令牌可能已过期或被撤销，删除本地会话后重新注册。
+- HTTPS 下浏览器无法保持登录：确认 `GATEWAY_SECURE_COOKIES=true`，并仅在可信反代后启用 `GATEWAY_TRUST_PROXY=true`。

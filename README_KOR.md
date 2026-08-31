@@ -1,30 +1,31 @@
-
 [English](README.md) | [한국어](README_KOR.md) | [日本語](README_JP.md) | [简体中文](README_ZH.md)
 <div align="center">
 
 # Comfy Mobile UI
 
-
 https://github.com/user-attachments/assets/53ace07b-d060-4147-9ea4-cbc72a3bd059
 
-**ComfyUI를 위한 모바일 우선, 노드 스타일 웹 인터페이스**
+**Tauri 2 기반 ComfyUI Android 클라이언트 및 모바일 우선 Web UI**
 
 [Key Features](#features) | [설치 가이드](#installation) | [기여하기](#contributing) | [응원하기](#support)
 
 ---
 
 <p align="left">
-  <img src="https://img.shields.io/badge/Platform-Mobile_First_Web-success?style=flat-square&logo=pwa" alt="Platform">
+  <img src="https://img.shields.io/badge/Platform-Android_%7C_Web-success?style=flat-square&logo=android" alt="Platform">
+  <img src="https://img.shields.io/badge/App-Tauri_2-24C8DB?style=flat-square&logo=tauri" alt="Tauri 2">
   <img src="https://img.shields.io/badge/Backend-ComfyUI-blueviolet?style=flat-square" alt="ComfyUI">
-  <img src="https://img.shields.io/github/license/jaeone94/comfy-mobile-ui?style=flat-square" alt="License">
+  <img src="https://img.shields.io/github/license/zclaudia/comfy-ui-mobile?style=flat-square" alt="License">
 </p>
 </div>
 
 ## 📖 Introduction
 
-**Comfy Mobile UI**는 PC 환경에 최적화되었던 노드 기반 AI 워크플로우를 모바일 기기에서도 원활하게 다룰 수 있도록 설계된 모바일 우선 웹 인터페이스입니다.
+**Comfy Mobile UI**는 PC 환경에 최적화되었던 노드 기반 AI 워크플로우를 모바일에서도 다룰 수 있도록 설계된 Tauri 2 Android 클라이언트 겸 모바일 우선 Web UI입니다.
 
 단순한 뷰어가 아닙니다. 이동 중에도 복잡한 워크플로우를 수정하고, 새로운 노드를 추가하고, 모델을 관리하고, 실행 상태를 실시간으로 모니터링하세요. 터치 환경에 최적화된 UX로 데스크톱의 경험을 손안에서 그대로 재현합니다.
+
+이 저장소는 [jaeone94/comfy-mobile-ui](https://github.com/jaeone94/comfy-mobile-ui)를 기반으로 개발을 이어갑니다. 현재 Clone, Issue 및 Release는 [zclaudia/comfy-ui-mobile](https://github.com/zclaudia/comfy-ui-mobile)을 기준으로 합니다.
 
 ---
 
@@ -89,76 +90,76 @@ ComfyUI 워크플로우를 자유롭게 편집할 수 있는 강력한 **Graph V
 
 ---
 
-## <a name="installation"></a>🛠️ Installation & Setup
+## 아키텍처 및 기능 범위
 
-### **1. 일반 설치 (권장)**
-가장 쉽고 빠른 설치 방법입니다:
+```text
+Tauri 2 Android App / Web UI
+              │
+              ▼
+Comfy Mobile Gateway :8080 (인증, HTTP/WS 프록시, UI 제공)
+              │
+              ▼
+        ComfyUI :8188
+```
 
-1. **다운로드**: [최신 릴리즈](https://github.com/jaeone94/comfy-mobile-ui/releases) 페이지에서 `comfy-mobile-ui-api-extension-vX.X.X.zip` 파일을 다운로드합니다.
-2. **압축 해제**: 다운로드한 파일의 압축을 풉니다.
-3. **복사**: 압축을 풀어 나온 `comfy-mobile-ui-api-extension` 폴더를 ComfyUI의 `custom_nodes/` 디렉토리에 복사합니다.
-   - **3.5. 의존성 설치 (포터블 사용자)**: ComfyUI-Manager가 설치되어 있지 않은 **바닐라 환경의 ComfyUI Windows Portable** 사용자라면, 확장 프로그램 폴더 안의 `install-requirements-for-comfyui-portable.bat` 파일을 실행하여 필요한 라이브러리를 설치해 주세요.
-4. **재시작**: 아래 플래그를 포함하여 ComfyUI를 실행 또는 재시작합니다:
-   ```bash
-   python main.py --enable-cors-header
-   ```
-5. **접속**: 브라우저를 열고 `http://서버-IP:9188` (로컬 실행 시 `http://localhost:9188`)로 접속합니다. 자세한 내용은 [접속 가이드](./docs/connection_guide_kor.md)를 참고하세요.
+클라이언트는 Gateway에만 연결합니다. ComfyUI의 `8188`과 선택적인 레거시 Launcher의 `9188`은 사설 네트워크에 두고 모바일 기기에 직접 노출하지 않습니다.
 
-### **2. 개발자 설정 / 수동 설치**
-프로젝트에 기여하거나 소스 코드에서 직접 빌드하고 싶은 경우:
+| 기능 | 제공 구성요소 | 필수 여부 |
+| --- | --- | --- |
+| 생성, 큐, 기록, 업로드, 결과 미디어 | Gateway를 통한 ComfyUI 기본 API | 필수 |
+| 인증, 기기 폐기, HTTP/WebSocket 프록시 | Comfy Mobile Gateway | 필수 |
+| 모델/파일 관리, 다운로드, 스냅샷, 워크플로 체인, Launcher | `comfy-mobile-ui-api-extension` | 선택 |
 
-#### **필수 요구사항**
-- Node.js 18+ 및 npm
-- ComfyUI 서버 실행 (일반적으로 `http://localhost:8188`)
+자세한 내용은 [Gateway 아키텍처](./docs/gateway_architecture_zh.md), [Tauri 2 Android 계획](./docs/tauri_android_plan_zh.md), [연결 가이드](./docs/connection_guide_kor.md)를 참고하세요.
 
-#### **수동 API 확장 설정**
-1. **저장소 클론**:
-   ```bash
-   git clone https://github.com/jaeone94/comfy-mobile-ui.git
-   cd comfy-mobile-ui
-   ```
-2. **API 확장 복사**:
-   ```bash
-   # comfy-mobile-ui-api-extension 폴더를 ComfyUI custom_nodes 디렉토리에 복사
-   cp -r comfy-mobile-ui-api-extension /path/to/your/comfyui/custom_nodes/
-   ```
+---
 
-#### **개발용 서버 실행**
+## <a name="installation"></a>🛠️ 설치 및 설정
+
+### **1. Gateway 배포 (권장)**
+
+Node.js 20.19+ 또는 22.12+와 Gateway 호스트에서 접근 가능한 ComfyUI가 필요합니다. 예제 설정은 `http://192.168.2.150:8188`을 사용합니다.
+
 ```bash
-# 의존성 설치
+git clone https://github.com/zclaudia/comfy-ui-mobile.git
+cd comfy-ui-mobile
 npm install
+cp gateway/.env.example gateway/.env
+```
 
-# 개발 서버 시작
+`openssl rand -hex 32`를 두 번 실행하고 각각 `gateway/.env`의 `GATEWAY_AUTH_TOKEN`과 `GATEWAY_SESSION_SECRET`으로 설정합니다. `COMFYUI_URL`을 확인한 다음 실행합니다.
+
+```bash
+# 운영 환경과 유사한 배포: UI 빌드 및 기기 레지스트리 영속화
+docker compose -f docker-compose.gateway.yml up --build -d
+
+# 또는 로컬 개발(각각 별도 터미널에서 실행)
+node --env-file=gateway/.env gateway/index.js
 npm run dev
-
-# 브라우저에서 열기: http://localhost:5173
 ```
 
-#### **프로덕션 빌드**
+Android 설정에는 `http://Gateway호스트:8080`을 입력하고 ComfyUI의 `:8188`은 입력하지 않습니다. 신뢰할 수 없는 네트워크에서는 Gateway 앞에 HTTPS를 구성하세요.
+
+### **2. 선택적 ComfyUI Python 확장**
+
+Python 확장은 이 저장소의 일부지만 Gateway가 아니며 ComfyUI 기본 기능에 필수도 아닙니다. 고급 기능이 필요할 때만 설치하세요.
 
 ```bash
-# 프로덕션용 빌드
-npm run build
-
-# 프로덕션 빌드 미리보기
-npm run preview
-
-# 코드 린트
-npm run lint
+cp -r comfy-mobile-ui-api-extension /path/to/ComfyUI/custom_nodes/
 ```
 
-### **수동 설치 시 확인사항**
+복사 후 ComfyUI를 재시작하세요. 레거시 Launcher의 `9188`은 공개하지 말고, 마이그레이션 중 필요하면 `COMFYUI_LAUNCHER_URL`을 설정해 Gateway에서만 접근하도록 합니다.
 
-ComfyUI 설치에서 확인사항:
+### **3. Android 개발**
 
-1. **API 확장 설치**: `comfy-mobile-ui-api-extension`을 `custom_nodes/`에 복사
-2. **CORS 활성화**: `--enable-cors-header` 플래그로 시작
-3. **네트워크 액세스**: 네트워크 액세스를 위해 `--listen 0.0.0.0` 사용 (선택사항)
+Android Studio, SDK Platform 36, Build-Tools, Command-line Tools, NDK (Side by side), Java, Rust Android targets를 설치한 후 실행합니다.
 
 ```bash
-# ComfyUI 시작 명령 예시
-python main.py --enable-cors-header --listen 0.0.0.0
+npm run tauri:android:init
+npm run tauri:android:dev
 ```
+
+릴리스 빌드는 `npm run tauri:android:build`를 사용합니다. 최소 지원 버전은 Android 7.0/API 24입니다. 자세한 내용은 [Tauri 2 Android 구현 계획](./docs/tauri_android_plan_zh.md)을 참고하세요.
 
 ---
 

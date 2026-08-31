@@ -3,7 +3,7 @@
 ## 目标架构
 
 ```text
-Mobile Web/PWA 或 Tauri Android
+Web UI 或 Tauri 2 Android
       │ HTTPS + WebSocket
       ▼
 Gateway（唯一公开入口）
@@ -23,7 +23,7 @@ ComfyUI :8188
 
 ## 分阶段计划
 
-### 阶段 1：建立 Gateway 边界（本次改造）
+### 阶段 1：建立 Gateway 边界（已完成）
 
 - 新增独立 Node.js Gateway。
 - 使用长随机 Token 换取 HttpOnly 会话 Cookie。
@@ -39,7 +39,7 @@ ComfyUI :8188
 验收标准：未登录不能调用 ComfyUI；登录后 `/system_stats`、`/prompt`、
 `/view` 和 `/ws` 可用；未知路径和默认关闭的危险操作不能被转发。
 
-### 阶段 2：最小化 Python Companion Extension
+### 阶段 2：最小化 Python Companion Extension（计划中）
 
 - 统计前端实际使用的 `/comfymobile/api/*` 能力。
 - 优先改用官方 API，删除重复实现。
@@ -50,7 +50,7 @@ ComfyUI :8188
 验收标准：不安装扩展时核心生成、队列、历史、上传和画廊仍可用；安装扩展
 后按 capability 渐进启用高级功能。
 
-### 阶段 3：产品化安全与运维
+### 阶段 3：产品化安全与运维（计划中）
 
 - 在 Gateway 前加入 HTTPS（Caddy、Nginx 或云负载均衡）。
 - 将共享 Token 替换为 OIDC/OAuth2 Authorization Code + PKCE。

@@ -5,16 +5,17 @@
 
 https://github.com/user-attachments/assets/20480b56-5c01-4c27-9401-0d4ba455dd81
 
-**专为 ComfyUI 设计的移动优先、节点式 Web 界面**
+**基于 Tauri 2 的 ComfyUI Android 客户端与移动优先 Web 界面**
 
 [核心功能](#features) | [安装指南](#installation) | [参与贡献](#contributing) | [给予支持](#support)
 
 ---
 
 <p align="left">
-  <img src="https://img.shields.io/badge/Platform-Mobile_First_Web-success?style=flat-square&logo=pwa" alt="Platform">
+  <img src="https://img.shields.io/badge/Platform-Android_%7C_Web-success?style=flat-square&logo=android" alt="Platform">
+  <img src="https://img.shields.io/badge/App-Tauri_2-24C8DB?style=flat-square&logo=tauri" alt="Tauri 2">
   <img src="https://img.shields.io/badge/Backend-ComfyUI-blueviolet?style=flat-square" alt="ComfyUI">
-  <img src="https://img.shields.io/github/license/jaeone94/comfy-mobile-ui?style=flat-square" alt="License">
+  <img src="https://img.shields.io/github/license/zclaudia/comfy-ui-mobile?style=flat-square" alt="License">
 </p>
 </div>
 
@@ -22,9 +23,11 @@ https://github.com/user-attachments/assets/20480b56-5c01-4c27-9401-0d4ba455dd81
 
 ## 📖 简介
 
-**Comfy Mobile UI** 是一款移动优先的 Web 界面，旨在让原本为 PC 环境优化的节点式 AI 工作流在移动设备上也能流畅运行。
+**Comfy Mobile UI** 是一款基于 Tauri 2 的 Android 客户端与移动优先 Web 界面，让原本为 PC 环境优化的节点式 AI 工作流也能在移动设备上流畅运行。
 
 它不仅仅是一个简单的查看器。你可以在旅途中修改复杂的工作流、添加新节点、管理模型，并实时监控执行状态。通过专为触屏优化的 UX，在掌中重现桌面级的体验。
+
+本仓库基于 [jaeone94/comfy-mobile-ui](https://github.com/jaeone94/comfy-mobile-ui) 继续演进；当前克隆、Issue 和 Release 地址以 [zclaudia/comfy-ui-mobile](https://github.com/zclaudia/comfy-ui-mobile) 为准。
 
 ---
 
@@ -90,29 +93,101 @@ https://github.com/user-attachments/assets/20480b56-5c01-4c27-9401-0d4ba455dd81
 
 ---
 
+## 架构与能力边界
+
+```text
+Tauri 2 Android App / Web UI
+              │
+              ▼
+Comfy Mobile Gateway :8080（认证、HTTP/WS 反代、前端托管）
+              │
+              ▼
+        ComfyUI :8188
+```
+
+客户端只连接 Gateway。ComfyUI 的 `8188` 和可选的旧 Launcher `9188` 保持在私有网络内，不直接暴露给手机。
+
+| 能力 | 提供方 | 是否必需 |
+| --- | --- | --- |
+| 生成、队列、历史、上传、查看输出 | Gateway 转发的 ComfyUI 原生 API | 是 |
+| 认证、设备撤销、HTTP/WebSocket 反代 | Comfy Mobile Gateway | 是 |
+| 模型/文件管理、远程下载、快照、工作流链和 Launcher 能力 | `comfy-mobile-ui-api-extension` | 可选 |
+
+更详细的设计见 [Gateway 架构](./docs/gateway_architecture_zh.md)、[Tauri 2 Android 计划](./docs/tauri_android_plan_zh.md)和[连接指南](./docs/connection_guide_zh.md)。
+
+---
+
 ## <a name="installation"></a>🛠️ 安装与设置
 
-> [!NOTE]
-> 新的推荐架构使用独立 Gateway 作为移动端唯一入口，由 Gateway 统一处理认证、
-> HTTP/WebSocket 反代和前端托管。详见
-> [Gateway 架构与实施计划](./docs/gateway_architecture_zh.md)。下面的 `9188` 安装方式
-> 作为原项目兼容方案继续保留。
->
-> Android 客户端采用 Tauri 2，实施范围、环境准备和后续阶段见
-> [Tauri 2 Android 实施计划](./docs/tauri_android_plan_zh.md)。
+### **1. 部署 Gateway（推荐）**
 
-### **1. 标准安装 (推荐)**
-最简单的入门方式：
+需要 Node.js 20.19+（或 22.12+），并确保 Gateway 所在主机可以访问 ComfyUI。示例配置已使用你的 ComfyUI 地址 `http://192.168.2.150:8188`。
 
-1. **下载**: 前往 [Latest Release](https://github.com/jaeone94/comfy-mobile-ui/releases) 页面下载 `comfy-mobile-ui-api-extension-vX.X.X.zip`。
-2. **解压**: 在你的电脑上解压该文件。
-3. **部署**: 将解压得到的 `comfy-mobile-ui-api-extension` 文件夹复制到 ComfyUI 的 `custom_nodes/` 目录下。
-   - **3.5. 安装依赖 (便携版用户)**: 如果你使用的是没有安装 ComfyUI-Manager 的 **纯净版 ComfyUI Windows Portable**，请运行插件文件夹内的 `install-requirements-for-comfyui-portable.bat` 以安装所需的依赖库。
-4. **启动**: 使用必需的参数启动 (或重启) ComfyUI：
-   ```bash
-   python main.py --enable-cors-header
-   ```
-5. **访问**: 打开移动端浏览器，访问 `http://你的服务器IP:9188` (或在本地运行时访问 `http://localhost:9188`)。详见 [连接指南](./docs/connection_guide_zh.md)。
+```bash
+git clone https://github.com/zclaudia/comfy-ui-mobile.git
+cd comfy-ui-mobile
+npm install
+cp gateway/.env.example gateway/.env
+```
+
+生成两个相互独立的随机值：
+
+```bash
+openssl rand -hex 32
+openssl rand -hex 32
+```
+
+在 `gateway/.env` 中分别设置 `GATEWAY_AUTH_TOKEN` 和 `GATEWAY_SESSION_SECRET`，确认 `COMFYUI_URL` 后选择一种启动方式：
+
+```bash
+# 类生产部署：构建前端并持久化设备注册表
+docker compose -f docker-compose.gateway.yml up --build -d
+
+# 或本地开发：在两个终端中分别执行
+node --env-file=gateway/.env gateway/index.js
+npm run dev
+```
+
+生产 Gateway 默认地址为 `http://Gateway主机:8080`。Android 设置页应填写这个地址，不能填写 ComfyUI 的 `:8188`。离开可信局域网时必须在 Gateway 前配置 HTTPS。
+
+### **2. 可选的 ComfyUI Python 扩展**
+
+Python 扩展属于本仓库的一部分，但它不是 Gateway，也不是使用 ComfyUI 原生能力的前置条件。只有需要上表中的高级能力时才安装：
+
+```bash
+cp -r comfy-mobile-ui-api-extension /path/to/ComfyUI/custom_nodes/
+```
+
+复制后重启 ComfyUI。不要公开旧 Launcher 的 `9188`；迁移期确实需要它时，通过 `COMFYUI_LAUNCHER_URL` 仅供 Gateway 内部访问。
+
+### **3. Android 开发**
+
+安装 Android Studio、SDK Platform 36、Build-Tools、Command-line Tools、NDK (Side by side)、Java 和 Rust Android targets，然后执行：
+
+```bash
+npm run tauri:android:init
+npm run tauri:android:dev
+```
+
+发布构建使用 `npm run tauri:android:build`。当前最低系统版本为 Android 7.0/API 24。环境变量与当前验证状态见 [Tauri 2 Android 实施计划](./docs/tauri_android_plan_zh.md)。
+
+### **4. Web 开发**
+
+```bash
+npm install
+# 终端 1
+node --env-file=gateway/.env gateway/index.js
+# 终端 2
+npm run dev
+```
+
+Vite 在 `http://localhost:5173` 提供界面，并将 API 请求转发到 Gateway。常用检查命令：
+
+```bash
+npm run build
+npm run test:gateway
+npm run lint
+```
 
 ---
 

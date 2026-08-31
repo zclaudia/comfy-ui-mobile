@@ -1,67 +1,120 @@
 [English](./connection_guide.md) | [한국어](./connection_guide_kor.md) | [日本語](./connection_guide_jp.md) | [简体中文](./connection_guide_zh.md)
 
-# ComfyUI Mobile UI Connection Guide
+# Comfy Mobile Connection Guide
 
-This guide explains the step-by-step process of connecting your mobile device to your ComfyUI server.
+## Connection rule
 
-## Step 0: Accessing the ComfyUI Mobile UI
-Before configuring server settings, you must first access the 'Mobile UI' web interface on your mobile browser.
+The Android app and Web UI connect only to Comfy Mobile Gateway, never directly to ComfyUI:
 
-<div align="center">
-  <img src="./connection_guide_capture_1.png" width="100%" alt="Mobile UI Console" />
-</div>
+```text
+Android / browser → Gateway :8080 → ComfyUI :8188
+```
 
-> [!TIP]
-> When the API Extension starts, check the console output under **"🚀 ComfyUI Mobile API is ready!"** for available addresses.
-> - **Same WiFi:** `http://192.168.x.x:9188` (Uses port 9188)
-> - **External/VPN:** `http://100.x.x.x:9188` or other network IPs shown in the console.
+- `8188` is the internal upstream used by the Gateway.
+- `8080` is the Gateway endpoint used by clients.
+- The optional legacy launcher on `9188` also stays private.
 
----
+Do not port-forward `8188` or `9188` to the public Internet. Changing only the external port does not add authentication or meaningful access control.
 
-## Step 1: Configuring ComfyUI Server Connection
-After accessing the Mobile UI, go to the **[Server Settings]** menu to connect with the actual ComfyUI engine (default port 8188).
+## 1. Configure the Gateway
 
-## 📱 Server Connection Screen
-<div align="center">
-  <img src="./connection_guide_capture_2.png" width="40%" alt="Server Connection Screen" />
-  <img src="./connection_guide_capture_3.png" width="40%" alt="Server Connection Screen2" />
-</div>
-> *In the "Server Settings" menu, enter the appropriate address for your environment.*
+From the repository root:
 
-### 1. Connecting via Same WiFi (Local Network)
-If your mobile phone and PC are connected to the same WiFi router:
-- Find the **Private IP** of the PC running the server.
-- **Example:** `http://192.168.0.85:8188`
+```bash
+cp gateway/.env.example gateway/.env
+openssl rand -hex 32
+openssl rand -hex 32
+```
 
-### 2. Connecting from External Networks (LTE/5G/External WiFi)
-To access your server while away from home, the server must be prepared for external requests.
-- **Prerequisite:** Start ComfyUI with the `--listen` or `--listen 0.0.0.0` argument.
-- **Method:** Use a VPN service like **Tailscale** or configure **Port Forwarding** on your router.
-- **Key Point:** Regardless of the method, you must enter the IP address that is **actually reachable** from your mobile browser. (e.g., `http://100.90.xx.xx:8188`)
+Edit `gateway/.env`:
 
-> [!CAUTION]
-> **Security Warning (Hacking Prevention)**
-> When using Port Forwarding, it is strongly recommended to use a different **External Port** on your router than the **Internal Port (8188)** of your PC for better security.
-> (e.g., Forwarding External Port 12345 -> Internal Port 8188)
+```dotenv
+COMFYUI_URL=http://192.168.2.150:8188
+GATEWAY_AUTH_TOKEN=first-random-value
+GATEWAY_SESSION_SECRET=second-random-value
+```
 
-### 3. SSL/TLS (HTTPS) Considerations
-If certificates are provided to ComfyUI via launch arguments (`--tls-keyfile`, `--tls-certfile`):
-- ComfyUI will **only allow HTTPS** connections.
-- You must use `https://` in the address and verify that the address is SSL-reachable from your mobile device.
-- **Example:** `https://192.168.0.85:8188`
+`GATEWAY_AUTH_TOKEN` is the setup/admin token and must contain at least 16 characters. Never place it in an APK, frontend `.env`, URL, or chat message.
 
-### 4. Using ComfyUI-Login
-If [ComfyUI-Login](https://github.com/liusida/ComfyUI-Login) protects your server:
-- Easiest way: tap **Get the token from the server** under the token field. It opens `<server>/comfymobile/api/auth/token`, which asks you to log in with your ComfyUI-Login password and then shows the token with a copy button. Nothing else is needed - no console, no file access.
-- Alternatively, copy the value printed after `For direct API calls, use token=` in the ComfyUI console. It is printed once at startup, so it is easy to miss on a restart.
-- Use the generated API token, not your plain-text password. The token is also the first line of `<ComfyUI>/login/PASSWORD`.
-- **Stay signed in on this device** is on by default: the token is stored on the device, survives closing the tab, and is included in browser-data backups. Turn it off on a shared machine and the token is kept only for the current browser session.
+## 2. Start and verify
 
-> [!WARNING]
-> Treat the API token like a password. Use HTTPS when connecting through an untrusted network.
+Compose is the recommended deployment:
 
-> [!IMPORTANT]
-> Start ComfyUI with a bare `--enable-cors-header` (no value). Passing a specific origin
-> makes ComfyUI-Login accept the token only on requests carrying that exact `Origin`
-> header, and image/media requests send no `Origin` at all - previews and thumbnails
-> would fail to load.
+```bash
+docker compose -f docker-compose.gateway.yml up --build -d
+curl http://127.0.0.1:8080/api/gateway/health
+```
+
+Or run it directly:
+
+```bash
+npm install
+npm run build
+node --env-file=gateway/.env gateway/index.js
+```
+
+The Gateway serves `dist/` and listens on port `8080` by default.
+
+## 3. Enroll Android
+
+1. Make the Gateway reachable from the phone, for example at `http://192.168.2.150:8080` when it runs on the ComfyUI host.
+2. Enter only the Gateway URL in Server Settings; do not enter `http://192.168.2.150:8188`.
+3. Enter `GATEWAY_AUTH_TOKEN` once to enroll the device.
+4. After enrollment, the setup token is cleared. The app stores the new device token in encrypted local storage backed by Android Keystore.
+
+The app restores the device session on later launches. Device tokens expire after 180 days by default. Re-enrollment is required after expiry, admin revocation, or loss of the server-side device registry.
+
+## 4. Browser login
+
+Open the Gateway URL, such as `http://192.168.2.150:8080`, and enter the setup token. The Gateway exchanges it for an HttpOnly session cookie; browsers do not use Android device tokens.
+
+For split development, run the Gateway and Vite separately:
+
+```bash
+node --env-file=gateway/.env gateway/index.js
+npm run dev
+```
+
+Open `http://localhost:5173`. Vite proxies ComfyUI-compatible traffic to `http://127.0.0.1:8080` by default.
+
+## 5. Manage and revoke devices
+
+List enrolled devices:
+
+```bash
+curl -H "Authorization: Bearer $GATEWAY_AUTH_TOKEN" \
+  http://127.0.0.1:8080/api/gateway/devices
+```
+
+Revoke one device:
+
+```bash
+curl -X DELETE \
+  -H "Authorization: Bearer $GATEWAY_AUTH_TOKEN" \
+  http://127.0.0.1:8080/api/gateway/devices/DEVICE_ID
+```
+
+Normal app logout calls `DELETE /api/gateway/device` with that device's own token and revokes it immediately.
+
+Compose stores the registry in the `gateway-data` volume. Losing it invalidates every device token. Rotating `GATEWAY_AUTH_TOKEN` does not automatically revoke existing device tokens; revoke them individually or rebuild the registry.
+
+## 6. Remote access
+
+For public or otherwise untrusted networks, use one of these approaches:
+
+- VPN/Tailscale/WireGuard with the Gateway exposed only inside the private network; or
+- Caddy/Nginx/a load balancer in front of the Gateway, serving `https://` and `wss://`.
+
+Enable `GATEWAY_TRUST_PROXY=true` only when the reverse proxy is the sole entry point and sets the correct `X-Forwarded-*` headers. Set `GATEWAY_SECURE_COOKIES=true` in production and keep firewall access to ComfyUI `8188` blocked from clients.
+
+## 7. Optional Python extension
+
+Generation, queue, history, uploads, and output media use native ComfyUI APIs and do not require the extension. Advanced model/file management, remote downloads, snapshots, and workflow chains require `comfy-mobile-ui-api-extension`. It is an internal API enhancement, not the client authentication boundary and not a replacement for the Gateway.
+
+## Troubleshooting
+
+- Gateway does not start: verify `gateway/.env` exists and tokens contain at least 16 characters.
+- Gateway is healthy but generation fails: from the Gateway host, try `curl http://192.168.2.150:8188/system_stats`.
+- The phone cannot connect: use the Gateway host address and port `8080`, and check LAN/firewall access.
+- `401` after enrollment: the device may be expired or revoked; clear its local session and enroll it again.
+- Browser login is lost under HTTPS: set `GATEWAY_SECURE_COOKIES=true`, and enable trust-proxy only behind a trusted proxy.

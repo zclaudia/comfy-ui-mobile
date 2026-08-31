@@ -5,24 +5,27 @@
 
 https://github.com/user-attachments/assets/20480b56-5c01-4c27-9401-0d4ba455dd81
 
-**Mobile-first, node-style web interface for ComfyUI**
+**Tauri 2 Android client and mobile-first web UI for ComfyUI**
 
 [Key Features](#features) | [Installation Guide](#installation) | [Contributing](#contributing) | [Show Your Support](#support)
 
 ---
 
 <p align="left">
-  <img src="https://img.shields.io/badge/Platform-Mobile_First_Web-success?style=flat-square&logo=pwa" alt="Platform">
+  <img src="https://img.shields.io/badge/Platform-Android_%7C_Web-success?style=flat-square&logo=android" alt="Platform">
+  <img src="https://img.shields.io/badge/App-Tauri_2-24C8DB?style=flat-square&logo=tauri" alt="Tauri 2">
   <img src="https://img.shields.io/badge/Backend-ComfyUI-blueviolet?style=flat-square" alt="ComfyUI">
-  <img src="https://img.shields.io/github/license/jaeone94/comfy-mobile-ui?style=flat-square" alt="License">
+  <img src="https://img.shields.io/github/license/zclaudia/comfy-ui-mobile?style=flat-square" alt="License">
 </p>
 </div>
 
 ## 📖 Introduction
 
-**Comfy Mobile UI** is a mobile-first web interface designed to seamlessly handle node-based AI workflows on mobile devices, originally optimized for PC environments.
+**Comfy Mobile UI** is a Tauri 2 Android client and mobile-first web interface for working with node-based ComfyUI workflows on smaller screens.
 
 This is not just a simple viewer. Modify complex workflows on the go, add new nodes, manage models, and monitor execution status in real-time. Experience a desktop-like environment on your mobile device with a touch-optimized UX.
+
+This repository continues the work of [jaeone94/comfy-mobile-ui](https://github.com/jaeone94/comfy-mobile-ui); current clone, issue, and release links belong to [zclaudia/comfy-ui-mobile](https://github.com/zclaudia/comfy-ui-mobile).
 
 ---
 
@@ -87,75 +90,100 @@ Provides smart tools to make workflow editing and management even more efficient
 
 ---
 
+## Architecture and capabilities
+
+```text
+Tauri 2 Android app / Web UI
+             │
+             ▼
+Comfy Mobile Gateway :8080  (authentication, HTTP/WS proxy, static UI)
+             │
+             ▼
+       ComfyUI :8188
+```
+
+The client only connects to the Gateway. ComfyUI `:8188` and the optional legacy launcher `:9188` stay on the private network and should not be exposed to mobile clients.
+
+| Capability | Provider | Required? |
+| --- | --- | --- |
+| Prompt execution, queue, history, upload, output media | Native ComfyUI API through the Gateway | Yes |
+| Authentication, device revocation, HTTP/WebSocket proxy | Comfy Mobile Gateway | Yes |
+| Model/file management, downloads, snapshots, workflow chains and launcher features | `comfy-mobile-ui-api-extension` | Optional |
+
+See the [Gateway architecture](./docs/gateway_architecture_zh.md), [Android plan](./docs/tauri_android_plan_zh.md), and [connection guide](./docs/connection_guide.md) for details.
+
+---
+
 ## <a name="installation"></a>🛠️ Installation & Setup
 
-### **1. Standard Installation (Recommended)**
-The easiest way to get started is to download a pre-built release:
+### **1. Gateway deployment (recommended)**
 
-1. **Download**: Go to [Latest Release](https://github.com/jaeone94/comfy-mobile-ui/releases) and download `comfy-mobile-ui-api-extension-vX.X.X.zip`.
-2. **Extract**: Unzip the file on your computer.
-3. **Deploy**: Copy the extracted `comfy-mobile-ui-api-extension` folder into your ComfyUI `custom_nodes/` directory.
-   - **Step 3.5 (Portable User)**: If you are using the **ComfyUI Windows Portable** version without ComfyUI-Manager, run `install-requirements-for-comfyui-portable.bat` inside the extension folder to install required libraries.
-4. **Restart**: Start (or restart) ComfyUI with the required flag:
-   ```bash
-   python main.py --enable-cors-header
-   ```
-5. **Access**: Open your browser and navigate to `http://your-server-ip:9188` (or `http://localhost:9188` if running locally). See the [Connection Guide](./docs/connection_guide.md) for more details.
+Requirements: Node.js 20.19+ (or 22.12+) and a reachable ComfyUI instance. The example configuration already points to `http://192.168.2.150:8188`.
 
-### **2. Development / Manual Setup**
-If you want to contribute or build from source:
-
-#### **Prerequisites**
-- Node.js 18+ and npm
-- Running ComfyUI server (typically `http://localhost:8188`)
-
-#### **Manual Extension Setup**
-1. **Clone the repository**:
-   ```bash
-   git clone https://github.com/jaeone94/comfy-mobile-ui.git
-   cd comfy-mobile-ui
-   ```
-2. **Copy API Extension**:
-   ```bash
-   # Copy the extension folder to your ComfyUI custom_nodes directory
-   cp -r comfy-mobile-ui-api-extension /path/to/your/comfyui/custom_nodes/
-   ```
-
-#### **Running Development Server**
 ```bash
-# Install dependencies
+git clone https://github.com/zclaudia/comfy-ui-mobile.git
+cd comfy-ui-mobile
 npm install
+cp gateway/.env.example gateway/.env
+```
 
-# Start development server
+Generate independent secrets and put them in `gateway/.env`:
+
+```bash
+openssl rand -hex 32
+openssl rand -hex 32
+```
+
+Set the first value as `GATEWAY_AUTH_TOKEN`, the second as `GATEWAY_SESSION_SECRET`, verify `COMFYUI_URL`, then start either:
+
+```bash
+# Production-style deployment; builds the UI and persists the device registry.
+docker compose -f docker-compose.gateway.yml up --build -d
+
+# Or local development (run these in separate terminals).
+node --env-file=gateway/.env gateway/index.js
 npm run dev
-
-# Open in browser: http://localhost:5173
 ```
 
-#### **Production Build**
+The production Gateway listens on `http://gateway-host:8080`. Android should be configured with this Gateway address, never the ComfyUI `:8188` address. Use HTTPS in any untrusted network.
+
+### **2. Optional ComfyUI extension**
+
+The Python extension is part of this repository, but it is not the Gateway and is not required for native ComfyUI operations. Install it only when the advanced features in the capability table are needed:
 
 ```bash
-# Build for production
+cp -r comfy-mobile-ui-api-extension /path/to/ComfyUI/custom_nodes/
+```
+
+Restart ComfyUI after copying it. Do not expose the extension's legacy `:9188` launcher; if it is needed during migration, set `COMFYUI_LAUNCHER_URL` so only the Gateway can reach it.
+
+### **3. Android development**
+
+Install Android Studio, SDK Platform 36, Build-Tools, Command-line Tools, NDK (Side by side), Java, and the Rust Android targets. Then run:
+
+```bash
+npm run tauri:android:init
+npm run tauri:android:dev
+```
+
+Use `npm run tauri:android:build` for a release build. The current app requires Android 7.0/API 24 or newer. See the [Tauri 2 Android plan](./docs/tauri_android_plan_zh.md) for environment variables and current validation status.
+
+### **4. Web development**
+
+```bash
+npm install
+# Terminal 1
+node --env-file=gateway/.env gateway/index.js
+# Terminal 2
+npm run dev
+```
+
+Vite serves the UI at `http://localhost:5173` and proxies API traffic to the Gateway. Useful checks:
+
+```bash
 npm run build
-
-# Preview production build
-npm run preview
-
-# Lint code
+npm run test:gateway
 npm run lint
-```
-
-### **Manual Setup Checklist**
-
-Check the following for your ComfyUI installation:
-
-1. **API Extension Installed**: `comfy-mobile-ui-api-extension` copied to `custom_nodes/`
-2. **CORS Enabled**: Started with the `--enable-cors-header` flag
-3. **Network Access**: Use `--listen 0.0.0.0` for external network access (optional)
-
-```bash
-# Example ComfyUI start command
-python main.py --enable-cors-header --listen 0.0.0.0
 ```
 
 ---

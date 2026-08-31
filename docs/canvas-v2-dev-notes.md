@@ -9,6 +9,14 @@ is the whole point of the migration.
 Status: first slice merged on `feat/canvas-v2-official-canvas` (2026-07-20),
 verified end-to-end in-browser on macOS.
 
+Gateway migration status: this experimental canvas is disabled by default.
+`CanvasHost` still expects the official ComfyUI frontend at the configured
+server root, while the Gateway root now serves Comfy Mobile itself and does
+not proxy arbitrary frontend assets. A namespaced, authenticated upstream
+frontend route (or packaged official frontend assets) is required before this
+mode can be enabled in the Android/Gateway architecture. Do not bypass the
+Gateway by pointing a release client at `8188` as a workaround.
+
 ## Architecture
 
 ```
@@ -86,11 +94,14 @@ earlier connection/reposition-mode rewiring plan — deleted from the backlog.
 7. `/canvas-lab` route is the original plumbing experiment — keep for
    debugging, delete before release.
 
-## Dev setup
+## Legacy bridge-only dev setup
 
-Either OS: link the extension into ComfyUI, install its Python deps
-(`aiofiles` is the critical one), restart ComfyUI with `--enable-cors-header`,
-then `npm run dev` and connect the app to the server URL.
+The following direct-ComfyUI setup is retained only for isolated browser
+development of the experimental bridge. It is not the supported Gateway or
+Android deployment path. Link the extension into ComfyUI, install its Python
+dependencies (`aiofiles` is the critical one), restart ComfyUI with
+`--enable-cors-header`, then run `npm run dev` and connect the browser harness
+directly to the ComfyUI URL.
 
 - macOS: `ln -s <repo>/comfy-mobile-ui-api-extension ~/ComfyUI/custom_nodes/`
 - Windows (no admin needed):
