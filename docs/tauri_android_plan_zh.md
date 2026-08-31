@@ -31,13 +31,16 @@ Gateway 直接连接 `8188`。
 - HTTP capability 默认允许 HTTPS，以及 localhost 和常见私有 IPv4 网段；不允许任意
   公网 HTTP。
 
-## 阶段 2：完成 Mobile 认证与媒体通道
+## 阶段 2：完成 Mobile 认证与媒体通道（已完成基础实现）
 
-- Gateway 增加设备注册/撤销接口，用一次性注册码换取可撤销的 Device Token。
-- Device Token 使用 Android Keystore 封装的 Tauri Kotlin 插件保存；共享部署 Token
-  不进入 APK。
-- 为 `/view`、视频和下载资源实现授权媒体加载器，避免依赖 WebView Cookie 或裸直链。
-- 将 Gateway capability 从通用 HTTPS 进一步收敛到用户确认的 Gateway Origin。
+- Gateway 已增加设备注册、列表、自助注销和管理员撤销接口；注册后换取随机、可过期的
+  Device Token，磁盘只保留 SHA-256 摘要。
+- Device Token 使用仓库内的 Tauri Kotlin 插件保存。插件用 Android Keystore 管理
+  AES-GCM 密钥，用应用私有 SharedPreferences 保存密文；共享部署 Token 不进入 APK。
+- `/view`、视频、画廊缩略图和 Canvas 预览已改为授权请求 + 临时 Blob URL，避免依赖
+  WebView Cookie 或把 Device Token 放进查询字符串。
+- Device Token 在运行时严格绑定注册时的 Gateway Origin。Tauri HTTP capability 仍只允许
+  HTTPS、localhost 和私有 IPv4 网段；若部署地址固定，可在发布配置中进一步收窄。
 
 ## 阶段 3：Android 原生能力
 
@@ -108,5 +111,9 @@ Gateway 仍按 `docs/gateway_architecture_zh.md` 部署。Android 设置页填�
 http://192.168.2.150:8080
 ```
 
-然后输入 Gateway Token。阶段 1 的 Token 只在当前 App 会话有效，完全退出 App 后需要
-重新输入。正式发布前必须完成阶段 2，不能把共享 Token 写入 `.env` 或 APK。
+然后输入 Gateway 部署 Token。注册成功后输入框会被清空，App 重启时从 Android
+Keystore 恢复 Device Token，不需要重复输入。部署 Token 不能写入前端 `.env` 或 APK。
+
+当前开发机没有配置 Android SDK/NDK。TypeScript、Gateway 测试和独立插件的 Android
+Rust target 检查已经通过；主应用 Android 构建、Kotlin 编译以及重启恢复仍需在安装
+SDK/NDK 后通过真实设备验证。

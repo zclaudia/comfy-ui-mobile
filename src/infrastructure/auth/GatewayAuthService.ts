@@ -1,6 +1,10 @@
 import {
   clearNativeGatewaySession,
   getNativeGatewayAuthorization,
+  getNativeGatewaySession as getNativeDeviceSession,
+  persistNativeGatewaySession,
+  removePersistedNativeGatewaySession,
+  restoreNativeGatewaySession,
   setNativeGatewaySession,
 } from '@/platform/gatewaySession';
 import { platformFetch } from '@/platform/http';
@@ -9,7 +13,19 @@ import { isTauriRuntime } from '@/platform/runtime';
 export interface GatewayLoginResult {
   authenticated: boolean;
   expiresAt?: number;
-  storage?: 'cookie' | 'memory';
+  storage?: 'cookie' | 'keystore' | 'memory';
+}
+
+interface GatewayDeviceRegistration {
+  authenticated: boolean;
+  deviceToken: string;
+  device: {
+    id: string;
+    name: string;
+    createdAt: number;
+    expiresAt: number;
+    revokedAt: number | null;
+  };
 }
 
 const gatewayEndpoint = (gatewayUrl: string, path: string): string => (
@@ -31,17 +47,64 @@ export const loginToGateway = async (
   remember: boolean,
 ): Promise<GatewayLoginResult> => {
   if (isTauriRuntime()) {
-    setNativeGatewaySession(gatewayUrl, token);
+    const registrationResponse = await platformFetch(
+      gatewayEndpoint(gatewayUrl, '/api/gateway/devices/register'),
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: token.trim(),
+          deviceName: 'Comfy Mobile Android',
+        }),
+      },
+    );
+    if (!registrationResponse.ok) throw new Error(await readGatewayError(registrationResponse));
+
+    const registration = await registrationResponse.json() as GatewayDeviceRegistration;
+    setNativeGatewaySession(
+      gatewayUrl,
+      registration.deviceToken,
+      registration.device.id,
+      registration.device.expiresAt,
+    );
     const sessionUrl = gatewayEndpoint(gatewayUrl, '/api/gateway/session');
     const authorization = getNativeGatewayAuthorization(sessionUrl);
     const response = await platformFetch(sessionUrl, {
       headers: authorization ? { Authorization: authorization } : undefined,
     });
     if (!response.ok) {
+      const gatewayError = await readGatewayError(response);
+      await platformFetch(gatewayEndpoint(gatewayUrl, '/api/gateway/device'), {
+        method: 'DELETE',
+        headers: authorization ? { Authorization: authorization } : undefined,
+      }).catch(() => undefined);
       clearNativeGatewaySession();
-      throw new Error(await readGatewayError(response));
+      throw new Error(gatewayError);
     }
-    return { authenticated: true, storage: 'memory' };
+
+    const isAndroid = /Android/i.test(globalThis.navigator?.userAgent || '');
+    try {
+      await persistNativeGatewaySession();
+      return {
+        authenticated: true,
+        expiresAt: registration.device.expiresAt,
+        storage: 'keystore',
+      };
+    } catch (error) {
+      if (!isAndroid) {
+        return {
+          authenticated: true,
+          expiresAt: registration.device.expiresAt,
+          storage: 'memory',
+        };
+      }
+      await platformFetch(gatewayEndpoint(gatewayUrl, '/api/gateway/device'), {
+        method: 'DELETE',
+        headers: authorization ? { Authorization: authorization } : undefined,
+      }).catch(() => undefined);
+      clearNativeGatewaySession();
+      throw new Error(`Unable to secure the Android device credential: ${String(error)}`);
+    }
   }
 
   const response = await platformFetch(gatewayEndpoint(gatewayUrl, '/api/gateway/login'), {
@@ -57,7 +120,11 @@ export const loginToGateway = async (
 
 export const getGatewaySession = async (gatewayUrl: string): Promise<boolean> => {
   const sessionUrl = gatewayEndpoint(gatewayUrl, '/api/gateway/session');
-  const authorization = getNativeGatewayAuthorization(sessionUrl);
+  let authorization = getNativeGatewayAuthorization(sessionUrl);
+  if (isTauriRuntime() && !authorization) {
+    await restoreNativeGatewaySession(gatewayUrl);
+    authorization = getNativeGatewayAuthorization(sessionUrl);
+  }
   const response = await platformFetch(sessionUrl, {
     credentials: isTauriRuntime() ? 'omit' : 'include',
     headers: authorization ? { Authorization: authorization } : undefined,
@@ -66,9 +133,25 @@ export const getGatewaySession = async (gatewayUrl: string): Promise<boolean> =>
 };
 
 export const logoutFromGateway = async (gatewayUrl: string): Promise<void> => {
-  clearNativeGatewaySession();
+  if (isTauriRuntime()) {
+    const session = getNativeDeviceSession();
+    const authorization = getNativeGatewayAuthorization(gatewayUrl);
+    try {
+      if (session && authorization) {
+        await platformFetch(gatewayEndpoint(gatewayUrl, '/api/gateway/device'), {
+          method: 'DELETE',
+          headers: { Authorization: authorization },
+        });
+      }
+    } finally {
+      clearNativeGatewaySession();
+      await removePersistedNativeGatewaySession().catch(() => undefined);
+    }
+    return;
+  }
+
   await platformFetch(gatewayEndpoint(gatewayUrl, '/api/gateway/logout'), {
     method: 'POST',
-    credentials: isTauriRuntime() ? 'omit' : 'include',
+    credentials: 'include',
   });
 };

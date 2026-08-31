@@ -10,6 +10,7 @@ import { isImageFile, isVideoFile as checkIsVideoFile } from '@/shared/utils/Com
 import { useConnectionStore } from '@/ui/store/connectionStore';
 import { toast } from 'sonner';
 import { resolveGatewayUrl } from '@/config/runtime';
+import { AuthenticatedImage } from '@/components/media/AuthenticatedImage';
 
 interface OutputAlbumModalProps {
   isOpen: boolean;
@@ -305,8 +306,8 @@ export const OutputAlbumModal: React.FC<OutputAlbumModalProps> = ({
                   thumbnailUrl ? (
                     <>
                       <div className="w-full h-full flex items-center justify-center p-1">
-                        <img
-                          src={thumbnailUrl}
+                        <AuthenticatedImage
+                          source={thumbnailUrl}
                           alt={file.filename}
                           className="max-w-full max-h-full object-contain"
                         />
@@ -325,8 +326,8 @@ export const OutputAlbumModal: React.FC<OutputAlbumModalProps> = ({
                   )
                 ) : thumbnailUrl ? (
                   <div className="w-full h-full flex items-center justify-center p-1">
-                    <img
-                      src={thumbnailUrl}
+                    <AuthenticatedImage
+                      source={thumbnailUrl}
                       alt={file.filename}
                       className="max-w-full max-h-full object-contain"
                     />

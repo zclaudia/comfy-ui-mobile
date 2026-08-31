@@ -14,6 +14,7 @@ import { IComfyFileInfo } from '@/shared/types/comfy/IComfyFile';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import type { IComfyJson } from '@/shared/types/app/IComfyJson';
+import { useAuthenticatedMediaUrl } from '@/hooks/useAuthenticatedMediaUrl';
 
 const isImageFile = (filename: string): boolean => {
   const ext = filename.split('.').pop()?.toLowerCase() || '';
@@ -189,6 +190,14 @@ const LazyThumbnail: React.FC<LazyThumbnailProps> = ({ file, onFileClick, imageL
 
     return undefined;
   }, [isInView, file, imageLookupMap]);
+  const authenticatedThumbnail = useAuthenticatedMediaUrl(thumbnailUrl, isInView);
+
+  useEffect(() => {
+    if (authenticatedThumbnail.error) {
+      setHasError(true);
+      setIsLoaded(true);
+    }
+  }, [authenticatedThumbnail.error]);
 
   const handleImageLoad = useCallback(() => {
     setIsLoaded(true);
@@ -220,9 +229,9 @@ const LazyThumbnail: React.FC<LazyThumbnailProps> = ({ file, onFileClick, imageL
           ) : null}
         </div>
 
-        {thumbnailUrl && !hasError && (
+        {authenticatedThumbnail.url && !hasError && (
           <img
-            src={thumbnailUrl}
+            src={authenticatedThumbnail.url}
             alt={file.filename}
             className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${isLoaded ? 'opacity-100' : 'opacity-0'
               }`}

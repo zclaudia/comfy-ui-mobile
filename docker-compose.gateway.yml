@@ -5,6 +5,13 @@ services:
       dockerfile: Dockerfile.gateway
     env_file:
       - gateway/.env
+    environment:
+      GATEWAY_DEVICE_STORE: /data/devices.json
     ports:
       - "8080:8080"
+    volumes:
+      - gateway-data:/data
     restart: unless-stopped
+
+volumes:
+  gateway-data:

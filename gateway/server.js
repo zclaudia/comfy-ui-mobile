@@ -5,13 +5,14 @@ import path from 'node:path';
 import { pipeline } from 'node:stream';
 import { WebSocket, WebSocketServer } from 'ws';
 import { createSessionManager } from './auth.js';
+import { createDeviceStore } from './deviceStore.js';
 import {
   authorizeProxyRoute,
   isAllowedWebSocketPath,
   isReservedApiPath,
 } from './routes.js';
 
-const GATEWAY_VERSION = '0.1.0';
+const GATEWAY_VERSION = '0.2.0';
 const HOP_BY_HOP_HEADERS = new Set([
   'connection',
   'keep-alive',
@@ -335,7 +336,8 @@ const proxyWebSocket = (client, request, config) => {
 };
 
 export const createGatewayServer = (config) => {
-  const sessions = createSessionManager(config);
+  const deviceStore = createDeviceStore(config);
+  const sessions = createSessionManager(config, deviceStore);
   const rateLimit = createRateLimiter();
   const webSocketServer = new WebSocketServer({
     noServer: true,
@@ -385,7 +387,7 @@ export const createGatewayServer = (config) => {
       }
       try {
         const body = await readJsonBody(request);
-        if (!sessions.authenticateToken(String(body.token ?? ''))) {
+        if (!sessions.authenticateSetupToken(String(body.token ?? ''))) {
           sendJson(response, 401, { error: 'invalid_gateway_token' });
           return;
         }
@@ -397,6 +399,82 @@ export const createGatewayServer = (config) => {
         sendJson(response, 200, { authenticated: true, expiresAt: session.expiresAt });
       } catch (error) {
         sendJson(response, 400, { error: error.message });
+      }
+      return;
+    }
+
+    if (url.pathname === '/api/gateway/devices/register' && request.method === 'POST') {
+      if (!rateLimit(`register:${clientAddress(request, config)}`, config.loginRateLimitPerMinute)) {
+        sendJson(response, 429, { error: 'too_many_registration_attempts' });
+        return;
+      }
+      try {
+        const body = await readJsonBody(request);
+        if (!sessions.authenticateSetupToken(String(body.token ?? ''))) {
+          sendJson(response, 401, { error: 'invalid_gateway_token' });
+          return;
+        }
+        const registration = await deviceStore.register(body.deviceName);
+        sendJson(response, 201, {
+          authenticated: true,
+          device: registration.device,
+          deviceToken: registration.token,
+        });
+      } catch (error) {
+        const clientError = ['device_name_required', 'device_name_too_long'].includes(error.message);
+        sendJson(response, clientError ? 400 : 500, {
+          error: clientError ? error.message : 'device_registration_failed',
+        });
+      }
+      return;
+    }
+
+    if (url.pathname === '/api/gateway/devices' && request.method === 'GET') {
+      if (!sessions.authenticateAdmin(request)) {
+        sendJson(response, 401, { error: 'gateway_admin_authentication_required' });
+        return;
+      }
+      sendJson(response, 200, { devices: deviceStore.list() });
+      return;
+    }
+
+    if (url.pathname === '/api/gateway/device' && request.method === 'DELETE') {
+      const token = sessions.authenticatedDeviceToken(request);
+      if (!token) {
+        sendJson(response, 401, { error: 'device_authentication_required' });
+        return;
+      }
+      try {
+        const device = await deviceStore.revokeToken(token);
+        sendJson(response, 200, { device, authenticated: false });
+      } catch {
+        sendJson(response, 500, { error: 'device_revocation_failed' });
+      }
+      return;
+    }
+
+    const devicePathMatch = url.pathname.match(/^\/api\/gateway\/devices\/([^/]+)$/);
+    if (devicePathMatch && request.method === 'DELETE') {
+      if (!sessions.authenticateAdmin(request)) {
+        sendJson(response, 401, { error: 'gateway_admin_authentication_required' });
+        return;
+      }
+      let deviceId;
+      try {
+        deviceId = decodeURIComponent(devicePathMatch[1]);
+      } catch {
+        sendJson(response, 400, { error: 'invalid_device_id' });
+        return;
+      }
+      try {
+        const device = await deviceStore.revoke(deviceId);
+        if (!device) {
+          sendJson(response, 404, { error: 'device_not_found' });
+          return;
+        }
+        sendJson(response, 200, { device });
+      } catch {
+        sendJson(response, 500, { error: 'device_revocation_failed' });
       }
       return;
     }

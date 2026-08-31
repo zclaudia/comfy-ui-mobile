@@ -23,7 +23,14 @@ const sign = (secret, value) => crypto
   .update(value)
   .digest('base64url');
 
-export const createSessionManager = (config) => {
+const bearerToken = (request) => {
+  const authorization = request.headers.authorization || '';
+  return authorization.startsWith('Bearer ')
+    ? authorization.slice('Bearer '.length).trim()
+    : '';
+};
+
+export const createSessionManager = (config, deviceStore) => {
   const createSession = (remember = false) => {
     const ttl = remember
       ? config.rememberedSessionTtlSeconds
@@ -54,18 +61,25 @@ export const createSessionManager = (config) => {
   const authenticate = (request) => {
     if (config.allowAnonymous) return true;
 
-    const authorization = request.headers.authorization || '';
-    if (authorization.startsWith('Bearer ')) {
-      return safeEqual(authorization.slice('Bearer '.length).trim(), config.authToken);
+    const token = bearerToken(request);
+    if (token) {
+      return safeEqual(token, config.authToken) || deviceStore.authenticate(token);
     }
 
     const cookies = parseCookies(request.headers.cookie);
     return validateSession(cookies.get(config.sessionCookieName));
   };
 
-  const authenticateToken = (token) => (
+  const authenticateSetupToken = (token) => (
     config.allowAnonymous || safeEqual(token, config.authToken)
   );
+
+  const authenticateAdmin = (request) => authenticateSetupToken(bearerToken(request));
+
+  const authenticatedDeviceToken = (request) => {
+    const token = bearerToken(request);
+    return deviceStore.authenticate(token) ? token : null;
+  };
 
   const sessionCookie = ({ value, ttl, persistent }, secure) => {
     const attributes = [
@@ -93,7 +107,9 @@ export const createSessionManager = (config) => {
 
   return {
     authenticate,
-    authenticateToken,
+    authenticateAdmin,
+    authenticateSetupToken,
+    authenticatedDeviceToken,
     createSession,
     validateSession,
     sessionCookie,

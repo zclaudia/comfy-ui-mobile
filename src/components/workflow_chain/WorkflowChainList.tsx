@@ -13,6 +13,7 @@ import { useConnectionStore } from '@/ui/store/connectionStore';
 import { chainProgressWebSocketService, ChainProgressData } from '@/infrastructure/websocket/ChainProgressWebSocketService';
 import { loadAllWorkflows } from '@/infrastructure/storage/IndexedDBWorkflowService';
 import { Workflow } from '@/shared/types/app/IComfyWorkflow';
+import { AuthenticatedImage } from '@/components/media/AuthenticatedImage';
 
 const WorkflowChainList: React.FC = () => {
   const { t } = useTranslation();
@@ -615,8 +616,8 @@ const WorkflowChainList: React.FC = () => {
                                           transform: `rotate(${(idx - 1) * 2}deg)`
                                         }}
                                       >
-                                        <img
-                                          src={node.thumbnail}
+                                        <AuthenticatedImage
+                                          source={node.thumbnail!}
                                           alt={node.name || `Workflow ${idx + 1}`}
                                           className="w-full h-full object-cover"
                                         />

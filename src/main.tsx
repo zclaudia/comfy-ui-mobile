@@ -4,13 +4,15 @@ import './index.css'
 import './lib/i18n' // i18n initialization
 import { installComfyAuthAxiosInterceptor } from './infrastructure/auth/ComfyAuthService'
 import { useConnectionStore } from './ui/store/connectionStore'
-import { initializePlatformRuntime } from './platform/runtime'
+import { initializePlatformRuntime, isTauriRuntime } from './platform/runtime'
+import { restoreNativeGatewaySession } from './platform/gatewaySession'
 import App from './App.tsx'
 
 const root = document.getElementById('root')!
 
 const bootstrap = async () => {
   await initializePlatformRuntime()
+  if (isTauriRuntime()) await restoreNativeGatewaySession()
   installComfyAuthAxiosInterceptor()
   useConnectionStore.getState().hydrateAuth()
 

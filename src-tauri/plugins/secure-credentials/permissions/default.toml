@@ -1,0 +1,7 @@
+[default]
+description = "Allows Comfy Mobile to store, restore, and remove its Gateway device credential."
+permissions = [
+    "allow-get-secret",
+    "allow-remove-secret",
+    "allow-set-secret",
+]

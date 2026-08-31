@@ -3,6 +3,7 @@ import { FileText, AlertCircle, Check } from 'lucide-react';
 import { Workflow } from '@/shared/types/app/IComfyWorkflow';
 import { generateWorkflowThumbnail } from '@/shared/utils/rendering/CanvasRendererService';
 import { useLongPress } from '@/hooks/useLongPress';
+import { AuthenticatedImage } from '@/components/media/AuthenticatedImage';
 
 interface WorkflowGridItemProps {
   workflow: Workflow;
@@ -65,8 +66,8 @@ const WorkflowGridItem: React.FC<WorkflowGridItemProps> = ({
       {/* Thumbnail */}
       <div className="relative aspect-[16/10] border-b border-white/[0.06]" style={{ background: '#0c0e12' }}>
         {thumbnailUrl ? (
-          <img
-            src={thumbnailUrl}
+          <AuthenticatedImage
+            source={thumbnailUrl}
             alt={workflow.name}
             className="w-full h-full object-cover"
           />

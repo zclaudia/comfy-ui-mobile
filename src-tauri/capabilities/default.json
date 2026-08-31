@@ -23,6 +23,7 @@
         { "url": "http://192.168.*:*" }
       ]
     },
+    "secure-credentials:default",
     "websocket:default"
   ]
 }

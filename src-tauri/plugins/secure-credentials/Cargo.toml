@@ -1,0 +1,16 @@
+[package]
+name = "tauri-plugin-secure-credentials"
+version = "0.1.0"
+description = "Android Keystore-backed credential storage for Comfy Mobile"
+authors = ["Comfy Mobile contributors"]
+edition = "2021"
+rust-version = "1.77.2"
+links = "tauri-plugin-secure-credentials"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+tauri = { version = "2" }
+thiserror = "2"
+
+[build-dependencies]
+tauri-plugin = { version = "2", features = ["build"] }

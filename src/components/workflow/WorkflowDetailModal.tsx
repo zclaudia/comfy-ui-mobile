@@ -11,6 +11,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { updateWorkflow, removeWorkflow, addWorkflow, loadAllWorkflows } from '@/infrastructure/storage/IndexedDBWorkflowService';
 import { toast } from 'sonner';
 import { generateUUID } from '@/utils/uuid';
+import { AuthenticatedImage } from '@/components/media/AuthenticatedImage';
 
 interface WorkflowDetailModalProps {
   isOpen: boolean;
@@ -277,8 +278,8 @@ const WorkflowDetailModal: React.FC<WorkflowDetailModalProps> = ({
                   onClick={handleOpenClick}
                 >
                   {thumbnailUrl ? (
-                    <img
-                      src={thumbnailUrl}
+                    <AuthenticatedImage
+                      source={thumbnailUrl}
                       alt={workflow.name}
                       className="w-full h-full object-cover"
                     />

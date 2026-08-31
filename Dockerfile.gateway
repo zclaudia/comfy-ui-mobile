@@ -12,6 +12,7 @@ COPY gateway/package.json gateway/package-lock.json ./gateway/
 RUN npm --prefix gateway ci --omit=dev
 COPY gateway ./gateway
 COPY --from=frontend-build /app/dist ./dist
+RUN mkdir -p /data && chown node:node /data
 USER node
 EXPOSE 8080
 CMD ["node", "gateway/index.js"]

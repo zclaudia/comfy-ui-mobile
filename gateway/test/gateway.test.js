@@ -6,6 +6,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { WebSocket, WebSocketServer } from 'ws';
 import { loadGatewayConfig } from '../config.js';
+import { createDeviceStore } from '../deviceStore.js';
 import { createGatewayServer } from '../server.js';
 
 const AUTH_TOKEN = 'test-gateway-token-with-enough-entropy';
@@ -56,6 +57,7 @@ test('Gateway protects allowlisted HTTP routes and proxies authenticated request
       GATEWAY_AUTH_TOKEN: AUTH_TOKEN,
       GATEWAY_SESSION_SECRET: 'test-session-secret-with-enough-entropy',
       GATEWAY_STATIC_DIR: staticDir,
+      GATEWAY_DEVICE_STORE: path.join(staticDir, 'devices.json'),
     }),
     host: '127.0.0.1',
     port: 0,
@@ -79,6 +81,14 @@ test('Gateway protects allowlisted HTTP routes and proxies authenticated request
   });
   assert.equal(rejectedLogin.status, 401);
 
+  const malformedLogin = await fetch(`${baseUrl}/api/gateway/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{',
+  });
+  assert.equal(malformedLogin.status, 400);
+  assert.equal((await malformedLogin.json()).error, 'invalid_json');
+
   const login = await fetch(`${baseUrl}/api/gateway/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -88,10 +98,28 @@ test('Gateway protects allowlisted HTTP routes and proxies authenticated request
   const cookie = login.headers.get('set-cookie').split(';')[0];
   assert.ok(cookie.startsWith('comfy_mobile_session='));
 
+  const registration = await fetch(`${baseUrl}/api/gateway/devices/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token: AUTH_TOKEN, deviceName: 'Test Android' }),
+  });
+  assert.equal(registration.status, 201);
+  const registrationBody = await registration.json();
+  assert.match(registrationBody.deviceToken, /^cmdt_/);
+  assert.equal(registrationBody.device.name, 'Test Android');
+
+  const deviceStoreContents = fs.readFileSync(config.deviceStorePath, 'utf8');
+  assert.equal(deviceStoreContents.includes(registrationBody.deviceToken), false);
+
+  const listedDevices = await fetch(`${baseUrl}/api/gateway/devices`, {
+    headers: { Authorization: `Bearer ${AUTH_TOKEN}` },
+  });
+  assert.equal(listedDevices.status, 200);
+  assert.deepEqual((await listedDevices.json()).devices, [registrationBody.device]);
+
   const proxied = await fetch(`${baseUrl}/system_stats`, {
     headers: {
-      Cookie: cookie,
-      Authorization: `Bearer ${AUTH_TOKEN}`,
+      Authorization: `Bearer ${registrationBody.deviceToken}`,
     },
   });
   assert.equal(proxied.status, 200);
@@ -118,6 +146,21 @@ test('Gateway protects allowlisted HTTP routes and proxies authenticated request
   assert.equal(blockedTokenEndpoint.status, 404);
   assert.equal((await blockedTokenEndpoint.json()).error, 'route_not_allowed');
 
+  const revoke = await fetch(
+    `${baseUrl}/api/gateway/devices/${encodeURIComponent(registrationBody.device.id)}`,
+    {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${AUTH_TOKEN}` },
+    },
+  );
+  assert.equal(revoke.status, 200);
+  assert.ok((await revoke.json()).device.revokedAt);
+
+  const revokedRequest = await fetch(`${baseUrl}/system_stats`, {
+    headers: { Authorization: `Bearer ${registrationBody.deviceToken}` },
+  });
+  assert.equal(revokedRequest.status, 401);
+
   const spa = await fetch(`${baseUrl}/settings/server`);
   assert.equal(spa.status, 200);
   assert.equal(await spa.text(), '<main>mobile ui</main>');
@@ -142,12 +185,15 @@ test('Gateway proxies a Bearer-authenticated native ComfyUI WebSocket', async (t
     await close(upstreamHttp);
   });
 
+  const deviceStoreDir = fs.mkdtempSync(path.join(os.tmpdir(), 'comfy-gateway-ws-test-'));
+  t.after(() => fs.rmSync(deviceStoreDir, { recursive: true, force: true }));
   const config = {
     ...loadGatewayConfig({
       COMFYUI_URL: `http://127.0.0.1:${upstreamAddress.port}`,
       GATEWAY_AUTH_TOKEN: AUTH_TOKEN,
       GATEWAY_SESSION_SECRET: 'test-session-secret-with-enough-entropy',
       GATEWAY_STATIC_DIR: path.join(os.tmpdir(), 'does-not-exist'),
+      GATEWAY_DEVICE_STORE: path.join(deviceStoreDir, 'devices.json'),
     }),
     host: '127.0.0.1',
     port: 0,
@@ -157,9 +203,17 @@ test('Gateway proxies a Bearer-authenticated native ComfyUI WebSocket', async (t
   t.after(() => gateway.stop());
   const baseUrl = `http://127.0.0.1:${gatewayAddress.port}`;
 
+  const registration = await fetch(`${baseUrl}/api/gateway/devices/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token: AUTH_TOKEN, deviceName: 'WebSocket Android' }),
+  });
+  assert.equal(registration.status, 201);
+  const { deviceToken } = await registration.json();
+
   const socket = await openWebSocket(
     `ws://127.0.0.1:${gatewayAddress.port}/ws?clientId=test-client`,
-    { headers: { Authorization: `Bearer ${AUTH_TOKEN}` } },
+    { headers: { Authorization: `Bearer ${deviceToken}` } },
   );
   t.after(() => socket.terminate());
 
@@ -171,4 +225,37 @@ test('Gateway proxies a Bearer-authenticated native ComfyUI WebSocket', async (t
     });
   });
   assert.deepEqual(message, { type: 'status', data: { upstream: true } });
+
+  const selfRevoke = await fetch(`${baseUrl}/api/gateway/device`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${deviceToken}` },
+  });
+  assert.equal(selfRevoke.status, 200);
+
+  const revokedRequest = await fetch(`${baseUrl}/system_stats`, {
+    headers: { Authorization: `Bearer ${deviceToken}` },
+  });
+  assert.equal(revokedRequest.status, 401);
+});
+
+test('Device credentials survive Gateway restarts and remain revocable', async (t) => {
+  const storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'comfy-device-store-test-'));
+  const deviceStorePath = path.join(storeDir, 'devices.json');
+  t.after(() => fs.rmSync(storeDir, { recursive: true, force: true }));
+  const config = {
+    deviceStorePath,
+    deviceTokenTtlSeconds: 24 * 60 * 60,
+  };
+
+  const initialStore = createDeviceStore(config);
+  const registration = await initialStore.register('Persistent Android');
+  assert.equal(initialStore.authenticate(registration.token), true);
+
+  const reloadedStore = createDeviceStore(config);
+  assert.equal(reloadedStore.authenticate(registration.token), true);
+  await reloadedStore.revoke(registration.device.id);
+
+  const revokedStore = createDeviceStore(config);
+  assert.equal(revokedStore.authenticate(registration.token), false);
+  assert.equal(fs.statSync(deviceStorePath).mode & 0o777, 0o600);
 });

@@ -18,6 +18,7 @@ serde_json = "1"
 tauri = { version = "2", features = [] }
 tauri-plugin-http = "2.5.9"
 tauri-plugin-websocket = "2.4.2"
+tauri-plugin-secure-credentials = { path = "plugins/secure-credentials" }
 
 [profile.release]
 codegen-units = 1

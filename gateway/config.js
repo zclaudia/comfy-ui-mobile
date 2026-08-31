@@ -62,6 +62,15 @@ export const loadGatewayConfig = (env = process.env, cwd = process.cwd()) => {
       ? normalizeHttpUrl(launcherUrl, 'COMFYUI_LAUNCHER_URL')
       : null,
     staticDir: path.resolve(cwd, env.GATEWAY_STATIC_DIR || 'dist'),
+    deviceStorePath: path.resolve(
+      cwd,
+      env.GATEWAY_DEVICE_STORE || 'gateway/.data/devices.json',
+    ),
+    deviceTokenTtlSeconds: parseInteger(
+      env.GATEWAY_DEVICE_TOKEN_TTL_SECONDS,
+      180 * 24 * 60 * 60,
+      60 * 60,
+    ),
     allowAnonymous,
     authToken,
     sessionSecret: configuredSecret || derivedSecret,

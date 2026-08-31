@@ -7,6 +7,7 @@ import { DragControls } from 'framer-motion';
 import { Workflow } from '@/shared/types/app/IComfyWorkflow';
 import { generateWorkflowThumbnail } from '@/shared/utils/rendering/CanvasRendererService';
 import { updateWorkflow } from '@/infrastructure/storage/IndexedDBWorkflowService';
+import { AuthenticatedImage } from '@/components/media/AuthenticatedImage';
 
 interface WorkflowCardProps {
   workflow: Workflow;
@@ -138,8 +139,8 @@ const WorkflowCard: React.FC<WorkflowCardProps> = ({
               : 'bg-red-500/15 dark:bg-red-500/20 border-red-300/25 dark:border-red-500/30'
               }`}>
               {thumbnailUrl ? (
-                <img
-                  src={thumbnailUrl}
+                <AuthenticatedImage
+                  source={thumbnailUrl}
                   alt={`${workflow.name} ${t('workflow.thumbnail')}`}
                   className="w-full h-full object-cover"
                 />
@@ -230,8 +231,8 @@ const WorkflowCard: React.FC<WorkflowCardProps> = ({
             {workflow.thumbnail && (
               <div className="w-full">
                 <div className="relative w-full h-36 bg-white/10 dark:bg-slate-700/10 backdrop-blur-sm rounded-2xl overflow-hidden border border-white/15 dark:border-slate-600/15">
-                  <img
-                    src={workflow.thumbnail}
+                  <AuthenticatedImage
+                    source={workflow.thumbnail}
                     alt={`${workflow.name} ${t('workflow.thumbnail')}`}
                     className="w-full h-full object-contain"
                   />

@@ -6,7 +6,7 @@ import { DEFAULT_CANVAS_CONFIG, CanvasConfig } from '@/config/canvasConfig';
 import { IComfyGraphGroup } from '@/shared/types/app/base';
 import { ComfyGraphNode } from '@/core/domain/ComfyGraphNode';
 import { useConnectionStore } from '@/ui/store/connectionStore';
-import { withComfyAuth } from '@/infrastructure/auth/ComfyAuthService';
+import { comfyAuthenticatedFetch } from '@/infrastructure/auth/ComfyAuthService';
 import { resolveGatewayUrl } from '@/config/runtime';
 
 // Alias for backward compatibility
@@ -115,6 +115,7 @@ async function loadComfyImage(filename: string, nodeId?: number): Promise<HTMLIm
   // Create loading promise
   const loadPromise = new Promise<HTMLImageElement>((resolve, reject) => {
     const img = new Image();
+    let objectUrl: string | null = null;
 
     // Parse filename and subfolder
     let actualFilename: string;
@@ -129,10 +130,10 @@ async function loadComfyImage(filename: string, nodeId?: number): Promise<HTMLIm
     }
 
     // Build URL for ComfyUI file view
-    const url = withComfyAuth(`${serverUrl}/view?filename=${encodeURIComponent(actualFilename)}&type=input${subfolder ? `&subfolder=${encodeURIComponent(subfolder)}` : ''}`);
+    const url = `${serverUrl}/view?filename=${encodeURIComponent(actualFilename)}&type=input${subfolder ? `&subfolder=${encodeURIComponent(subfolder)}` : ''}`;
 
-    img.crossOrigin = 'anonymous';
     img.onload = () => {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
       imageCache.set(filename, img);  // Use original filename as key
       imageLoadingPromises.delete(filename);
 
@@ -148,11 +149,24 @@ async function loadComfyImage(filename: string, nodeId?: number): Promise<HTMLIm
     };
 
     img.onerror = () => {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
       imageLoadingPromises.delete(filename);
       reject(new Error(`Failed to load image: ${targetFilename}`));
     };
 
-    img.src = url;
+    void comfyAuthenticatedFetch(url)
+      .then((response) => {
+        if (!response.ok) throw new Error(`Image request failed with HTTP ${response.status}`);
+        return response.blob();
+      })
+      .then((blob) => {
+        objectUrl = URL.createObjectURL(blob);
+        img.src = objectUrl;
+      })
+      .catch((error) => {
+        imageLoadingPromises.delete(filename);
+        reject(error);
+      });
   });
 
   imageLoadingPromises.set(filename, loadPromise);

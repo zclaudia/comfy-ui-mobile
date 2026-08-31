@@ -102,8 +102,8 @@ const ServerSettings: React.FC<ServerSettingsProps> = ({ onBack }) => {
     }
 
     try {
-      // The Gateway exchanges the long-lived setup token for an HttpOnly
-      // session cookie. An empty token is valid when a session already exists.
+      // Browsers receive an HttpOnly cookie; Tauri enrolls a revocable device
+      // credential. An empty token is valid when a session already exists.
       if (inputAuthMode === 'gateway' && inputAuthToken.trim()) {
         await loginToGateway(inputUrl, inputAuthToken, isTauri ? false : inputRememberToken);
       } else if (
@@ -122,6 +122,7 @@ const ServerSettings: React.FC<ServerSettingsProps> = ({ onBack }) => {
         && inputRememberToken
       );
       setAuthToken(inputAuthMode === 'comfyui-login' ? inputAuthToken : '');
+      if (isTauri && inputAuthMode === 'gateway') setInputAuthToken('');
       await connect();
     } catch (error) {
       console.error('Connection failed:', error);

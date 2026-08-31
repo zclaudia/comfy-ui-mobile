@@ -19,6 +19,7 @@ import { OutputsGallery } from '@/components/media/OutputsGallery';
 import { chainProgressWebSocketService, ChainProgressData } from '@/infrastructure/websocket/ChainProgressWebSocketService';
 import ComfyUIService from '@/infrastructure/api/ComfyApiClient';
 import type { LogEntry, LogsWsMessage } from '@/core/domain';
+import { AuthenticatedImage } from '@/components/media/AuthenticatedImage';
 
 // Internal type for editor (extends with analysis results)
 interface WorkflowNodeWithAnalysis {
@@ -1234,8 +1235,8 @@ const WorkflowNodeCard: React.FC<WorkflowNodeCardProps> = ({
       {/* Header with Thumbnail */}
       <div className="flex items-start justify-between gap-4">
         {node.thumbnail && (
-          <img
-            src={node.thumbnail}
+          <AuthenticatedImage
+            source={node.thumbnail}
             alt={node.name}
             className="w-20 h-20 rounded-lg object-cover border border-slate-200 dark:border-slate-700 flex-shrink-0"
           />
@@ -1629,8 +1630,8 @@ const WorkflowSelectionPanel: React.FC<WorkflowSelectionPanelProps> = ({
                           {workflow.name}
                         </div>
                         {workflow.thumbnail && (
-                          <img
-                            src={workflow.thumbnail}
+                          <AuthenticatedImage
+                            source={workflow.thumbnail}
                             alt={workflow.name}
                             className="w-full h-32 object-cover rounded mt-2"
                           />

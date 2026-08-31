@@ -13,6 +13,7 @@ import { isImageFile } from '@/shared/utils/ComfyFileUtils';
 import { extractWorkflowFromPng } from '@/utils/pngMetadataExtractor';
 import type { IComfyJson } from '@/shared/types/app/IComfyJson';
 import { comfyAuthenticatedFetch } from '@/infrastructure/auth/ComfyAuthService';
+import { useAuthenticatedMediaUrl } from '@/hooks/useAuthenticatedMediaUrl';
 
 interface FilePreviewModalProps {
   isOpen: boolean;
@@ -87,6 +88,14 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
   const [fileType, setFileType] = useState(initialFileType);
   const [dimensions, setDimensions] = useState(initialDimensions);
   const [duration, setDuration] = useState(initialDuration);
+  const authenticatedMedia = useAuthenticatedMediaUrl(url, isOpen);
+
+  useEffect(() => {
+    if (!authenticatedMedia.error) return;
+    onMediaError?.(isImage
+      ? t('media.failedToDisplayImage')
+      : t('media.failedToDisplayVideo'));
+  }, [authenticatedMedia.error, isImage, onMediaError, t]);
 
   // Reset to initial when modal opens
   useEffect(() => {
@@ -288,7 +297,8 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
   };
 
   const handleDownload = () => {
-    if (!url) return;
+    const downloadUrl = authenticatedMedia.url;
+    if (!downloadUrl) return;
 
     setIsDownloading(true);
     try {
@@ -298,7 +308,7 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
 
       // Add download attribute to suggest filename
       link.download = filename;
-      link.href = url;
+      link.href = downloadUrl;
 
       // Important: for many browsers, cross-origin download attribute doesn't work 
       // without server headers. But simple link navigation is safer for memory.
@@ -320,8 +330,9 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
 
 
   const handleOpenInNewTab = () => {
-    if (!url) return;
-    window.open(url, '_blank');
+    const targetUrl = authenticatedMedia.url;
+    if (!targetUrl) return;
+    window.open(targetUrl, '_blank');
   };
 
   const handleOpenWorkflow = async () => {
@@ -550,7 +561,7 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
                         contentStyle={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}
                       >
                         <img
-                          src={url}
+                          src={authenticatedMedia.url}
                           alt={filename}
                           className="max-w-full max-h-full object-contain"
                           onError={handleImageError}
@@ -559,7 +570,7 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
                     </TransformWrapper>
                   ) : (
                     <video
-                      src={`${url}#t=0.001`}
+                      src={authenticatedMedia.url ? `${authenticatedMedia.url}#t=0.001` : undefined}
                       controls
                       preload="auto"
                       className="max-w-full max-h-full object-contain"

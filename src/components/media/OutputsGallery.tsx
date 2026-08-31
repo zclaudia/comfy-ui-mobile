@@ -12,6 +12,7 @@ import { FilePreviewModal } from '../modals/FilePreviewModal';
 import { SimpleConfirmDialog } from '../ui/SimpleConfirmDialog';
 import { useNavigate } from 'react-router-dom';
 import { isImageFile, isVideoFile } from '@/shared/utils/ComfyFileUtils';
+import { AuthenticatedImage } from './AuthenticatedImage';
 
 
 type TabType = 'images' | 'videos';
@@ -174,13 +175,17 @@ const LazyImage: React.FC<LazyImageProps> = ({
         <>
           {/* Use matching image thumbnail if available, otherwise show placeholder */}
           {matchingImageThumbnail && !hasError ? (
-            <img
-              src={matchingImageThumbnail}
+            <AuthenticatedImage
+              source={matchingImageThumbnail}
               alt={file.filename}
               loading="lazy"
               decoding="async"
               className="w-full h-full object-cover"
               onError={() => {
+                setPosterFailed(true);
+                setHasError(true);
+              }}
+              onAuthenticatedError={() => {
                 setPosterFailed(true);
                 setHasError(true);
               }}
@@ -202,14 +207,18 @@ const LazyImage: React.FC<LazyImageProps> = ({
         <>
           {/* Regular Image */}
           {thumbnailUrl && !hasError && (
-            <img
-              src={thumbnailUrl}
+            <AuthenticatedImage
+              source={thumbnailUrl}
               alt={file.filename}
               loading="lazy"
               decoding="async"
               className={`w-full h-full object-cover transition-opacity duration-300 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
               onLoad={() => setIsLoaded(true)}
               onError={() => {
+                setHasError(true);
+                setIsLoaded(true);
+              }}
+              onAuthenticatedError={() => {
                 setHasError(true);
                 setIsLoaded(true);
               }}
@@ -1028,8 +1037,8 @@ export const OutputsGallery: React.FC<OutputsGalleryProps> = ({
                             )}
 
                             {/* Folder Thumbnail (latest image in folder) */}
-                            <img
-                              src={comfyFileService.createDownloadUrl({
+                            <AuthenticatedImage
+                              source={comfyFileService.createDownloadUrl({
                                 filename: folder.thumbnailFile.filename,
                                 subfolder: folder.thumbnailFile.subfolder,
                                 type: folder.thumbnailFile.type,
@@ -1038,18 +1047,15 @@ export const OutputsGallery: React.FC<OutputsGalleryProps> = ({
                               })}
                               alt={folder.name}
                               className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity"
-                              onError={(e) => {
-                                // Fallback to lastFile if thumbnailFile fails
-                                if (folder.thumbnailFile !== folder.lastFile) {
-                                  (e.target as HTMLImageElement).src = comfyFileService.createDownloadUrl({
+                              fallbackSource={folder.thumbnailFile !== folder.lastFile
+                                ? comfyFileService.createDownloadUrl({
                                     filename: folder.lastFile.filename,
                                     subfolder: folder.lastFile.subfolder,
                                     type: folder.lastFile.type,
                                     preview: true,
                                     modified: folder.lastFile.modified
-                                  });
-                                }
-                              }}
+                                  })
+                                : undefined}
                             />
                             <div className="absolute inset-0 flex items-center justify-center">
                               <div className="rounded-xl p-3 border border-white/[0.12] group-hover:border-[#3069f0]/50 transition-colors" style={{ background: 'rgba(5,6,8,0.6)' }}>

@@ -357,6 +357,7 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tauri-plugin-http",
+ "tauri-plugin-secure-credentials",
  "tauri-plugin-websocket",
 ]
 
@@ -3662,6 +3663,16 @@ dependencies = [
  "tokio",
  "url",
  "urlpattern",
+]
+
+[[package]]
+name = "tauri-plugin-secure-credentials"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "tauri",
+ "tauri-plugin",
+ "thiserror 2.0.20",
 ]
 
 [[package]]

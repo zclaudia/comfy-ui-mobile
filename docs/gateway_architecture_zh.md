@@ -3,7 +3,7 @@
 ## 目标架构
 
 ```text
-Mobile Web/PWA
+Mobile Web/PWA 或 Tauri Android
       │ HTTPS + WebSocket
       ▼
 Gateway（唯一公开入口）
@@ -27,6 +27,8 @@ ComfyUI :8188
 
 - 新增独立 Node.js Gateway。
 - 使用长随机 Token 换取 HttpOnly 会话 Cookie。
+- Android 用部署 Token 注册一次，换取随机、可过期、可按设备吊销的 Device Token；
+  Gateway 磁盘仅保存 Token 的 SHA-256 摘要。
 - 对 ComfyUI 原生 API、扩展 API 和 WebSocket 进行白名单反代。
 - 默认拒绝重启、文件删除、模型下载等危险操作。
 - 前端默认使用同源 Gateway，并迁移旧的直连配置。
@@ -80,7 +82,16 @@ ComfyUI :8188
    ```
 
 4. 浏览器打开 `http://开发机IP:5173`，在服务器设置中选择 `Gateway` 并输入
-   `GATEWAY_AUTH_TOKEN`。前端会把 Token 换成会话 Cookie。
+`GATEWAY_AUTH_TOKEN`。前端会把 Token 换成会话 Cookie。
+
+Android 客户端则调用 `/api/gateway/devices/register` 换取设备令牌。部署 Token
+不会持久化；设备令牌由 Android Keystore 管理，并且只会发送给注册时的 Gateway
+Origin。Gateway 管理员可用部署 Token 调用：
+
+```text
+GET    /api/gateway/devices             查看设备
+DELETE /api/gateway/devices/:deviceId   吊销指定设备
+```
 
 ## 生产部署
 
@@ -94,6 +105,10 @@ Gateway 会从 `dist/` 托管前端，默认监听 `8080`。也可以运行：
 ```bash
 docker compose -f docker-compose.gateway.yml up -d --build
 ```
+
+Compose 配置使用 `gateway-data` 命名卷持久化 `/data/devices.json`。不要在升级容器时
+删除该卷，否则所有 Android 设备都需要重新注册。非容器部署应确保
+`GATEWAY_DEVICE_STORE` 指向持久目录，且运行用户具有写权限。
 
 正式环境应让 Gateway 使用 HTTPS，并限制 `8188` 和可选的 `9188` 仅能由
 Gateway 所在主机或私有网络访问。只有当 Gateway 无法被客户端绕过、且前置反代

@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Workflow } from '@/shared/types/app/IComfyWorkflow';
+import { AuthenticatedImage } from '@/components/media/AuthenticatedImage';
 
 interface FolderDetailModalProps {
     isOpen: boolean;
@@ -178,8 +179,8 @@ const FolderDetailModal: React.FC<FolderDetailModalProps> = ({
                                                         className="aspect-square rounded-xl overflow-hidden bg-white/[0.04] border border-white/[0.07] relative"
                                                     >
                                                         {wf.thumbnail ? (
-                                                            <img
-                                                                src={wf.thumbnail}
+                                                            <AuthenticatedImage
+                                                                source={wf.thumbnail}
                                                                 alt={wf.name}
                                                                 className="w-full h-full object-cover"
                                                             />

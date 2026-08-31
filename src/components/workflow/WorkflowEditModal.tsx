@@ -12,6 +12,7 @@ import { generateWorkflowThumbnail } from '@/shared/utils/rendering/CanvasRender
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
 import { generateUUID } from '@/utils/uuid';
+import { AuthenticatedImage } from '@/components/media/AuthenticatedImage';
 
 interface WorkflowEditModalProps {
   isOpen: boolean;
@@ -381,8 +382,8 @@ const WorkflowEditModal: React.FC<WorkflowEditModalProps> = ({
                     <div className="flex items-center gap-4">
                       {workflow.thumbnail ? (
                         <div className="flex-shrink-0">
-                          <img
-                            src={workflow.thumbnail}
+                          <AuthenticatedImage
+                            source={workflow.thumbnail}
                             alt={t('workflow.thumbnail')}
                             className="w-20 h-16 object-cover rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
                           />
