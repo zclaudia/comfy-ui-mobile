@@ -9,6 +9,11 @@
  */
 
 import { withComfyAuth } from '@/infrastructure/auth/ComfyAuthService';
+import {
+  createPlatformWebSocket,
+  PLATFORM_WEBSOCKET_OPEN,
+  type PlatformWebSocket,
+} from '@/platform/websocket';
 
 // Simple EventEmitter implementation for browser compatibility
 class EventEmitter {
@@ -66,7 +71,7 @@ export interface ExecutionMonitorResult {
  * Creates a new instance for each workflow execution
  */
 export class PromptWebSocketService extends EventEmitter {
-  private ws: WebSocket | null = null;
+  private ws: PlatformWebSocket | null = null;
   private options: PromptWebSocketOptions;
   private startTime: number = 0;
   private receivedMessages: PromptWebSocketMessage[] = [];
@@ -91,13 +96,13 @@ export class PromptWebSocketService extends EventEmitter {
 
       
       // If WebSocket is not connected yet, connect it
-      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      if (!this.ws || this.ws.readyState !== PLATFORM_WEBSOCKET_OPEN) {
         const wsUrl = withComfyAuth(this.options.serverUrl
           .replace('http://', 'ws://')
           .replace('https://', 'wss://') + 
           `/ws?clientId=${this.options.clientId}`);
 
-        this.ws = new WebSocket(wsUrl);
+        this.ws = createPlatformWebSocket(wsUrl);
       } else {
       }
 
@@ -411,7 +416,7 @@ export class PromptWebSocketService extends EventEmitter {
     }
 
     // Only close if not configured to keep open
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+    if (this.ws && this.ws.readyState === PLATFORM_WEBSOCKET_OPEN) {
       if (!this.options.keepConnectionOpen) {
         this.ws.close(1000, 'Monitoring completed');
         this.ws = null;
@@ -433,7 +438,7 @@ export class PromptWebSocketService extends EventEmitter {
       this.completionTimer = null;
     }
 
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+    if (this.ws && this.ws.readyState === PLATFORM_WEBSOCKET_OPEN) {
       this.ws.close(1000, 'Manual close');
     }
     
@@ -449,7 +454,7 @@ export class PromptWebSocketService extends EventEmitter {
       `${this.options.serverUrl.startsWith('https://') ? 'wss' : 'ws'}://${this.options.serverUrl.replace(/^https?:\/\//, '')}/ws?clientId=${this.options.clientId}`
     );
     
-    this.ws = new WebSocket(wsUrl);
+    this.ws = createPlatformWebSocket(wsUrl);
     
     return new Promise((resolve, reject) => {
       const connectTimeout = setTimeout(() => {
@@ -493,7 +498,7 @@ export class PromptWebSocketService extends EventEmitter {
     executionTime: number;
   } {
     return {
-      isConnected: this.ws?.readyState === WebSocket.OPEN,
+      isConnected: this.ws?.readyState === PLATFORM_WEBSOCKET_OPEN,
       isCompleted: this.isCompleted,
       messageCount: this.receivedMessages.length,
       executionTime: Date.now() - this.startTime

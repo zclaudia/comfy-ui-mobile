@@ -92,6 +92,15 @@ https://github.com/user-attachments/assets/20480b56-5c01-4c27-9401-0d4ba455dd81
 
 ## <a name="installation"></a>🛠️ 安装与设置
 
+> [!NOTE]
+> 新的推荐架构使用独立 Gateway 作为移动端唯一入口，由 Gateway 统一处理认证、
+> HTTP/WebSocket 反代和前端托管。详见
+> [Gateway 架构与实施计划](./docs/gateway_architecture_zh.md)。下面的 `9188` 安装方式
+> 作为原项目兼容方案继续保留。
+>
+> Android 客户端采用 Tauri 2，实施范围、环境准备和后续阶段见
+> [Tauri 2 Android 实施计划](./docs/tauri_android_plan_zh.md)。
+
 ### **1. 标准安装 (推荐)**
 最简单的入门方式：
 

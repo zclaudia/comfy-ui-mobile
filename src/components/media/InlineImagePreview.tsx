@@ -3,6 +3,7 @@ import { Image, AlertCircle } from 'lucide-react';
 import { ComfyFileService } from '@/infrastructure/api/ComfyFileService';
 import { useConnectionStore } from '@/ui/store/connectionStore';
 import { useTranslation } from 'react-i18next';
+import { resolveGatewayUrl } from '@/config/runtime';
 
 interface ImagePreviewData {
   filename?: string;
@@ -43,7 +44,7 @@ export const InlineImagePreview: React.FC<InlineImagePreviewProps> = ({
       setError(null);
 
       try {
-        const serverUrlToUse = serverUrl || 'http://localhost:8188';
+        const serverUrlToUse = resolveGatewayUrl(serverUrl);
         const fileService = new ComfyFileService(serverUrlToUse);
 
         // Parse filename from imagePreview

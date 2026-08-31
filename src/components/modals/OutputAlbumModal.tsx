@@ -9,6 +9,7 @@ import { IComfyFileInfo } from '@/shared/types/comfy/IComfyFile';
 import { isImageFile, isVideoFile as checkIsVideoFile } from '@/shared/utils/ComfyFileUtils';
 import { useConnectionStore } from '@/ui/store/connectionStore';
 import { toast } from 'sonner';
+import { resolveGatewayUrl } from '@/config/runtime';
 
 interface OutputAlbumModalProps {
   isOpen: boolean;
@@ -40,7 +41,7 @@ export const OutputAlbumModal: React.FC<OutputAlbumModalProps> = ({
   const [activeTab, setActiveTab] = useState<'outputImages' | 'outputVideos' | 'tempImages' | 'tempVideos'>();
 
   const getFileService = () => {
-    const currentUrl = serverUrl || 'http://localhost:8188';
+    const currentUrl = resolveGatewayUrl(serverUrl);
     return new ComfyFileService(currentUrl);
   };
 

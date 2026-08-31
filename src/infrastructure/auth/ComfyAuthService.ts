@@ -1,5 +1,8 @@
 import axios, { type InternalAxiosRequestConfig } from 'axios';
 import type { ComfyAuthMode } from '@/shared/types/comfy/connection';
+import { getNativeGatewayAuthorization } from '@/platform/gatewaySession';
+import { platformFetch } from '@/platform/http';
+import { isTauriRuntime } from '@/platform/runtime';
 
 interface ComfyAuthConfig {
   serverUrl: string;
@@ -160,23 +163,51 @@ export const comfyAuthenticatedFetch = (
   input: string | URL | Request,
   init?: RequestInit
 ): Promise<Response> => {
+  const inputUrl = input instanceof Request ? input.url : input.toString();
+  const nativeAuthorization = currentConfig.mode === 'gateway'
+    ? getNativeGatewayAuthorization(inputUrl)
+    : null;
+  const headers = new Headers(input instanceof Request ? input.headers : undefined);
+  new Headers(init?.headers).forEach((value, key) => headers.set(key, value));
+  if (nativeAuthorization) headers.set('Authorization', nativeAuthorization);
+
+  const requestInit = currentConfig.mode === 'gateway'
+    ? {
+        ...init,
+        headers,
+        credentials: isTauriRuntime()
+          ? 'omit' as RequestCredentials
+          : init?.credentials ?? 'include' as RequestCredentials,
+      }
+    : init;
+
   if (input instanceof Request) {
     const authenticatedUrl = withComfyAuth(input.url);
-    return fetch(new Request(authenticatedUrl, input), init);
+    return platformFetch(new Request(authenticatedUrl, input), requestInit);
   }
 
-  return fetch(withComfyAuth(input.toString()), init);
+  return platformFetch(withComfyAuth(input.toString()), requestInit);
 };
 
 export const applyComfyAuthToAxiosConfig = (
   config: InternalAxiosRequestConfig
 ): InternalAxiosRequestConfig => {
+  if (currentConfig.mode === 'gateway') {
+    config.withCredentials = !isTauriRuntime();
+  }
+
   if (!config.url) return config;
 
   const requestUrl = config.baseURL && !/^https?:\/\//i.test(config.url)
     ? `${config.baseURL.replace(/\/$/, '')}/${config.url.replace(/^\//, '')}`
     : config.url;
   const authenticatedUrl = withComfyAuth(requestUrl);
+  const nativeAuthorization = currentConfig.mode === 'gateway'
+    ? getNativeGatewayAuthorization(authenticatedUrl)
+    : null;
+  if (nativeAuthorization) {
+    config.headers.set('Authorization', nativeAuthorization);
+  }
   if (authenticatedUrl !== requestUrl) {
     config.url = authenticatedUrl;
     config.baseURL = undefined;

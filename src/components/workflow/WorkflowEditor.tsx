@@ -30,6 +30,7 @@ import ComfyUIService from '@/infrastructure/api/ComfyApiClient';
 import { convertGraphToAPI } from '@/infrastructure/api/ComfyApiFunctions';
 import { globalWebSocketService } from '@/infrastructure/websocket/GlobalWebSocketService';
 import { NodeClipboardService } from '@/services/NodeClipboardService';
+import { resolveGatewayUrl } from '@/config/runtime';
 
 // Utilities
 import { PromptTracker } from '@/utils/promptTracker';
@@ -4230,7 +4231,7 @@ const WorkflowEditor: React.FC = () => {
         currentWorkflowId={id || ''}
         onSaveSnapshot={handleSaveSnapshot}
         onLoadSnapshot={handleLoadSnapshot}
-        serverUrl={serverUrl || 'http://localhost:8188'}
+        serverUrl={resolveGatewayUrl(serverUrl)}
       />
 
       {/* Group Mode Modal */}
@@ -4364,5 +4365,4 @@ const WorkflowEditor: React.FC = () => {
 };
 
 export default WorkflowEditor;
-
 

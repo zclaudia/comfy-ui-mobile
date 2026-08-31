@@ -1,0 +1,28 @@
+{
+  "$schema": "../gen/schemas/mobile-schema.json",
+  "identifier": "mobile-main",
+  "description": "Minimal network capabilities required by the Android Gateway client.",
+  "windows": ["main"],
+  "platforms": ["android"],
+  "permissions": [
+    "core:default",
+    {
+      "identifier": "http:default",
+      "allow": [
+        { "url": "https://*" },
+        { "url": "http://127.0.0.1:*" },
+        { "url": "http://localhost:*" },
+        { "url": "http://10.*:*" },
+        { "url": "http://172.16.*:*" },
+        { "url": "http://172.17.*:*" },
+        { "url": "http://172.18.*:*" },
+        { "url": "http://172.19.*:*" },
+        { "url": "http://172.2*.*:*" },
+        { "url": "http://172.30.*:*" },
+        { "url": "http://172.31.*:*" },
+        { "url": "http://192.168.*:*" }
+      ]
+    },
+    "websocket:default"
+  ]
+}

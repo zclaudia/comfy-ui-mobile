@@ -14,6 +14,7 @@ import type {
   LogsRawResponse,
   LogSubscribeRequest
 } from '@/core/domain';
+import { resolveGatewayUrl } from '@/config/runtime';
 
 export interface CustomNodePackInfo {
   id: string;
@@ -68,7 +69,7 @@ const initializeService = () => {
 
   // Initialize with current URL from ConnectionStore
   const currentUrl = useConnectionStore.getState().url;
-  serverUrl = currentUrl ? currentUrl.replace(/\/$/, '') : 'http://localhost:8188';
+  serverUrl = resolveGatewayUrl(currentUrl);
   isInitialized = true;
 
   // Subscribe to ConnectionStore changes
@@ -103,7 +104,7 @@ const subscribeToConnectionStore = (): void => {
   }
 
   connectionStoreUnsubscribe = useConnectionStore.subscribe(
-    (state) => updateServerUrl(state.url || 'http://localhost:8188')
+    (state) => updateServerUrl(resolveGatewayUrl(state.url))
   );
 };
 
@@ -1610,20 +1611,11 @@ const rebootServer = async (): Promise<boolean> => {
     // when server is unresponsive: use Watchdog API
     console.log('Server unresponsive - using Watchdog API');
     try {
-      const serverUrlObj = new URL(serverUrl);
-      const watchdogUrl = `${serverUrlObj.protocol}//${serverUrlObj.hostname}:9188/restart`;
+      const watchdogUrl = `${serverUrl}/api/gateway/launcher/restart`;
+      const watchdogResponse = await axios.post(watchdogUrl, {}, { timeout: 60000 });
 
-      const watchdogResponse = await fetch(watchdogUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        signal: AbortSignal.timeout(60000)
-      });
-
-      if (watchdogResponse.ok) {
-        const data = await watchdogResponse.json();
-        if (data.success) {
+      if (watchdogResponse.status === 200) {
+        if (watchdogResponse.data.success) {
           console.log('Restart requested via watchdog API');
           return true;
         }
@@ -1687,7 +1679,9 @@ const upgradeYtDlp = async (): Promise<any> => {
   }
 };
 
-const subscribeToLogsManually = async (clientId: string = 'comfy-mobile-ui-client-2025'): Promise<any> => {
+const subscribeToLogsManually = async (
+  clientId: string = globalWebSocketService.getState().clientId,
+): Promise<any> => {
   initializeService();
   try {
     const response = await axios.post(`${serverUrl}/comfymobile/api/logs/subscribe`, {

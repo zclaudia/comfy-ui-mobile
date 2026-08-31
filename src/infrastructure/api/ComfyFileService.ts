@@ -5,6 +5,7 @@
 
 import axios from 'axios';
 import { withComfyAuth } from '@/infrastructure/auth/ComfyAuthService';
+import { getDefaultGatewayUrl } from '@/config/runtime';
 import {
   IComfyFileInfo,
   IComfyFileUploadOptions,
@@ -20,7 +21,7 @@ export class ComfyFileService {
   private serverUrl: string;
   private timeout: number;
 
-  constructor(serverUrl: string = 'http://localhost:8188', timeout: number = 60000) {
+  constructor(serverUrl: string = getDefaultGatewayUrl(), timeout: number = 60000) {
     this.serverUrl = serverUrl.replace(/\/$/, ''); // Remove trailing slash
     this.timeout = timeout;
   }

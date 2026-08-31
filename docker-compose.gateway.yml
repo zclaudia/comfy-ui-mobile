@@ -1,0 +1,10 @@
+services:
+  comfy-mobile-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.gateway
+    env_file:
+      - gateway/.env
+    ports:
+      - "8080:8080"
+    restart: unless-stopped

@@ -7,6 +7,7 @@ import { IComfyGraphGroup } from '@/shared/types/app/base';
 import { ComfyGraphNode } from '@/core/domain/ComfyGraphNode';
 import { useConnectionStore } from '@/ui/store/connectionStore';
 import { withComfyAuth } from '@/infrastructure/auth/ComfyAuthService';
+import { resolveGatewayUrl } from '@/config/runtime';
 
 // Alias for backward compatibility
 type IGroup = IComfyGraphGroup;
@@ -92,7 +93,7 @@ function getVideoThumbnailFilename(videoFilename: string): string {
  */
 async function loadComfyImage(filename: string, nodeId?: number): Promise<HTMLImageElement> {
   // Get server URL from connectionStore
-  const serverUrl = useConnectionStore.getState().url || 'http://localhost:8188';
+  const serverUrl = resolveGatewayUrl(useConnectionStore.getState().url);
 
   // For video files, load the PNG thumbnail instead
   let targetFilename = filename;

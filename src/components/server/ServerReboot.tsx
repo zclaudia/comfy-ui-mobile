@@ -137,16 +137,13 @@ const ServerReboot: React.FC<ServerRebootProps> = ({ onBack }) => {
     if (!url) return null;
 
     try {
-      const serverUrl = new URL(url);
-      const watchdogUrl = `${serverUrl.protocol}//${serverUrl.hostname}:9188/status`;
+      const watchdogUrl = `${url.replace(/\/$/, '')}/api/gateway/launcher/status`;
 
       console.log('🔍 Direct watchdog check URL:', watchdogUrl);
 
-      const response = await fetch(watchdogUrl, {
+      const response = await comfyAuthenticatedFetch(watchdogUrl, {
         method: 'GET',
         headers: { 'Accept': 'application/json' },
-        mode: 'cors',
-        credentials: 'omit',
         signal: AbortSignal.timeout(10000)
       });
 
@@ -189,14 +186,11 @@ const ServerReboot: React.FC<ServerRebootProps> = ({ onBack }) => {
     if (!url) return null;
 
     try {
-      const serverUrl = new URL(url);
-      const logsUrl = `${serverUrl.protocol}//${serverUrl.hostname}:9188/logs`;
+      const logsUrl = `${url.replace(/\/$/, '')}/api/gateway/launcher/logs`;
 
-      const response = await fetch(logsUrl, {
+      const response = await comfyAuthenticatedFetch(logsUrl, {
         method: 'GET',
         headers: { 'Accept': 'application/json' },
-        mode: 'cors',
-        credentials: 'omit',
         signal: AbortSignal.timeout(10000)
       });
 
@@ -409,16 +403,13 @@ const ServerReboot: React.FC<ServerRebootProps> = ({ onBack }) => {
           throw new Error('No server URL configured');
         }
 
-        const serverUrl = new URL(url);
-        const watchdogUrl = `${serverUrl.protocol}//${serverUrl.hostname}:9188/restart`;
+        const watchdogUrl = `${url.replace(/\/$/, '')}/api/gateway/launcher/restart`;
 
         console.log('🔄 Direct watchdog restart:', watchdogUrl);
 
-        const response = await fetch(watchdogUrl, {
+        const response = await comfyAuthenticatedFetch(watchdogUrl, {
           method: 'POST',
           headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-          mode: 'cors',
-          credentials: 'omit',
           signal: AbortSignal.timeout(60000) // 60 seconds timeout (increased to 1 minute)
         });
 

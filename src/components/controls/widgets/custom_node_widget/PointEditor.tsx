@@ -9,6 +9,7 @@ import { OutputsGallery } from '@/components/media/OutputsGallery';
 import { ComfyFileService } from '@/infrastructure/api/ComfyFileService';
 import { useConnectionStore } from '@/ui/store/connectionStore';
 import { Trash2, Undo, Upload, Image, X } from 'lucide-react';
+import { resolveGatewayUrl } from '@/config/runtime';
 
 interface Point {
   x: number;
@@ -260,7 +261,7 @@ export const PointEditor: React.FC<PointEditorProps> = ({
   // Handle background image selection from OutputsGallery
   const handleOutputsGallerySelect = useCallback(async (filename: string) => {
     try {
-      const serverUrlToUse = serverUrl || 'http://localhost:8188';
+      const serverUrlToUse = resolveGatewayUrl(serverUrl);
       const fileService = new ComfyFileService(serverUrlToUse);
 
       // Parse filename - OutputsGallery may pass subfolder/filename format

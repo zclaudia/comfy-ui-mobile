@@ -3,6 +3,7 @@ import { Video, AlertCircle, Play } from 'lucide-react';
 import { ComfyFileService } from '@/infrastructure/api/ComfyFileService';
 import { useConnectionStore } from '@/ui/store/connectionStore';
 import { useTranslation } from 'react-i18next';
+import { resolveGatewayUrl } from '@/config/runtime';
 
 interface VideoPreviewData {
   filename?: string;
@@ -44,7 +45,7 @@ export const InlineVideoPreview: React.FC<InlineVideoPreviewProps> = ({
       setError(null);
 
       try {
-        const serverUrlToUse = serverUrl || 'http://localhost:8188';
+        const serverUrlToUse = resolveGatewayUrl(serverUrl);
         const fileService = new ComfyFileService(serverUrlToUse);
 
         // Parse filename from videoPreview

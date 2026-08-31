@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowLeft, Maximize, Play, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useConnectionStore } from '@/ui/store/connectionStore';
+import { resolveGatewayUrl } from '@/config/runtime';
 
 /**
  * Canvas Lab — experiment for the "hybrid shell" architecture.
@@ -61,7 +62,7 @@ const CanvasLabPage: React.FC = () => {
   const navigate = useNavigate();
   const storedUrl = useConnectionStore((s) => s.url);
   const serverUrl = useMemo(
-    () => (storedUrl || 'http://127.0.0.1:8188').replace(/\/$/, ''),
+    () => resolveGatewayUrl(storedUrl),
     [storedUrl]
   );
 

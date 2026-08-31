@@ -6,6 +6,11 @@
  */
 
 import { withComfyAuth } from '@/infrastructure/auth/ComfyAuthService';
+import {
+  createPlatformWebSocket,
+  PLATFORM_WEBSOCKET_OPEN,
+  type PlatformWebSocket,
+} from '@/platform/websocket';
 
 // EventEmitter implementation with ID support
 class EventEmitter {
@@ -92,7 +97,7 @@ export interface ChainProgressState {
 
 class ChainProgressWebSocketService extends EventEmitter {
   private serverUrl: string = '';
-  private webSocket: WebSocket | null = null;
+  private webSocket: PlatformWebSocket | null = null;
   private reconnectTimer: NodeJS.Timeout | null = null;
   private pingInterval: NodeJS.Timeout | null = null;
 
@@ -174,7 +179,7 @@ class ChainProgressWebSocketService extends EventEmitter {
       this.serverUrl.replace('http://', 'ws://').replace('https://', 'wss://') + '/comfymobile/api/chains/progress'
     );
 
-    this.webSocket = new WebSocket(wsUrl);
+    this.webSocket = createPlatformWebSocket(wsUrl);
 
     this.webSocket.onopen = () => {
       this.updateState({
@@ -323,7 +328,7 @@ class ChainProgressWebSocketService extends EventEmitter {
     this.stopPingInterval();
 
     this.pingInterval = setInterval(() => {
-      if (this.webSocket && this.webSocket.readyState === WebSocket.OPEN) {
+      if (this.webSocket && this.webSocket.readyState === PLATFORM_WEBSOCKET_OPEN) {
         this.webSocket.send('ping');
       }
     }, 30000); // Ping every 30 seconds
@@ -343,7 +348,7 @@ class ChainProgressWebSocketService extends EventEmitter {
    * Request current state from server
    */
   requestCurrentState(): void {
-    if (this.webSocket && this.webSocket.readyState === WebSocket.OPEN) {
+    if (this.webSocket && this.webSocket.readyState === PLATFORM_WEBSOCKET_OPEN) {
       console.log(`[ChainProgressWS] Requesting current state from server`);
       this.webSocket.send('request_state');
     } else {
@@ -355,7 +360,7 @@ class ChainProgressWebSocketService extends EventEmitter {
    * Send message to server (if needed)
    */
   send(message: any): void {
-    if (this.webSocket && this.webSocket.readyState === WebSocket.OPEN) {
+    if (this.webSocket && this.webSocket.readyState === PLATFORM_WEBSOCKET_OPEN) {
       this.webSocket.send(JSON.stringify(message));
     } else {
       console.warn(`[ChainProgressWS] Cannot send message - WebSocket not connected`);

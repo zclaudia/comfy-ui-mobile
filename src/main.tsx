@@ -4,13 +4,24 @@ import './index.css'
 import './lib/i18n' // i18n initialization
 import { installComfyAuthAxiosInterceptor } from './infrastructure/auth/ComfyAuthService'
 import { useConnectionStore } from './ui/store/connectionStore'
+import { initializePlatformRuntime } from './platform/runtime'
 import App from './App.tsx'
 
-installComfyAuthAxiosInterceptor()
-useConnectionStore.getState().hydrateAuth()
+const root = document.getElementById('root')!
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-)
+const bootstrap = async () => {
+  await initializePlatformRuntime()
+  installComfyAuthAxiosInterceptor()
+  useConnectionStore.getState().hydrateAuth()
+
+  createRoot(root).render(
+    <StrictMode>
+      <App />
+    </StrictMode>,
+  )
+}
+
+void bootstrap().catch((error) => {
+  console.error('Failed to initialize Comfy Mobile:', error)
+  root.textContent = 'Comfy Mobile failed to initialize.'
+})

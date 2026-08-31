@@ -6,6 +6,7 @@ import {
 } from '@/services/bridge/CanvasBridgeClient';
 import type { BridgeGraphSummary, BridgeNode } from '@/shared/types/bridge';
 import type { IComfyJson } from '@/shared/types/app/IComfyJson';
+import { resolveGatewayUrl } from '@/config/runtime';
 
 interface CanvasHostProps {
   /** Workflow to load into the official frontend once the bridge is ready. */
@@ -31,7 +32,7 @@ export const CanvasHost: React.FC<CanvasHostProps> = ({
 }) => {
   const storedUrl = useConnectionStore((s) => s.url);
   const serverUrl = useMemo(
-    () => (storedUrl || 'http://127.0.0.1:8188').replace(/\/$/, ''),
+    () => resolveGatewayUrl(storedUrl),
     [storedUrl]
   );
 

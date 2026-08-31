@@ -16,6 +16,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { comfyAuthenticatedFetch } from '@/infrastructure/auth/ComfyAuthService';
 
 interface UpdateInfo {
     has_update: boolean;
@@ -39,15 +40,10 @@ export const AppUpdate: React.FC = () => {
     const [updateComplete, setUpdateComplete] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    // Derived Launcher URL (Port 9188)
+    // The legacy launcher remains private; the Gateway exposes a narrow bridge.
     const launcherUrl = useMemo(() => {
         if (!serverUrl) return '';
-        try {
-            const url = new URL(serverUrl);
-            return `${url.protocol}//${url.hostname}:9188`;
-        } catch (e) {
-            return '';
-        }
+        return `${serverUrl.replace(/\/$/, '')}/api/gateway/launcher`;
     }, [serverUrl]);
 
     useEffect(() => {
@@ -66,7 +62,7 @@ export const AppUpdate: React.FC = () => {
         setError(null);
 
         try {
-            const response = await fetch(`${launcherUrl}/api/update/check`);
+            const response = await comfyAuthenticatedFetch(`${launcherUrl}/api/update/check`);
             const data = await response.json();
 
             if (response.ok) {
@@ -94,7 +90,7 @@ export const AppUpdate: React.FC = () => {
         setError(null);
 
         try {
-            const response = await fetch(`${launcherUrl}/api/update/download`, {
+            const response = await comfyAuthenticatedFetch(`${launcherUrl}/api/update/download`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ asset_url: updateInfo.asset_url })
@@ -107,7 +103,7 @@ export const AppUpdate: React.FC = () => {
 
             const pollInterval = setInterval(async () => {
                 try {
-                    const statusRes = await fetch(`${launcherUrl}/api/update/status`);
+                    const statusRes = await comfyAuthenticatedFetch(`${launcherUrl}/api/update/status`);
                     if (statusRes.ok) {
                         const status = await statusRes.json();
 

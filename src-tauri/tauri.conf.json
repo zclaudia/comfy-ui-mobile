@@ -1,0 +1,41 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Comfy Mobile",
+  "version": "0.1.0",
+  "identifier": "app.comfymobile.client",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:5173",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Comfy Mobile",
+        "width": 430,
+        "height": 932,
+        "minWidth": 320,
+        "minHeight": 640,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self' customprotocolasset: asset:; connect-src 'self' ipc: http://ipc.localhost http: https: ws: wss:; img-src 'self' customprotocolasset: asset: data: blob: http: https:; media-src 'self' customprotocolasset: asset: data: blob: http: https:; style-src 'self' 'unsafe-inline'; script-src 'self'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "../public/favicon.png"
+    ],
+    "android": {
+      "minSdkVersion": 24,
+      "versionCode": 1,
+      "debugApplicationIdSuffix": ".debug"
+    }
+  }
+}

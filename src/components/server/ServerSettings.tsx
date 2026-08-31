@@ -6,6 +6,9 @@ import { ArrowLeft, WifiOff, Loader2, CheckCircle, XCircle, Info, Power, Eye, Ey
 import { useNavigate } from 'react-router-dom';
 import { useConnectionStore } from '@/ui/store/connectionStore';
 import { Label } from '@/components/ui/label';
+import { getDefaultGatewayUrl } from '@/config/runtime';
+import { getGatewaySession, loginToGateway } from '@/infrastructure/auth/GatewayAuthService';
+import { isTauriRuntime } from '@/platform/runtime';
 
 interface ServerSettingsProps {
   onBack?: () => void;
@@ -40,9 +43,8 @@ const ServerSettings: React.FC<ServerSettingsProps> = ({ onBack }) => {
   const [inputAuthToken, setInputAuthToken] = useState(authToken);
   const [showAuthToken, setShowAuthToken] = useState(false);
   const [inputRememberToken, setInputRememberToken] = useState(rememberAuthToken);
-  // Most servers have no ComfyUI-Login, so this stays out of the way until it
-  // is either already in use or the server actually answers with a 401.
-  const [showAuthSection, setShowAuthSection] = useState(authMode === 'comfyui-login');
+  const [showAuthSection, setShowAuthSection] = useState(authMode !== 'none');
+  const isTauri = isTauriRuntime();
 
   useEffect(() => {
     setInputUrl(url);
@@ -61,7 +63,7 @@ const ServerSettings: React.FC<ServerSettingsProps> = ({ onBack }) => {
   }, [rememberAuthToken]);
 
   useEffect(() => {
-    if (authMode === 'comfyui-login' || errorCode === 'authentication_required') {
+    if (authMode !== 'none' || errorCode === 'authentication_required') {
       setShowAuthSection(true);
     }
   }, [authMode, errorCode]);
@@ -99,15 +101,31 @@ const ServerSettings: React.FC<ServerSettingsProps> = ({ onBack }) => {
       return;
     }
 
-    setUrl(inputUrl);
-    setAuthMode(inputAuthMode);
-    setRememberAuthToken(inputAuthMode === 'comfyui-login' && inputRememberToken);
-    setAuthToken(inputAuthMode === 'comfyui-login' ? inputAuthToken : '');
-
     try {
+      // The Gateway exchanges the long-lived setup token for an HttpOnly
+      // session cookie. An empty token is valid when a session already exists.
+      if (inputAuthMode === 'gateway' && inputAuthToken.trim()) {
+        await loginToGateway(inputUrl, inputAuthToken, isTauri ? false : inputRememberToken);
+      } else if (
+        inputAuthMode === 'gateway'
+        && isTauri
+        && !(await getGatewaySession(inputUrl))
+      ) {
+        throw new Error(t('serverSettings.authentication.tokenRequired'));
+      }
+
+      setUrl(inputUrl);
+      setAuthMode(inputAuthMode);
+      setRememberAuthToken(
+        inputAuthMode !== 'none'
+        && !(isTauri && inputAuthMode === 'gateway')
+        && inputRememberToken
+      );
+      setAuthToken(inputAuthMode === 'comfyui-login' ? inputAuthToken : '');
       await connect();
     } catch (error) {
       console.error('Connection failed:', error);
+      setError(error instanceof Error ? error.message : t('serverSettings.messages.failed'));
     }
   };
 
@@ -115,11 +133,11 @@ const ServerSettings: React.FC<ServerSettingsProps> = ({ onBack }) => {
     disconnect();
   };
 
-  const getDefaultUrls = () => [
-    'http://127.0.0.1:8188',
-    'http://localhost:8188',
-    'http://192.168.1.100:8188', // Common local network IP
-  ];
+  const getDefaultUrls = () => Array.from(new Set([
+    getDefaultGatewayUrl(),
+    'http://127.0.0.1:8080',
+    'http://localhost:8080',
+  ].filter(Boolean)));
 
   const handleBackNavigation = () => {
     if (onBack) {
@@ -241,7 +259,7 @@ const ServerSettings: React.FC<ServerSettingsProps> = ({ onBack }) => {
                 setInputUrl(e.target.value);
                 setError(null);
               }}
-              placeholder="http://127.0.0.1:8188"
+              placeholder="http://127.0.0.1:8080"
               className="h-[42px] px-3 font-mono text-[13px] bg-white/[0.045] dark:bg-transparent border-white/[0.08] text-[#e9ebef] placeholder:text-[#565d6b] rounded-[10px] focus-visible:ring-0 focus-visible:border-[#5b8af5]/40 focus-visible:shadow-[0_0_0_3px_rgba(48,105,240,0.1)]"
             />
             <p className="text-[11px] leading-relaxed text-[#66758a] mt-[7px]">
@@ -286,9 +304,11 @@ const ServerSettings: React.FC<ServerSettingsProps> = ({ onBack }) => {
               </div>
               {!showAuthSection && (
                 <span className="text-[11px] text-[#565d6b]">
-                  {inputAuthMode === 'comfyui-login'
-                    ? t('serverSettings.authentication.comfyLogin')
-                    : t('serverSettings.authentication.none')}
+                  {inputAuthMode === 'gateway'
+                    ? t('serverSettings.authentication.gateway')
+                    : inputAuthMode === 'comfyui-login'
+                      ? t('serverSettings.authentication.comfyLogin')
+                      : t('serverSettings.authentication.none')}
                 </span>
               )}
               <ChevronDown
@@ -298,8 +318,8 @@ const ServerSettings: React.FC<ServerSettingsProps> = ({ onBack }) => {
             </button>
 
             {showAuthSection && (<>
-            <div className="grid grid-cols-2 gap-1.5">
-              {(['none', 'comfyui-login'] as const).map((mode) => {
+            <div className="grid grid-cols-3 gap-1.5">
+              {(['gateway', 'none', 'comfyui-login'] as const).map((mode) => {
                 const active = inputAuthMode === mode;
                 return (
                   <button
@@ -315,22 +335,26 @@ const ServerSettings: React.FC<ServerSettingsProps> = ({ onBack }) => {
                     }`}
                     style={{ background: active ? 'rgba(61,123,253,.1)' : 'rgba(255,255,255,.035)' }}
                   >
-                    {mode === 'none'
-                      ? t('serverSettings.authentication.none')
-                      : t('serverSettings.authentication.comfyLogin')}
+                    {mode === 'gateway'
+                      ? t('serverSettings.authentication.gateway')
+                      : mode === 'none'
+                        ? t('serverSettings.authentication.none')
+                        : t('serverSettings.authentication.comfyLogin')}
                   </button>
                 );
               })}
             </div>
 
-            {inputAuthMode === 'comfyui-login' && (
+            {(inputAuthMode === 'gateway' || inputAuthMode === 'comfyui-login') && (
               <div className="mt-3">
-                <Label htmlFor="comfyui-login-token" className="font-mono text-[10px] font-medium text-[#565d6b] tracking-[0.12em] uppercase">
-                  {t('serverSettings.authentication.tokenLabel')}
+                <Label htmlFor="server-auth-token" className="font-mono text-[10px] font-medium text-[#565d6b] tracking-[0.12em] uppercase">
+                  {inputAuthMode === 'gateway'
+                    ? t('serverSettings.authentication.gatewayTokenLabel')
+                    : t('serverSettings.authentication.tokenLabel')}
                 </Label>
                 <div className="relative mt-[7px]">
                   <Input
-                    id="comfyui-login-token"
+                    id="server-auth-token"
                     type={showAuthToken ? 'text' : 'password'}
                     value={inputAuthToken}
                     onChange={(event) => {
@@ -339,7 +363,9 @@ const ServerSettings: React.FC<ServerSettingsProps> = ({ onBack }) => {
                     }}
                     autoComplete="off"
                     spellCheck={false}
-                    placeholder={t('serverSettings.authentication.tokenPlaceholder')}
+                    placeholder={inputAuthMode === 'gateway'
+                      ? t('serverSettings.authentication.gatewayTokenPlaceholder')
+                      : t('serverSettings.authentication.tokenPlaceholder')}
                     className="h-[42px] pl-3 pr-11 font-mono text-[12px] bg-white/[0.045] dark:bg-transparent border-white/[0.08] text-[#e9ebef] placeholder:text-[#565d6b] rounded-[10px] focus-visible:ring-0 focus-visible:border-[#5b8af5]/40"
                   />
                   <button
@@ -354,10 +380,14 @@ const ServerSettings: React.FC<ServerSettingsProps> = ({ onBack }) => {
                   </button>
                 </div>
                 <p className="text-[11px] leading-relaxed text-[#66758a] mt-[7px]">
-                  {t('serverSettings.authentication.tokenDesc')}
+                  {inputAuthMode === 'gateway'
+                    ? t(isTauri
+                        ? 'serverSettings.authentication.gatewayTauriTokenDesc'
+                        : 'serverSettings.authentication.gatewayTokenDesc')
+                    : t('serverSettings.authentication.tokenDesc')}
                 </p>
 
-                {inputUrl.trim() && (
+                {inputAuthMode === 'comfyui-login' && inputUrl.trim() && (
                   <a
                     href={`${inputUrl.trim().replace(/\/$/, '')}/comfymobile/api/auth/token`}
                     target="_blank"
@@ -368,7 +398,7 @@ const ServerSettings: React.FC<ServerSettingsProps> = ({ onBack }) => {
                     {t('serverSettings.authentication.fetchToken')}
                   </a>
                 )}
-                <button
+                {!(isTauri && inputAuthMode === 'gateway') && <button
                   type="button"
                   role="checkbox"
                   aria-checked={inputRememberToken}
@@ -388,15 +418,21 @@ const ServerSettings: React.FC<ServerSettingsProps> = ({ onBack }) => {
                       {t('serverSettings.authentication.rememberLabel')}
                     </span>
                     <span className="block text-[11px] leading-relaxed text-[#66758a] mt-0.5">
-                      {t('serverSettings.authentication.rememberDesc')}
+                      {inputAuthMode === 'gateway'
+                        ? t('serverSettings.authentication.gatewayRememberDesc')
+                        : t('serverSettings.authentication.rememberDesc')}
                     </span>
                   </span>
-                </button>
+                </button>}
 
                 <div className="mt-2 p-2.5 rounded-lg border border-amber-400/15 bg-amber-400/[0.06] text-[10.5px] leading-relaxed text-amber-200/65">
-                  {inputRememberToken
-                    ? t('serverSettings.authentication.persistNotice')
-                    : t('serverSettings.authentication.sessionNotice')}
+                  {inputAuthMode === 'gateway'
+                    ? t(isTauri
+                        ? 'serverSettings.authentication.gatewayTauriSessionNotice'
+                        : 'serverSettings.authentication.gatewayCookieNotice')
+                    : inputRememberToken
+                      ? t('serverSettings.authentication.persistNotice')
+                      : t('serverSettings.authentication.sessionNotice')}
                 </div>
               </div>
             )}

@@ -11,6 +11,7 @@ import {
   saveComfyAuthToken,
   comfyAuthenticatedFetch
 } from '@/infrastructure/auth/ComfyAuthService';
+import { getDefaultGatewayUrl } from '@/config/runtime';
 
 interface ConnectionStore extends ConnectionState {
   setUrl: (url: string) => void;
@@ -41,7 +42,7 @@ export const useConnectionStore = create<ConnectionStore>()(
   devtools(
     persist(
       (set, get) => ({
-        url: '',
+        url: getDefaultGatewayUrl(),
         isConnected: false,
         isConnecting: false,
         lastPingTime: null,
@@ -54,10 +55,10 @@ export const useConnectionStore = create<ConnectionStore>()(
         extensionStatus: 'idle',
         isCheckingExtension: false,
         autoReconnectEnabled: true,
-        authMode: 'none',
+        authMode: 'gateway',
         authToken: '',
-        // Personal-device app: re-typing the token every time the tab closes
-        // costs more than it protects. Users on a shared machine can turn it off.
+        // For Gateway auth this controls the HttpOnly cookie lifetime. The
+        // long-lived Gateway token itself is never stored in browser storage.
         rememberAuthToken: true,
 
         // Initialize WebSocket state
@@ -83,15 +84,19 @@ export const useConnectionStore = create<ConnectionStore>()(
         setAuthToken: (authToken: string) => {
           const { url, authMode, rememberAuthToken } = get();
           const normalizedToken = normalizeComfyAuthToken(authToken);
-          saveComfyAuthToken(url, normalizedToken, rememberAuthToken);
+          if (authMode === 'comfyui-login') {
+            saveComfyAuthToken(url, normalizedToken, rememberAuthToken);
+          }
           configureComfyAuth({ serverUrl: url, mode: authMode, token: normalizedToken });
           set({ authToken: normalizedToken, error: null, errorCode: null });
         },
 
         setRememberAuthToken: (rememberAuthToken: boolean) => {
-          const { url, authToken } = get();
+          const { url, authToken, authMode } = get();
           // Move the existing token to the store the new choice implies.
-          saveComfyAuthToken(url, authToken, rememberAuthToken);
+          if (authMode === 'comfyui-login') {
+            saveComfyAuthToken(url, authToken, rememberAuthToken);
+          }
           set({ rememberAuthToken });
         },
 
@@ -99,7 +104,9 @@ export const useConnectionStore = create<ConnectionStore>()(
           const { url, authMode: storedAuthMode, rememberAuthToken } = get();
           const authMode: ComfyAuthMode = storedAuthMode === 'comfyui-login'
             ? 'comfyui-login'
-            : 'none';
+            : storedAuthMode === 'none'
+              ? 'none'
+              : 'gateway';
           const authToken = authMode === 'comfyui-login' ? loadComfyAuthToken(url) : '';
           configureComfyAuth({ serverUrl: url, mode: authMode, token: authToken });
           // Absent in state persisted before this setting existed - default on,
@@ -390,6 +397,20 @@ export const useConnectionStore = create<ConnectionStore>()(
       }),
       {
         name: STORAGE_KEY,
+        version: 2,
+        migrate: (persistedState: unknown, version) => {
+          const previousState = persistedState && typeof persistedState === 'object'
+            ? persistedState as Record<string, unknown>
+            : {};
+          if (version < 2) {
+            return {
+              ...previousState,
+              url: getDefaultGatewayUrl(),
+              authMode: 'gateway' as ComfyAuthMode,
+            };
+          }
+          return previousState;
+        },
         partialize: (state) => ({
           url: state.url,
           autoReconnectEnabled: state.autoReconnectEnabled,

@@ -1,0 +1,8 @@
+.git
+.gitignore
+deploy
+dist
+node_modules
+temp_deploy
+gateway/.env
+gateway/node_modules

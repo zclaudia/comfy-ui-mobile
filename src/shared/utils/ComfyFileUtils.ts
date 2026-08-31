@@ -1,6 +1,7 @@
 // ComfyUI file utilities
 import { ComfyFileService } from '../../infrastructure/api/ComfyFileService';
 import { IComfyFileInfo } from '@/shared/types/comfy/IComfyFile';
+import { resolveGatewayUrl } from '@/config/runtime';
 
 /**
  * Check if a file is an image based on extension
@@ -358,5 +359,5 @@ export async function batchDownloadFiles(
  * Create file service instance with custom server URL
  */
 export function createFileService(serverUrl?: string): ComfyFileService {
-  return new ComfyFileService(serverUrl || 'http://localhost:8188');
+  return new ComfyFileService(resolveGatewayUrl(serverUrl));
 }

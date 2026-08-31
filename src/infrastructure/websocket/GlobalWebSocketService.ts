@@ -7,6 +7,11 @@
  */
 
 import { withComfyAuth } from '@/infrastructure/auth/ComfyAuthService';
+import {
+  createPlatformWebSocket,
+  PLATFORM_WEBSOCKET_OPEN,
+  type PlatformWebSocket,
+} from '@/platform/websocket';
 
 // EventEmitter implementation with ID support (compatible with original ComfyApiClient)
 class EventEmitter {
@@ -80,7 +85,7 @@ export interface BufferedEvent {
 
 class GlobalWebSocketService extends EventEmitter {
   private serverUrl: string = '';
-  private webSocket: WebSocket | null = null;
+  private webSocket: PlatformWebSocket | null = null;
   private clientId: string;
   private reconnectTimer: NodeJS.Timeout | null = null;
 
@@ -132,13 +137,19 @@ class GlobalWebSocketService extends EventEmitter {
   }
 
   private generateClientId(): string {
-    // 🎯 Use hardcoded static clientId to ensure consistent connection across all browsers and sessions
-    // This MUST match ComfyApiClient's clientId for proper message routing
-    const staticClientId = 'comfy-mobile-ui-client-2025';
+    const storageKey = 'comfy-mobile-client-id';
+    try {
+      const existing = localStorage.getItem(storageKey);
+      if (existing) return existing;
 
-    console.log(`🎯 [GlobalWebSocketService] Using static clientId:`, staticClientId);
-
-    return staticClientId;
+      const id = `comfy-mobile-${globalThis.crypto.randomUUID()}`;
+      localStorage.setItem(storageKey, id);
+      return id;
+    } catch {
+      const random = globalThis.crypto?.randomUUID?.()
+        ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      return `comfy-mobile-${random}`;
+    }
   }
 
   /**
@@ -337,10 +348,10 @@ class GlobalWebSocketService extends EventEmitter {
     });
 
     const wsUrl = withComfyAuth(
-      this.serverUrl.replace('http://', 'ws://').replace('https://', 'wss://') + '/comfymobile/ws?clientId=' + this.clientId
+      this.serverUrl.replace('http://', 'ws://').replace('https://', 'wss://') + '/ws?clientId=' + this.clientId
     );
 
-    this.webSocket = new WebSocket(wsUrl);
+    this.webSocket = createPlatformWebSocket(wsUrl);
 
     this.webSocket.onopen = () => {
 
@@ -719,7 +730,7 @@ class GlobalWebSocketService extends EventEmitter {
    * Send message through WebSocket if connected
    */
   send(message: any): boolean {
-    if (this.webSocket && this.webSocket.readyState === WebSocket.OPEN) {
+    if (this.webSocket && this.webSocket.readyState === PLATFORM_WEBSOCKET_OPEN) {
       try {
         this.webSocket.send(JSON.stringify(message));
         return true;

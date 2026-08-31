@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import ComfyUIService from '@/infrastructure/api/ComfyApiClient';
 import { useConnectionStore } from '@/ui/store/connectionStore';
+import { resolveGatewayUrl } from '@/config/runtime';
 import {
   Search,
   FolderOpen,
@@ -77,7 +78,7 @@ const ModelBrowser: React.FC<ModelBrowserProps> = ({ serverUrl: propServerUrl })
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { url: storeServerUrl } = useConnectionStore();
-  const serverUrl = propServerUrl || storeServerUrl || 'http://localhost:8188';
+  const serverUrl = resolveGatewayUrl(propServerUrl || storeServerUrl);
 
   // State management
   const [folders, setFolders] = useState<FolderInfo[]>([]);

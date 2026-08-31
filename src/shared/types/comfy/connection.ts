@@ -1,5 +1,5 @@
 export type ConnectionStepStatus = 'idle' | 'checking' | 'success' | 'failed';
-export type ComfyAuthMode = 'none' | 'comfyui-login';
+export type ComfyAuthMode = 'none' | 'gateway' | 'comfyui-login';
 
 export interface ConnectionState {
   url: string;

@@ -14,6 +14,7 @@ import type { IComfyJson } from '@/shared/types/app/IComfyJson';
 import type { LogEntry, LogsWsMessage } from '@/core/domain';
 import type { MissingModelInfo } from '@/services/MissingModelsService';
 import { useNavigate, useParams } from 'react-router-dom';
+import { resolveGatewayUrl } from '@/config/runtime';
 
 
 interface SearchableNode {
@@ -860,7 +861,7 @@ export const FloatingControlsPanel: React.FC<FloatingControlsPanelProps> = ({
       <TriggerWordSelector
         isOpen={isTriggerWordSelectorOpen}
         onClose={() => setIsTriggerWordSelectorOpen(false)}
-        serverUrl={serverUrl || 'http://localhost:8188'}
+        serverUrl={resolveGatewayUrl(serverUrl)}
       />
 
       {/* Console Panel - Independent container below main controls */}
@@ -974,4 +975,3 @@ export const FloatingControlsPanel: React.FC<FloatingControlsPanelProps> = ({
     </div>
   );
 };
-

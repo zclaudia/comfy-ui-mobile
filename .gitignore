@@ -12,6 +12,8 @@ dist
 dist-ssr
 dev-dists
 *.local
+src-tauri/target/
+src-tauri/gen/schemas/
 
 # Editor directories and files
 .vscode/*

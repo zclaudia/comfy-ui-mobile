@@ -2,6 +2,9 @@
  * External Watchdog Service
  */
 
+import { getDefaultGatewayUrl } from '@/config/runtime';
+import { comfyAuthenticatedFetch } from '@/infrastructure/auth/ComfyAuthService';
+
 export interface WatchdogStatus {
   watchdog: {
     running: boolean;
@@ -61,7 +64,7 @@ export interface WatchdogStartResponse {
 }
 
 export class WatchdogService {
-  private apiUrl = 'http://localhost:9188';
+  private apiUrl = `${getDefaultGatewayUrl()}/api/gateway/launcher`;
   private timeout = 10000; // 10 seconds timeout
 
   /**
@@ -69,7 +72,7 @@ export class WatchdogService {
    */
   async getStatus(): Promise<WatchdogStatus | null> {
     try {
-      const response = await fetch(`${this.apiUrl}/status`, {
+      const response = await comfyAuthenticatedFetch(`${this.apiUrl}/status`, {
         method: 'GET',
         signal: AbortSignal.timeout(this.timeout)
       });
@@ -91,7 +94,7 @@ export class WatchdogService {
    */
   async restartComfyUI(): Promise<WatchdogRestartResponse | null> {
     try {
-      const response = await fetch(`${this.apiUrl}/restart`, {
+      const response = await comfyAuthenticatedFetch(`${this.apiUrl}/restart`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -118,7 +121,7 @@ export class WatchdogService {
    */
   async getRecentLogs(limit: number = 50): Promise<WatchdogLogsResponse | null> {
     try {
-      const response = await fetch(`${this.apiUrl}/logs?limit=${limit}`, {
+      const response = await comfyAuthenticatedFetch(`${this.apiUrl}/logs?limit=${limit}`, {
         method: 'GET',
         signal: AbortSignal.timeout(this.timeout)
       });
@@ -140,7 +143,7 @@ export class WatchdogService {
    */
   async updateConfig(config: WatchdogConfig): Promise<boolean> {
     try {
-      const response = await fetch(`${this.apiUrl}/config`, {
+      const response = await comfyAuthenticatedFetch(`${this.apiUrl}/config`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -168,7 +171,7 @@ export class WatchdogService {
    */
   async isWatchdogRunning(): Promise<boolean> {
     try {
-      const response = await fetch(`${this.apiUrl}/`, {
+      const response = await comfyAuthenticatedFetch(`${this.apiUrl}/status`, {
         method: 'GET',
         signal: AbortSignal.timeout(5000) // Short timeout
       });
@@ -183,7 +186,7 @@ export class WatchdogService {
    */
   async startWatchdog(config: WatchdogStartRequest): Promise<WatchdogStartResponse | null> {
     try {
-      const response = await fetch(`${this.apiUrl}/start`, {
+      const response = await comfyAuthenticatedFetch(`${this.apiUrl}/start`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -232,7 +235,7 @@ export class WatchdogService {
     } else {
       // If watchdog is not running, directly check ComfyUI
       try {
-        const response = await fetch('http://localhost:8188/', {
+        const response = await comfyAuthenticatedFetch(`${getDefaultGatewayUrl()}/system_stats`, {
           method: 'GET',
           signal: AbortSignal.timeout(5000)
         });

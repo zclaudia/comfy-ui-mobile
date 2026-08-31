@@ -5,6 +5,7 @@ import { Slider } from '@/components/ui/slider';
 import { ComfyFileService } from '@/infrastructure/api/ComfyFileService';
 import { useConnectionStore } from '@/ui/store/connectionStore';
 import { useTranslation } from 'react-i18next';
+import { resolveGatewayUrl } from '@/config/runtime';
 
 interface VideoPreviewInfo {
   filename: string;
@@ -61,7 +62,7 @@ export const VideoPreviewSection: React.FC<VideoPreviewSectionProps> = ({
     setError(null);
 
     try {
-      const fileService = new ComfyFileService(serverUrl || 'http://localhost:8188');
+      const fileService = new ComfyFileService(resolveGatewayUrl(serverUrl));
 
 
       // Parse filename and subfolder

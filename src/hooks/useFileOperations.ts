@@ -3,6 +3,7 @@ import { ComfyFileService } from '@/infrastructure/api/ComfyFileService';
 import { isImageFile, isVideoFile } from '@/shared/utils/ComfyFileUtils';
 import { extractVideoThumbnail } from '@/shared/utils/VideoUtils';
 import { useConnectionStore } from '@/ui/store/connectionStore';
+import { resolveGatewayUrl } from '@/config/runtime';
 
 interface UploadState {
   isUploading: boolean;
@@ -55,7 +56,7 @@ export const useFileOperations = ({ onSetWidgetValue }: UseFileOperationsProps) 
 
   // Create fileService dynamically based on current server URL
   const getFileService = () => {
-    const currentUrl = serverUrl || 'http://localhost:8188';
+    const currentUrl = resolveGatewayUrl(serverUrl);
     return new ComfyFileService(currentUrl);
   };
 
@@ -107,7 +108,7 @@ export const useFileOperations = ({ onSetWidgetValue }: UseFileOperationsProps) 
           isOpen: true,
           title: 'Server Connection Failed',
           message: 'Cannot connect to ComfyUI server.',
-          details: `Server URL: ${serverUrl || 'http://localhost:8188'}\nPlease ensure ComfyUI is running and accessible.\n\nTo change the server URL, go to Settings > Server Settings.`
+          details: `Gateway URL: ${resolveGatewayUrl(serverUrl)}\nPlease ensure the Gateway and ComfyUI are running.\n\nTo change the Gateway URL, go to Settings > Server Settings.`
         });
         return;
       }
@@ -255,7 +256,7 @@ export const useFileOperations = ({ onSetWidgetValue }: UseFileOperationsProps) 
           isOpen: true,
           title: 'Server Connection Failed',
           message: 'Cannot connect to ComfyUI server for file upload.',
-          details: `Server URL: ${serverUrl || 'http://localhost:8188'}\nPlease ensure ComfyUI is running and accessible before uploading files.`
+          details: `Gateway URL: ${resolveGatewayUrl(serverUrl)}\nPlease ensure the Gateway and ComfyUI are running before uploading files.`
         });
         return;
       }
@@ -265,7 +266,7 @@ export const useFileOperations = ({ onSetWidgetValue }: UseFileOperationsProps) 
         isOpen: true,
         title: 'Server Connection Error',
         message: 'Failed to test server connection before upload.',
-        details: `Error: ${error instanceof Error ? error.message : 'Unknown error'}\nServer: ${serverUrl || 'http://localhost:8188'}`
+        details: `Error: ${error instanceof Error ? error.message : 'Unknown error'}\nGateway: ${resolveGatewayUrl(serverUrl)}`
       });
       return;
     }
@@ -431,7 +432,7 @@ export const useFileOperations = ({ onSetWidgetValue }: UseFileOperationsProps) 
           isOpen: true,
           title: 'Server Connection Failed',
           message: 'Cannot connect to ComfyUI server for file upload.',
-          details: `Server URL: ${serverUrl || 'http://localhost:8188'}\nPlease ensure ComfyUI is running and accessible before uploading files.`
+          details: `Gateway URL: ${resolveGatewayUrl(serverUrl)}\nPlease ensure the Gateway and ComfyUI are running before uploading files.`
         });
         return;
       }
@@ -441,7 +442,7 @@ export const useFileOperations = ({ onSetWidgetValue }: UseFileOperationsProps) 
         isOpen: true,
         title: 'Server Connection Error',
         message: 'Failed to test server connection before upload.',
-        details: `Error: ${error instanceof Error ? error.message : 'Unknown error'}\nServer: ${serverUrl || 'http://localhost:8188'}`
+        details: `Error: ${error instanceof Error ? error.message : 'Unknown error'}\nGateway: ${resolveGatewayUrl(serverUrl)}`
       });
       return;
     }
