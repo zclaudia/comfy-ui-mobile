@@ -1,10 +1,18 @@
 import { Toaster as Sonner, ToasterProps } from "sonner"
 
+// Toasts must clear the floating bottom action bars (Execute/Interrupt in the
+// editor, the stack footer, the gallery tabs). Those sit in the bottom ~70px,
+// and a toast rendered over them silently swallows taps. 96px matches the
+// clearance the stack footer's own overlay panels use.
+const BOTTOM_CONTROL_CLEARANCE = '96px'
+
 const Toaster = ({ ...props }: ToasterProps) => {
   return (
     <Sonner
       theme="dark"
       className="toaster group"
+      offset={{ bottom: BOTTOM_CONTROL_CLEARANCE }}
+      mobileOffset={{ bottom: BOTTOM_CONTROL_CLEARANCE }}
       toastOptions={{
         style: {
           background: 'rgba(30, 41, 59, 0.5)', // dark:bg-slate-800/50
@@ -13,10 +21,8 @@ const Toaster = ({ ...props }: ToasterProps) => {
           borderRadius: '16px', // rounded-2xl
           boxShadow: '0 25px 50px -12px rgba(15, 23, 42, 0.3)', // shadow-xl shadow-slate-900/30
           color: 'rgb(241, 245, 249)', // text-slate-100
-          fontSize: '14px', 
+          fontSize: '14px',
           padding: '10px 16px',
-          width: 'calc(100vw - 32px)',
-          maxWidth: 'none',
         },
         classNames: {
           toast: 'group toast group-[.toaster]:bg-transparent group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg',
