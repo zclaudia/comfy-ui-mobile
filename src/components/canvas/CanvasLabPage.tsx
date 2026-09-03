@@ -225,7 +225,7 @@ const CanvasLabPage: React.FC = () => {
   const sheetVisible = !!node && !sheetDismissed;
 
   return (
-    <div className="fixed inset-0 flex flex-col bg-slate-950">
+    <div className="fixed inset-0 pt-safe flex flex-col bg-slate-950">
       {/* Top bar */}
       <div className="flex items-center gap-3 px-3 py-2 bg-slate-900 border-b border-slate-800 z-20">
         <button

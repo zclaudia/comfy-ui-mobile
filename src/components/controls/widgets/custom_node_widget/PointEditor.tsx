@@ -363,7 +363,7 @@ export const PointEditor: React.FC<PointEditorProps> = ({
       {/* Modal - rendered with createPortal to document.body */}
       {isOpen && createPortal(
         <div className="fixed inset-0 z-[9999] bg-gradient-to-br from-black/40 via-blue-900/20 to-purple-900/40 backdrop-blur-md">
-          <div className="fixed inset-4 z-[9999] max-h-screen overflow-y-auto">
+          <div className="fixed inset-4 z-[9999] pt-safe max-h-screen overflow-y-auto">
             <div className="bg-white/20 dark:bg-[#14171e]/20 backdrop-blur-xl rounded-xl shadow-2xl border border-white/20 dark:border-white/[0.1]/20 w-full h-full flex flex-col overflow-hidden">
 
               {/* Header */}

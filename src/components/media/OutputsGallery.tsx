@@ -862,7 +862,7 @@ export const OutputsGallery: React.FC<OutputsGalleryProps> = ({
       {/* Immersive Fixed Header */}
       <header
         ref={headerRef}
-        className="fixed top-0 inset-x-0 z-50 pointer-events-none"
+        className="fixed top-0 inset-x-0 z-50 pointer-events-none pwa-header"
       >
         <div
           className="absolute inset-x-0 top-0 h-full"

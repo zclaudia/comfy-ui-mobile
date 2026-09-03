@@ -431,7 +431,7 @@ const WorkflowList: React.FC = () => {
   return (
     <div className="h-full flex flex-col text-[#e9ebef] overflow-hidden" style={{ background: '#0b0c0f' }}>
       {/* Header (52px, tool aesthetic) */}
-      <header className="flex-none z-40 border-b border-white/[0.08]" style={{ background: '#0b0c0f' }}>
+      <header className="flex-none z-40 border-b border-white/[0.08] pwa-header" style={{ background: '#0b0c0f' }}>
         <div className="max-w-[1600px] mx-auto h-[52px] px-4 flex items-center gap-2.5">
           <button
             onClick={() => setIsSideMenuOpen(true)}

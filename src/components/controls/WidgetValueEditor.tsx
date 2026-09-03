@@ -594,7 +594,7 @@ export const WidgetValueEditor: React.FC<WidgetValueEditorProps> = ({
       {
         showAlbumModal && createPortal(
           <div
- className="fixed inset-0 z-[9999] bg-white overflow-auto overscroll-contain"
+ className="fixed inset-0 z-[9999] pt-safe bg-white overflow-auto overscroll-contain"
             style={{
               position: 'fixed',
               top: 0,

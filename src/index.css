@@ -203,6 +203,15 @@ canvas {
   padding-right: calc(env(safe-area-inset-right, 0) + 1rem);
 }
 
+/* Safe-area padding utilities (referenced by the gallery and stack footer) */
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
 /* PWA content area - height excluding safe areas */
 .pwa-content {
   height: calc(100dvh - env(safe-area-inset-top, 0) - env(safe-area-inset-bottom, 0));

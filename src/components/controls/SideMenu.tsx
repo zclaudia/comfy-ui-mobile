@@ -173,7 +173,7 @@ const SideMenu: React.FC<SideMenuProps> = ({
     <>
       {/* Side Menu - Full Screen Overlay */}
       <div
-        className={`fixed inset-0 z-[9999] transition-all duration-300 ease-out flex flex-col text-[#e9ebef] ${isOpen ? 'translate-x-0 opacity-100' : '-translate-x-full opacity-0'}`}
+        className={`fixed inset-0 z-[9999] pt-safe transition-all duration-300 ease-out flex flex-col text-[#e9ebef] ${isOpen ? 'translate-x-0 opacity-100' : '-translate-x-full opacity-0'}`}
         style={{ background: '#0b0c0f' }}
       >
         {/* Header (56px) */}
