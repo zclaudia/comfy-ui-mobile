@@ -15,6 +15,11 @@ gateway/.data/
 *.local
 src-tauri/target/
 src-tauri/gen/schemas/
+src-tauri/gen/android/
+
+# Android release signing (keep out of version control)
+src-tauri/*.keystore
+src-tauri/keystore.properties
 
 # Editor directories and files
 .vscode/*
