@@ -1,8 +1,8 @@
 # Workflow agent MVP
 
 The Gateway now hosts a Vercel AI SDK agent, SQLite task/version/event storage,
-ComfyUI execution polling, and authenticated APIs. The App entry is **工作流助手**
-in the side menu (`/agent`).
+ComfyUI execution polling, and authenticated APIs. The App entry is the **对话**
+tab (`/chats`); each session binds to one workflow in the App library.
 
 ## Run locally
 
@@ -119,13 +119,16 @@ All paths start with `/api/gateway/agent`; use existing cookie/device authentica
 | Method/path | Behavior |
 | --- | --- |
 | GET `/status` | Enabled/provider status and budgets, no secrets |
-| GET/POST `/sessions` | List own sessions / create with optional canvas copy |
+| GET/POST `/sessions` | List own sessions with `lastMessage`, `lastActivity`, `active`, `lastState`, `workflow`, `thumbnail` / create with optional canvas copy and `workflow` binding `{id, name, filename?}` |
 | GET `/sessions/:id?after=N` | Snapshot plus up to 200 events after cursor N |
 | POST `/sessions/:id/messages` | `{requestId: UUID, message}`; idempotent request ID, one active task per session |
 | POST `/sessions/:id/cancel` | `{taskId}` |
 | GET `/sessions/:id/versions/:version` | Read immutable canvas/version |
 | POST `/sessions/:id/save` | `{version}` |
 | POST `/sessions/:id/restore` | `{version, baseVersion}`; create a new version when no task is active |
+| PATCH `/sessions/:id` | `{name?, workflow?: {id,name,filename?} \| null}`; binding a workflow also renames the session unless `name` is given |
+| DELETE `/sessions/:id` | Cancel active tasks, then delete the session with its tasks, versions and events |
+| POST `/sessions/:id/versions` | `{canvas, baseVersion, summary?}`; commit the App canvas as a new version (422 when unsupported, 409 on stale base or active task) |
 
 ## Verification
 

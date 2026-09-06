@@ -77,6 +77,8 @@ test('service imports canvas versions, rejects unsupported canvases and cancels 
   assert.throws(() => agent.importVersion(session.id, 'someone-else', canvas(), 2, '越权'), /会话不存在/);
 
   assert.deepEqual(agent.updateSession(session.id, 'me', { workflow: null }).workflow, undefined);
+  assert.throws(() => agent.updateSession(session.id, 'someone-else', { name: 'x' }), /会话不存在/);
+  assert.throws(() => agent.deleteSession(session.id, 'someone-else'), /会话不存在/);
 
   const task = agent.enqueue(session.id, 'me', randomUUID(), '开始一个任务');
   assert.throws(() => agent.importVersion(session.id, 'me', canvas(), 2, '任务中'), /先停止当前任务/);

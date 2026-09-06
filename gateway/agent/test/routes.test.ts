@@ -47,6 +47,29 @@ test('real Gateway agent routes enforce auth, device isolation, payload validati
   const data = await response.json();
   assert.equal(data.versions[0].saved, true);
   assert.equal(data.tasks.length, 0);
+
+  const call = (method: string, path: string, body?: unknown, auth = token) => fetch(`${base}/api/gateway${path}`, { method, headers: { ...(auth ? { Authorization: `Bearer ${auth}` } : {}), 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+  const boundCreate = await request('/agent/sessions', { name: 'ignored', canvas, workflow: { id: 'wf-1', name: '海报', filename: '海报.json' } });
+  assert.equal(boundCreate.status, 201);
+  const bound = (await boundCreate.json()).session;
+  assert.equal(bound.name, '海报');
+  const listed = (await (await request('/agent/sessions')).json()).sessions.find((s: any) => s.id === bound.id);
+  assert.deepEqual(listed.workflow, { id: 'wf-1', name: '海报', filename: '海报.json' });
+  assert.equal(listed.active, false);
+  assert.equal(typeof listed.lastActivity, 'number');
+  assert.equal((await call('PATCH', `/agent/sessions/${bound.id}`, { workflow: null }, device)).status, 404);
+  assert.equal((await call('PATCH', `/agent/sessions/${bound.id}`, { owner: 'x' })).status, 400);
+  const patched = await call('PATCH', `/agent/sessions/${bound.id}`, { name: '新名字', workflow: null });
+  assert.equal(patched.status, 200);
+  assert.equal((await patched.json()).session.workflow, undefined);
+  const imported = await call('POST', `/agent/sessions/${bound.id}/versions`, { canvas, baseVersion: 1, summary: '画布修改' });
+  assert.equal(imported.status, 200);
+  assert.equal((await imported.json()).version, 2);
+  assert.equal((await call('POST', `/agent/sessions/${bound.id}/versions`, { canvas, baseVersion: 1 })).status, 409);
+  assert.equal((await call('POST', `/agent/sessions/${bound.id}/versions`, { canvas: { ...canvas, nodes: [{ ...canvas.nodes[0], mode: 4 }] }, baseVersion: 2 })).status, 422);
+  assert.equal((await call('DELETE', `/agent/sessions/${bound.id}`, undefined, device)).status, 404);
+  assert.equal((await call('DELETE', `/agent/sessions/${bound.id}`)).status, 200);
+  assert.equal((await request(`/agent/sessions/${bound.id}`)).status, 404);
 });
 
 test('HTTP clients receive actionable failures and can recover without losing workflow versions', async t => {

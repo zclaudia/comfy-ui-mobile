@@ -7,7 +7,11 @@ import type { Canvas } from '../workflow/canvas.js';
 
 const id = z.string().uuid();
 const version = z.number().int().positive();
-const createInput = z.object({ name: z.string().trim().min(1).max(100).default('新工作流'), canvas: z.object({ version: z.literal(0.4), nodes: z.array(z.object({ id: z.number().int().nonnegative(), type: z.string(), widgets_values: z.array(z.unknown()).optional(), inputs: z.array(z.object({ name: z.string(), link: z.number().nullable().optional() }).passthrough()).optional(), outputs: z.array(z.object({ links: z.array(z.number()).nullable().optional() }).passthrough()).optional() }).passthrough()).max(100), links: z.array(z.array(z.unknown())).max(500) }).passthrough().optional() }).strict();
+const canvasInput = z.object({ version: z.literal(0.4), nodes: z.array(z.object({ id: z.number().int().nonnegative(), type: z.string(), widgets_values: z.array(z.unknown()).optional(), inputs: z.array(z.object({ name: z.string(), link: z.number().nullable().optional() }).passthrough()).optional(), outputs: z.array(z.object({ links: z.array(z.number()).nullable().optional() }).passthrough()).optional() }).passthrough()).max(100), links: z.array(z.array(z.unknown())).max(500) }).passthrough();
+const workflowInput = z.object({ id: z.string().trim().min(1).max(200), name: z.string().trim().min(1).max(100), filename: z.string().trim().min(1).max(300).optional() }).strict();
+const createInput = z.object({ name: z.string().trim().min(1).max(100).default('新工作流'), canvas: canvasInput.optional(), workflow: workflowInput.optional() }).strict();
+const patchInput = z.object({ name: z.string().trim().min(1).max(100).optional(), workflow: workflowInput.nullable().optional() }).strict();
+const importInput = z.object({ canvas: canvasInput, baseVersion: z.number().int().nonnegative(), summary: z.string().trim().min(1).max(200).default('画布修改') }).strict();
 const messageInput = z.object({ requestId: id, message: z.string().trim().min(1).max(8000) }).strict();
 
 async function readBody(request: IncomingMessage): Promise<unknown> {
@@ -29,7 +33,7 @@ export async function handleAgentRequest(service: AgentService, owner: string, r
     if (path === '/sessions' && method === 'GET') return send(200, { sessions: service.store.list(owner) });
     if (path === '/sessions' && method === 'POST') {
       const body = createInput.parse(await readBody(request));
-      return send(201, { session: await service.createSession(owner, body.name, body.canvas as Canvas | undefined) });
+      return send(201, { session: await service.createSession(owner, body.name, body.canvas as Canvas | undefined, body.workflow) });
     }
     const parts = path.split('/').filter(Boolean);
     if (parts[0] !== 'sessions' || !id.safeParse(parts[1]).success) throw new AgentHttpError(404, '接口不存在');
@@ -38,6 +42,15 @@ export async function handleAgentRequest(service: AgentService, owner: string, r
     if (parts.length === 2 && method === 'GET') {
       const after = z.coerce.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).parse(url.searchParams.get('after') ?? 0);
       return send(200, service.snapshot(sessionId, owner, after));
+    }
+    if (parts.length === 2 && method === 'PATCH') {
+      const body = patchInput.parse(await readBody(request));
+      return send(200, { session: service.updateSession(sessionId, owner, body) });
+    }
+    if (parts.length === 2 && method === 'DELETE') return send(200, service.deleteSession(sessionId, owner));
+    if (parts.length === 3 && parts[2] === 'versions' && method === 'POST') {
+      const body = importInput.parse(await readBody(request));
+      return send(200, service.importVersion(sessionId, owner, body.canvas as Canvas, body.baseVersion, body.summary));
     }
     if (parts.length === 3 && parts[2] === 'messages' && method === 'POST') {
       const body = messageInput.parse(await readBody(request));
