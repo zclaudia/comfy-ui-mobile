@@ -73,8 +73,8 @@ export default function SessionListPage() {
   }
 
   const chips = [
-    { icon: <ImageIcon size={14} strokeWidth={1.8} />, label: at('生成一张图片'), to: `/chat/new?draft=${encodeURIComponent(NEW_CHAT_PRESETS.image)}` },
-    { icon: <Film size={14} strokeWidth={1.8} />, label: at('生成一段短视频'), to: `/chat/new?draft=${encodeURIComponent(NEW_CHAT_PRESETS.video)}` },
+    { icon: <ImageIcon size={14} strokeWidth={1.8} />, label: at('生成一张图片'), to: `/chat/new?draft=${encodeURIComponent(at(NEW_CHAT_PRESETS.image))}` },
+    { icon: <Film size={14} strokeWidth={1.8} />, label: at('生成一段短视频'), to: `/chat/new?draft=${encodeURIComponent(at(NEW_CHAT_PRESETS.video))}` },
     { icon: <Network size={14} strokeWidth={1.8} />, label: at('从我的工作流开始'), to: '/chat/new?pick=1' },
   ];
 

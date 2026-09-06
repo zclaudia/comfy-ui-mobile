@@ -12,6 +12,7 @@ import { ChatHeader } from './ChatHeader';
 import { ErrorCard, NoticeCard, ResultCard, WorkflowChangeCard } from './ChatCards';
 import { WorkflowPickerSheet } from './WorkflowPickerSheet';
 import { VersionHistorySheet } from './VersionHistorySheet';
+import { RenameSheet } from './RenameSheet';
 import { NEW_CHAT_PRESETS, hashCanvas, resolveBoundWorkflow, sessionTitle } from './binding';
 import { importCanvasIfChanged, mirrorVersion, type MirrorDeps } from './mirror';
 import { useAgentStatus } from './useAgentStatus';
@@ -27,7 +28,7 @@ export default function ChatPage() {
   const navigate = useNavigate();
   const { id } = useParams();
   const [params] = useSearchParams();
-  const { api, ready, state } = useAgentStatus();
+  const { api, ready, state, retry } = useAgentStatus();
   const setActive = useAgentActivityStore(s => s.setActive);
   const { snapshot, events, error, caughtUp, setSnapshot, refresh } = useSessionSnapshot(api, id);
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
@@ -36,17 +37,22 @@ export default function ChatPage() {
   const [busy, setBusy] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(params.get('pick') === '1');
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [missing, setMissing] = useState(false);
   const [conflict, setConflict] = useState(false);
   const [unsupported, setUnsupported] = useState<string | null>(null);
-  const [mirroredVersion, setMirroredVersion] = useState(0);
+  const [mirroredVersion, setMirroredVersion] = useState(0); // highest version this page has handled, successfully written or not
+  const [writtenVersion, setWrittenVersion] = useState(0); // highest version actually present in the library workflow
+  const [mirrorError, setMirrorError] = useState('');
   const mirroring = useRef(0); // version currently being written to the library, 0 when idle
+  const alive = useRef(true);
   const request = useRef<{ text: string; id: string } | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
   const followLatest = useRef(true);
   const [showLatest, setShowLatest] = useState(false);
 
+  useEffect(() => () => { alive.current = false; }, []);
   const reloadWorkflows = useCallback(() => loadAllWorkflows().then(setWorkflows).catch(() => setWorkflows([])), []);
   useEffect(() => { void reloadWorkflows(); }, [reloadWorkflows, id]);
   useEffect(() => {
@@ -57,7 +63,8 @@ export default function ChatPage() {
   const session = snapshot?.session;
   const bound = useMemo(() => resolveBoundWorkflow(session?.workflow, workflows), [session, workflows]);
   // The snapshot session carries no preview (only the session list computes one), so name new workflows after the first message.
-  const fallbackName = useMemo(() => (events.find(e => e.kind === 'user')?.data.text as string | undefined)?.trim().slice(0, 100) || at('新对话'), [events, at]);
+  const firstMessage = useMemo(() => (events.find(e => e.kind === 'user')?.data.text as string | undefined)?.trim().slice(0, 100), [events]);
+  const fallbackName = useMemo(() => firstMessage || at('新对话'), [firstMessage, at]);
   const task = snapshot?.tasks.find(t => active.has(t.state));
   useEffect(() => { if (snapshot) setActive(!!task); }, [snapshot, task, setActive]);
   useEffect(() => { if (followLatest.current) bottom.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); else setShowLatest(true); }, [events.length]);
@@ -72,7 +79,7 @@ export default function ChatPage() {
   // Mirror the session's current version into the library whenever it moves forward. Single-flight: polling re-runs this
   // effect every snapshot, and a second run for the same session must not write the library twice.
   useEffect(() => {
-    if (mirroring.current || !session || session.version === 0 || session.version <= mirroredVersion) return;
+    if (mirroring.current || mirrorError || !session || session.version === 0 || session.version <= mirroredVersion) return;
     const target = session, version = session.version;
     mirroring.current = version;
     void (async () => {
@@ -81,12 +88,18 @@ export default function ChatPage() {
         const result = await mirrorVersion(target, version, saved.canvas, mirrorDeps, { fallbackName });
         setMissing(result.kind === 'missing');
         setConflict(result.kind === 'conflict');
+        // Only a version that reached the library may claim 已写入工作流库; a conflict leaves the library on its own canvas.
+        if (result.kind === 'updated' || result.kind === 'created') setWrittenVersion(version);
+        else if (result.kind === 'unchanged') setWrittenVersion(result.workflow.agent?.mirroredVersion ?? version);
         setMirroredVersion(version);
         await reloadWorkflows();
-      } catch (e) { toast.error(at('写入工作流库失败：{{message}}', { message: e instanceof Error ? e.message : String(e) })); }
+      } catch (e) {
+        // Polling re-runs this effect every snapshot; hold the failure in a card instead of toasting on every tick.
+        setMirrorError(e instanceof Error ? e.message : String(e));
+      }
       finally { mirroring.current = 0; }
     })();
-  }, [api, session, mirroredVersion, mirrorDeps, reloadWorkflows, fallbackName, at]);
+  }, [api, session, mirroredVersion, mirrorError, mirrorDeps, reloadWorkflows, fallbackName]);
 
   async function action(fn: () => Promise<void>) {
     setBusy(true);
@@ -97,6 +110,7 @@ export default function ChatPage() {
   async function send() {
     const text = draft.trim(); if (!text) return;
     let target: AgentSession | undefined = session;
+    if (!target && id) return; // an existing route whose snapshot has not arrived yet must never lazy-create a session
     if (!target) {
       const created = await api.create(pending ? pending.name : at('新工作流'), pending?.workflow_json, pending ? { id: pending.id, name: pending.name, filename: pending.cloud?.filename } : undefined);
       target = created.session;
@@ -104,30 +118,35 @@ export default function ChatPage() {
     } else if (!unsupported) {
       const result = await importCanvasIfChanged(target, bound, { importVersion: (sid, canvas, base, summary) => api.importVersion(sid, canvas, base, summary), setBinding: updateWorkflowAgentBinding });
       if (result.kind === 'unsupported') { setUnsupported(result.message); return; }
-      if (result.kind === 'imported') { target = { ...target, version: result.version }; setMirroredVersion(result.version); setConflict(false); await reloadWorkflows(); }
+      if (result.kind === 'imported') { target = { ...target, version: result.version }; setMirroredVersion(result.version); setWrittenVersion(result.version); setConflict(false); await reloadWorkflows(); }
     }
     setUnsupported(null);
     if (!request.current || request.current.text !== text) request.current = { text, id: crypto.randomUUID() };
     await api.message(target.id, text, request.current.id);
     request.current = null; setDraft('');
     try { if (!localStorage.getItem(BACKGROUND_HINT_KEY)) { toast.info(at('离开页面后，后台任务继续运行。')); localStorage.setItem(BACKGROUND_HINT_KEY, '1'); } } catch { /* storage unavailable */ }
-    if (!session) { setPending(null); navigate(`/chat/${target.id}`, { replace: true }); }
+    if (!session) { setPending(null); if (alive.current) navigate(`/chat/${target.id}`, { replace: true }); }
     else setSnapshot(await api.snapshot(target.id));
   }
 
-  const title = session ? sessionTitle(session, at('新对话')) : pending ? pending.name : at('新对话');
+  // A renamed but unbound session keeps its own name; the placeholder falls through to the first message.
+  // New sessions are created with the localised placeholder, so both spellings count as "unnamed".
+  const placeholder = new Set(['新工作流', at('新工作流')]);
+  const named = session && !session.workflow && !!session.name && !placeholder.has(session.name);
+  const title = session ? (named ? session.name : sessionTitle(session, firstMessage || at('新对话'))) : pending ? pending.name : at('新对话');
   const subtitle = session ? [session.version ? `V${session.version}` : '', bound ? `${bound.nodeCount}N` : ''].filter(Boolean).join(' · ') : pending ? `${pending.nodeCount}N` : undefined;
   const chips = [
-    { icon: <ImageIcon size={14} strokeWidth={1.8} />, label: at('生成一张图片'), onClick: () => setDraft(NEW_CHAT_PRESETS.image) },
-    { icon: <Film size={14} strokeWidth={1.8} />, label: at('生成一段短视频'), onClick: () => setDraft(NEW_CHAT_PRESETS.video) },
+    { icon: <ImageIcon size={14} strokeWidth={1.8} />, label: at('生成一张图片'), onClick: () => setDraft(at(NEW_CHAT_PRESETS.image)) },
+    { icon: <Film size={14} strokeWidth={1.8} />, label: at('生成一段短视频'), onClick: () => setDraft(at(NEW_CHAT_PRESETS.video)) },
     { icon: <Network size={14} strokeWidth={1.8} />, label: at('从我的工作流开始'), onClick: () => setPickerOpen(true) },
   ];
-  const canSend = ready && !busy && !task && !!draft.trim();
+  const canSend = ready && !busy && !task && !!draft.trim() && (!id || !!session);
 
   const renderContent = (event: AgentEvent) => {
     const data = event.data;
-    if (event.kind === 'workflow') return <WorkflowChangeCard key={event.seq} version={data.version} summary={data.summary} operations={data.operations} mirrored={data.version <= mirroredVersion && !!bound} onOpenCanvas={bound ? () => navigate(`/workflow/${bound.id}`) : undefined} />;
+    if (event.kind === 'workflow') return <WorkflowChangeCard key={event.seq} version={data.version} summary={data.summary} operations={data.operations} mirrored={data.version <= writtenVersion && !!bound} onOpenCanvas={bound ? () => navigate(`/workflow/${bound.id}`) : undefined} />;
     if (event.kind === 'result') return <ResultCard key={event.seq} version={data.version} outputs={data.outputs ?? []} baseUrl={api.baseUrl} />;
+    if (event.kind === 'saved') return <p key={event.seq} className="text-[11px] text-[#4ade80]">✓ {at('版本 {{version}} 已保存', { version: data.version })}</p>;
     if (event.kind === 'execution_error') return <ErrorCard key={event.seq} title="这次生成未成功" detail={data.diagnostic || JSON.stringify(data, null, 2)} />;
     if (event.kind === 'state' && data.state === 'failed') return <NoticeCard key={event.seq} text={data.error || '任务未完成'} />;
     return null;
@@ -136,12 +155,15 @@ export default function ChatPage() {
   return <main className="h-dvh overflow-hidden flex flex-col text-[#e9ebef]" style={{ background: '#0b0c0f', paddingTop: 'env(safe-area-inset-top)' }}>
     <ChatHeader title={title} subtitle={subtitle} onBack={() => navigate('/chats')}
       onOpenCanvas={bound ? () => navigate(`/workflow/${bound.id}`) : undefined}
-      onRename={session ? () => { const name = window.prompt(at('新的会话名'), title); if (name?.trim()) void action(async () => { const { session: next } = await api.update(session.id, { name: name.trim(), ...(session.workflow ? { workflow: { ...session.workflow, name: name.trim() } } : {}) }); setSnapshot(p => p ? { ...p, session: next } : p); if (bound) await updateWorkflow({ ...bound, name: name.trim() }); await reloadWorkflows(); }); } : undefined}
+      onRename={session ? () => setRenameOpen(true) : undefined}
       onHistory={session && snapshot?.versions.length ? () => setHistoryOpen(true) : undefined}
       onDelete={session ? () => setDeleteOpen(true) : undefined} />
     <div onScroll={e => { const el = e.currentTarget; followLatest.current = el.scrollHeight - el.scrollTop - el.clientHeight < 100; if (followLatest.current) setShowLatest(false); }} className="w-full max-w-4xl mx-auto flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-4 space-y-3">
-      {!ready && state !== 'loading' && <NoticeCard text="请先连接 Gateway，再使用工作流助手。" action="打开连接设置" onAction={() => navigate('/settings/server')} />}
+      {state === 'no-gateway' && <NoticeCard text="请先连接 Gateway，再使用工作流助手。" action="打开连接设置" onAction={() => navigate('/settings/server')} />}
+      {state === 'no-provider' && <NoticeCard text="助手尚未连接语言模型，管理员配置后即可开始对话。" action="重新检查" onAction={retry} />}
+      {state === 'error' && <NoticeCard text="暂时无法连接助手。" action="重新检查" onAction={retry} />}
       {error && <NoticeCard text={error} action="重新连接" onAction={refresh} />}
+      {mirrorError && <NoticeCard text={at('写入工作流库失败：{{message}}', { message: mirrorError })} action="重试" onAction={() => setMirrorError('')} />}
       {missing && <NoticeCard text="绑定的工作流已从库里删除。" action="从当前版本重新创建" onAction={() => void action(async () => { if (!session) return; const version = await api.version(session.id, session.version); await mirrorVersion(session, session.version, version.canvas, mirrorDeps, { recreate: true, fallbackName }); setMissing(false); await reloadWorkflows(); })} />}
       {conflict && <NoticeCard text="画布上有未同步的修改，发送下一条消息时会先导入画布，助手最新版本不会覆盖它。" />}
       {unsupported && <NoticeCard text="画布里有助手暂不支持的改动，助手将基于上一版本继续。" action="继续发送" onAction={() => { void action(send); }} />}
@@ -168,6 +190,13 @@ export default function ChatPage() {
         </form>
       </div>
     </footer>
+    <RenameSheet open={renameOpen} onOpenChange={setRenameOpen} initial={title} onSubmit={name => void action(async () => {
+      if (!session) return;
+      const { session: next } = await api.update(session.id, { name, ...(session.workflow ? { workflow: { ...session.workflow, name } } : {}) });
+      setSnapshot(p => p ? { ...p, session: next } : p);
+      if (bound) await updateWorkflow({ ...bound, name });
+      await reloadWorkflows();
+    })} />
     <WorkflowPickerSheet open={pickerOpen} onOpenChange={setPickerOpen} onPick={workflow => { if (workflow.agent?.sessionId) navigate(`/chat/${workflow.agent.sessionId}`, { replace: true }); else setPending(workflow); }} />
     {snapshot && <VersionHistorySheet open={historyOpen} onOpenChange={setHistoryOpen} versions={snapshot.versions} current={snapshot.session.version} busy={busy || !!task} onRestore={version => void action(async () => { await api.restore(snapshot.session.id, version, snapshot.session.version); setSnapshot(await api.snapshot(snapshot.session.id)); })} />}
     <SimpleConfirmDialog isOpen={deleteOpen} onClose={() => setDeleteOpen(false)} onConfirm={() => { setDeleteOpen(false); void action(async () => { if (!session) return; await api.remove(session.id); if (bound?.agent?.sessionId === session.id) await updateWorkflowAgentBinding(bound.id, undefined); navigate('/chats', { replace: true }); }); }} title={at('删除会话')} message={at('只删除对话记录和版本历史，工作流库里的工作流会保留。')} confirmText={at('删除')} cancelText={at('取消')} />
