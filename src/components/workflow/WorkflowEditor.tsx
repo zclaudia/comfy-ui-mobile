@@ -82,6 +82,7 @@ import { DEFAULT_CANVAS_CONFIG } from '@/config/canvasConfig';
 import { useConnectionStore } from '@/ui/store/connectionStore';
 import { useGlobalStore } from '@/ui/store/globalStore';
 import { useLatentPreviewStore } from '@/ui/store/latentPreviewStore';
+import { useAgentActivityStore } from '@/ui/store/agentActivityStore';
 
 // Types
 import type { IComfyGraphNode, IComfyWorkflow, IComfyWidget } from '@/shared/types/app/base';
@@ -267,9 +268,10 @@ const WorkflowEditor: React.FC = () => {
   });
 
   // Connection state
-  const { url: serverUrl, isConnected } = useConnectionStore();
+  const { url: serverUrl, isConnected, authMode } = useConnectionStore();
 
   const { isLatentPreviewFullscreen } = useLatentPreviewStore();
+  const chatActive = useAgentActivityStore(s => s.active);
 
   // Get groups with mapped nodes
   const workflowGroups = useMemo((): Group[] => {
@@ -3723,6 +3725,11 @@ const WorkflowEditor: React.FC = () => {
           }
         }}
         onSaveChanges={handleSaveChanges}
+        onOpenChat={authMode === 'gateway' ? () => {
+          if (workflow?.agent?.sessionId) navigate(`/chat/${workflow.agent.sessionId}`);
+          else if (workflow) navigate(`/chat/new?workflow=${encodeURIComponent(workflow.id)}`);
+        } : undefined}
+        chatActive={chatActive}
       />
 
       {historyWorkflowSession && (

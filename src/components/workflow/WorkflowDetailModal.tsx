@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X, Calendar, User, Tag, FileText, AlertCircle, Server, Play, Copy, Trash2, Plus, Check, FolderInput } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { X, Calendar, User, Tag, FileText, AlertCircle, Server, Play, Copy, Trash2, Plus, Check, FolderInput, MessageSquare } from 'lucide-react';
 import { Workflow } from '@/shared/types/app/IComfyWorkflow';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -12,6 +13,7 @@ import { updateWorkflow, removeWorkflow, addWorkflow, loadAllWorkflows } from '@
 import { toast } from 'sonner';
 import { generateUUID } from '@/utils/uuid';
 import { AuthenticatedImage } from '@/components/media/AuthenticatedImage';
+import { useConnectionStore } from '@/ui/store/connectionStore';
 
 interface WorkflowDetailModalProps {
   isOpen: boolean;
@@ -35,6 +37,8 @@ const WorkflowDetailModal: React.FC<WorkflowDetailModalProps> = ({
   onMove,
 }) => {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const authMode = useConnectionStore(s => s.authMode);
   const [thumbnailUrl, setThumbnailUrl] = useState<string | undefined>(workflow?.thumbnail);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -441,6 +445,16 @@ const WorkflowDetailModal: React.FC<WorkflowDetailModalProps> = ({
                   <Play className="w-5 h-5" />
                   {t('common.open')}
                 </Button>
+                {authMode === 'gateway' && workflow && (
+                  <Button
+                    onClick={() => { onClose(); navigate(workflow.agent?.sessionId ? `/chat/${workflow.agent.sessionId}` : `/chat/new?workflow=${encodeURIComponent(workflow.id)}`); }}
+                    variant="outline"
+                    className="flex-1 h-10 py-0 rounded-[10px] bg-[#3069f0]/12 border border-[#3069f0]/35 text-[#5b8af5] hover:bg-[#3069f0]/20 transition-all duration-200 flex items-center justify-center gap-2"
+                    title={t('workflow.openChat', '对话')}
+                  >
+                    <MessageSquare className="w-5 h-5" />
+                  </Button>
+                )}
                 <Button
                   onClick={handleCopyWorkflow}
                   variant="outline"

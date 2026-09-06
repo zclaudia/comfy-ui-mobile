@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, Loader2, ChevronRight, Home, Network } from 'lucide-react';
+import { ArrowLeft, Loader2, ChevronRight, Home, Network, MessageSquare } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -87,6 +87,8 @@ interface WorkflowHeaderProps {
   saveSucceeded?: boolean; // New prop to trigger checkmark animation
   sessionStack?: WorkflowSession[];
   onNavigateBreadcrumb?: (index: number) => void;
+  onOpenChat?: () => void;
+  chatActive?: boolean;
 }
 
 export const WorkflowHeader: React.FC<WorkflowHeaderProps> = ({
@@ -99,6 +101,8 @@ export const WorkflowHeader: React.FC<WorkflowHeaderProps> = ({
   saveSucceeded = false,
   sessionStack,
   onNavigateBreadcrumb,
+  onOpenChat,
+  chatActive,
 }) => {
   const { t } = useTranslation();
   const breadcrumbRef = useRef<HTMLDivElement>(null);
@@ -169,6 +173,20 @@ export const WorkflowHeader: React.FC<WorkflowHeaderProps> = ({
               )}
             </div>
           </div>
+
+          {onOpenChat && (
+            <button
+              data-e2e-action="open-chat"
+              onClick={onOpenChat}
+              className="h-9 px-3 shrink-0 flex items-center gap-1.5 rounded-[10px] border border-[#3069f0]/35 text-[12px] font-semibold text-[#5b8af5] relative"
+              style={{ background: 'rgba(48,105,240,0.12)' }}
+              title={t('workflow.openChat', '对话')}
+            >
+              <MessageSquare className="w-[15px] h-[15px]" strokeWidth={1.8} />
+              <span>{t('workflow.openChat', '对话')}</span>
+              {chatActive && <span className="absolute -top-[3px] -right-[3px] w-2 h-2 rounded-full bg-[#3069f0] border-[1.5px] border-[#0b0c0f]" />}
+            </button>
+          )}
 
           {/* Save Button Slot - Reserved space to prevent breadcrumb invasion */}
           <div className="w-9 h-9 flex items-center justify-end flex-shrink-0">
