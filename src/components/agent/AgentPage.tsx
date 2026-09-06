@@ -2,7 +2,7 @@ import { useAgentText } from './useAgentText';
 import { AgentHistory } from './AgentHistory';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Bot, History, Send, Plus, Square, Loader2, Save, RotateCcw, Network } from 'lucide-react';
+import { ArrowLeft, Bot, History, Send, Plus, Square, Loader2, RotateCcw, Network } from 'lucide-react';
 import { toast } from 'sonner';
 import { AgentApi } from '@/infrastructure/api/AgentApi';
 import type { AgentEvent, AgentSession, AgentSnapshot, AgentStatus } from '@/infrastructure/api/AgentApi';
@@ -109,7 +109,6 @@ export default function AgentPage() {
   }
   const versionActions = (version: number) => <div className="flex flex-wrap gap-2 mt-3">
     <button className={button} disabled={busy} onClick={() => void action(() => openVersion(version))}><Network size={14} />{at('在画布打开副本')}</button>
-    <button className={button} disabled={busy} onClick={() => void action(async () => { await api.save(selected, version); toast.success(at('已保存版本 {{version}}', { version })); })}><Save size={14} />{at('保存')}</button>
     <button className={button} disabled={busy || !!task || currentVersion === version} onClick={() => void action(async () => { await api.restore(selected, version, currentVersion); toast.success(at('已恢复为新版本')); })}><RotateCcw size={14} />{at('恢复')}</button>
   </div>;
 

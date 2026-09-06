@@ -15,6 +15,14 @@ export interface CloudWorkflowMetadata {
   conflictedFrom?: string;
 }
 
+/** Which agent session mirrors into this workflow, and which version the library copy currently holds. */
+export interface AgentWorkflowBinding {
+  sessionId: string;
+  mirroredVersion: number;
+  /** ISO time written together with modifiedAt when the library copy was last written from a session version. */
+  mirroredAt: string;
+}
+
 export interface IComfyWorkflow {
   id: string;
   name: string;
@@ -33,6 +41,7 @@ export interface IComfyWorkflow {
   author?: string;
   sortOrder?: number;
   cloud?: CloudWorkflowMetadata;
+  agent?: AgentWorkflowBinding;
 }
 
 export interface Workflow extends IComfyWorkflow {}

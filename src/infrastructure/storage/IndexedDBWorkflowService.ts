@@ -34,6 +34,7 @@ interface DBWorkflow {
   isValid?: boolean
   sortOrder?: number
   cloud?: Workflow['cloud']
+  agent?: Workflow['agent']
 }
 
 class IndexedDBWorkflowService {
@@ -133,7 +134,8 @@ class IndexedDBWorkflowService {
       thumbnail: workflow.thumbnail,
       isValid: workflow.isValid,
       sortOrder: workflow.sortOrder,
-      cloud: workflow.cloud
+      cloud: workflow.cloud,
+      agent: workflow.agent
     }
   }
 
@@ -647,3 +649,11 @@ export const removeWorkflowFromCache = (workflowId: string) => indexedDBService.
 // Export service instance for advanced usage
 export default indexedDBService
 export { IndexedDBWorkflowService }
+
+/** Metadata-only write used by the chat page after a canvas import; keeps workflow_json untouched. */
+export const updateWorkflowAgentBinding = async (workflowId: string, agent: Workflow['agent']) => {
+  const cached = await indexedDBService.findWorkflowById(workflowId)
+  if (!cached) return
+  await indexedDBService.updateWorkflow({ ...cached, agent })
+  emitWorkflowLocalChange({ type: 'upsert', workflowId })
+}
