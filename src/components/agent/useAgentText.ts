@@ -11,6 +11,8 @@ export function useAgentText() {
     if (created) return t('agentUI.创建 {{name}} 工作流', { name: created[1] });
     const restored = /^恢复版本 (\d+)$/.exec(text);
     if (restored) return t('agentUI.恢复版本 {{version}}', { version: restored[1] });
+    const restoredFrom = /^从版本 (\d+) 恢复$/.exec(text);
+    if (restoredFrom) return t('agentUI.从版本 {{version}} 恢复', { version: restoredFrom[1] });
     return t(`agentUI.${text}`, { defaultValue: text, ...values });
   }, [t]);
 }
