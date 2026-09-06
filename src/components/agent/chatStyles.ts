@@ -1,0 +1,2 @@
+export const chipButton = 'h-8 px-3 inline-flex items-center gap-1.5 rounded-[9px] border border-white/[0.08] bg-white/[0.045] text-[12px] font-semibold text-[#c8ccd4] disabled:opacity-40 disabled:cursor-not-allowed';
+export const accentChip = 'h-8 px-3 inline-flex items-center gap-1.5 rounded-[9px] border border-[#3069f0]/35 bg-[#3069f0]/12 text-[12px] font-semibold text-[#5b8af5] disabled:opacity-40 disabled:cursor-not-allowed';
