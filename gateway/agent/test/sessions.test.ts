@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { randomUUID } from 'node:crypto';
+import { MockLanguageModelV3 } from 'ai/test';
 import { AgentStore } from '../store.js';
+import { AgentService } from '../service.js';
+import { WorkflowError } from '../../workflow/engine.js';
 import { textToImage } from '../templates.js';
 import { info } from './fixture.js';
 
@@ -55,6 +59,31 @@ test('updateSession', () => {
   assert.deepEqual(explicit.workflow, { id: 'wf-3', name: 'from-wf' });
 
   store.close();
+});
+
+const service = () => new AgentService({ agentStorePath: ':memory:', comfyUrl: 'http://unused.invalid', agentPollMs: 60_000 }, { model: new MockLanguageModelV3({ doGenerate: async () => { throw new Error('model must not be called'); } }) });
+
+test('service imports canvas versions, rejects unsupported canvases and cancels tasks on delete', async () => {
+  const agent = service();
+  const session = await agent.createSession('me', '忽略', canvas(), { id: 'wf-1', name: '海报' });
+  assert.equal(session.name, '海报', 'binding name wins over request name');
+  const imported = agent.importVersion(session.id, 'me', canvas(), 1, '画布修改');
+  assert.equal(imported.version, 2);
+  const events = agent.store.events(session.id);
+  assert.deepEqual(events.at(-1)?.data, { version: 2, summary: '画布修改', source: 'canvas' });
+  assert.throws(() => agent.importVersion(session.id, 'me', canvas(), 1, '过期'), /版本已改变/);
+  const broken = canvas(); (broken.nodes[0] as { mode?: number }).mode = 4;
+  assert.throws(() => agent.importVersion(session.id, 'me', broken, 2, '坏画布'), WorkflowError);
+  assert.throws(() => agent.importVersion(session.id, 'someone-else', canvas(), 2, '越权'), /会话不存在/);
+
+  assert.deepEqual(agent.updateSession(session.id, 'me', { workflow: null }).workflow, undefined);
+
+  const task = agent.enqueue(session.id, 'me', randomUUID(), '开始一个任务');
+  assert.throws(() => agent.importVersion(session.id, 'me', canvas(), 2, '任务中'), /先停止当前任务/);
+  assert.deepEqual(agent.deleteSession(session.id, 'me'), { deleted: true });
+  assert.throws(() => agent.store.task(task.id), /任务不存在/);
+  assert.throws(() => agent.store.session(session.id), /会话不存在/);
+  await agent.stop();
 });
 
 test('deleteSession', () => {

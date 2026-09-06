@@ -7,7 +7,7 @@ import type { LanguageModel, ToolSet } from 'ai';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { z } from 'zod';
 import { AgentStore, AgentHttpError, activeStates } from './store.js';
-import type { Task, State } from './store.js';
+import type { Task, State, SessionWorkflow } from './store.js';
 import { canvasToPrompt, applyCanvasPatch } from '../workflow/canvas.js';
 import type { Canvas } from '../workflow/canvas.js';
 import { WorkflowError, validatePrompt } from '../workflow/engine.js';
@@ -81,9 +81,9 @@ export class AgentService {
     if (terminal(current) || this.stopping || Date.now() > current.deadline) throw new AgentHttpError(409, '任务已停止或超时');
     return current;
   }
-  async createSession(owner: string, name: string, canvas?: Canvas) {
+  async createSession(owner: string, name: string, canvas?: Canvas, workflow?: SessionWorkflow) {
     if (canvas) canvasToPrompt(canvas, {}, false); // Structure only: missing model values must be repairable.
-    return this.store.create(owner, name, canvas);
+    return this.store.create(owner, workflow?.name ?? name, canvas, workflow);
   }
   snapshot(id: string, owner: string, after: number) {
     const session = this.store.session(id, owner);
@@ -114,6 +114,31 @@ export class AgentService {
     return this.store.transaction(() => {
       const next = this.store.commitVersion(id, baseVersion, target.canvas, `从版本 ${version} 恢复`);
       this.store.event(id, null, 'workflow', { version: next.version, summary: next.summary });
+      return { version: next.version };
+    });
+  }
+  updateSession(id: string, owner: string, patch: { name?: string; workflow?: SessionWorkflow | null }) {
+    this.store.session(id, owner);
+    return this.store.updateSession(id, patch);
+  }
+  deleteSession(id: string, owner: string) {
+    this.store.session(id, owner);
+    for (const task of this.store.tasks(id)) {
+      if (terminal(task)) continue;
+      this.setState(task, 'cancelled');
+      if (this.runningId === task.id) this.controller?.abort();
+    }
+    this.store.deleteSession(id);
+    return { deleted: true };
+  }
+  /** The App pushes canvas edits as a new version before the next message so the agent never works on a stale graph. */
+  importVersion(id: string, owner: string, canvas: Canvas, baseVersion: number, summary: string) {
+    this.store.session(id, owner);
+    if (this.store.tasks(id).some(t => activeStates.includes(t.state))) throw new AgentHttpError(409, '请先停止当前任务');
+    canvasToPrompt(canvas, {}, false);
+    return this.store.transaction(() => {
+      const next = this.store.commitVersion(id, baseVersion, canvas, summary);
+      this.store.event(id, null, 'workflow', { version: next.version, summary: next.summary, source: 'canvas' });
       return { version: next.version };
     });
   }
