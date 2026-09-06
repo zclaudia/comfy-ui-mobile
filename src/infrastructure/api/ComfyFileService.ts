@@ -17,6 +17,33 @@ import {
   ComfyFileType
 } from '@/shared/types/comfy/IComfyFile';
 
+export interface ServerWorkflowInfo {
+  filename: string;
+  name?: string;
+  folder?: string;
+  size?: number;
+  modified?: number;
+  modified_iso?: string;
+  etag?: string;
+}
+
+export interface WorkflowMutationResult {
+  success: boolean;
+  filename?: string;
+  size?: number;
+  modified?: number;
+  modified_iso?: string;
+  etag?: string;
+  conflict?: boolean;
+  currentEtag?: string;
+  error?: string;
+}
+
+const encodeWorkflowPath = (filename: string): string => filename
+  .split('/')
+  .map(segment => encodeURIComponent(segment))
+  .join('/');
+
 export class ComfyFileService {
   private serverUrl: string;
   private timeout: number;
@@ -161,7 +188,7 @@ export class ComfyFileService {
   /**
    * Get list of workflows from server using Mobile API Extension
    */
-  async listWorkflows(): Promise<{ success: boolean; workflows: any[]; error?: string }> {
+  async listWorkflows(): Promise<{ success: boolean; workflows: ServerWorkflowInfo[]; error?: string }> {
     try {
 
       // Try the custom API endpoint for workflows
@@ -238,7 +265,7 @@ export class ComfyFileService {
   /**
    * Upload workflow file to server using Mobile API Extension
    */
-  async uploadWorkflow(file: File, filename?: string, overwrite: boolean = false): Promise<{ success: boolean; message?: string; filename?: string; error?: string }> {
+  async uploadWorkflow(file: File, filename?: string, overwrite: boolean = false): Promise<WorkflowMutationResult & { message?: string }> {
     try {
 
       // Create FormData for file upload
@@ -284,7 +311,11 @@ export class ComfyFileService {
         return {
           success: true,
           message: response.data.message,
-          filename: response.data.filename
+          filename: response.data.filename,
+          size: response.data.size,
+          modified: response.data.modified,
+          modified_iso: response.data.modified_iso,
+          etag: response.data.etag,
         };
       } else {
         throw new Error(`API returned status: ${response.data?.status || 'unknown'}`);
@@ -308,7 +339,16 @@ export class ComfyFileService {
   /**
    * Download workflow content from server using Mobile API Extension
    */
-  async downloadWorkflow(filename: string): Promise<{ success: boolean; content?: any; error?: string }> {
+  async downloadWorkflow(filename: string): Promise<{
+    success: boolean;
+    content?: any;
+    filename?: string;
+    size?: number;
+    modified?: number;
+    modified_iso?: string;
+    etag?: string;
+    error?: string;
+  }> {
     try {
 
       // Ensure .json extension
@@ -316,10 +356,7 @@ export class ComfyFileService {
       // Workflows can sit in subfolders, so the separators must survive as real
       // path separators. Encoding the whole string would turn them into %2F and
       // leave the route match up to the server's decoding behaviour.
-      const encodedPath = workflowFilename
-        .split('/')
-        .map(segment => encodeURIComponent(segment))
-        .join('/');
+      const encodedPath = encodeWorkflowPath(workflowFilename);
       const endpoint = `${this.serverUrl}/comfymobile/api/workflows/content/${encodedPath}`;
 
 
@@ -341,7 +378,12 @@ export class ComfyFileService {
 
         return {
           success: true,
-          content: response.data.content
+          content: response.data.content,
+          filename: response.data.filename,
+          size: response.data.size,
+          modified: response.data.modified,
+          modified_iso: response.data.modified_iso,
+          etag: response.data.etag,
         };
       } else {
         throw new Error(`API returned status: ${response.data?.status || 'unknown'}`);
@@ -358,6 +400,67 @@ export class ComfyFileService {
       return {
         success: false,
         error: error.response?.data?.message || error.message || 'Failed to download workflow from server'
+      };
+    }
+  }
+
+  /** Save a workflow with an optional ETag precondition. */
+  async saveWorkflow(
+    filename: string,
+    content: any,
+    options: { overwrite?: boolean; expectedEtag?: string } = {},
+  ): Promise<WorkflowMutationResult> {
+    try {
+      const response = await axios.post(`${this.serverUrl}/comfymobile/api/workflows/save`, {
+        filename,
+        content,
+        overwrite: options.overwrite ?? false,
+        expected_etag: options.expectedEtag,
+      }, { timeout: 30_000 });
+
+      return {
+        success: response.data?.status === 'success',
+        filename: response.data?.filename,
+        size: response.data?.size,
+        modified: response.data?.modified,
+        modified_iso: response.data?.modified_iso,
+        etag: response.data?.etag,
+      };
+    } catch (error: any) {
+      const conflict = error.response?.status === 409
+        || error.response?.data?.code === 'workflow_conflict';
+      return {
+        success: false,
+        conflict,
+        currentEtag: error.response?.data?.current_etag,
+        error: error.response?.data?.message || error.message || 'Failed to save workflow',
+      };
+    }
+  }
+
+  /** Delete a workflow with an optional ETag precondition. */
+  async deleteWorkflow(filename: string, expectedEtag?: string): Promise<WorkflowMutationResult> {
+    try {
+      const workflowFilename = filename.endsWith('.json') ? filename : `${filename}.json`;
+      const response = await axios.delete(
+        `${this.serverUrl}/comfymobile/api/workflows/content/${encodeWorkflowPath(workflowFilename)}`,
+        {
+          headers: expectedEtag ? { 'If-Match': expectedEtag } : undefined,
+          timeout: 15_000,
+        },
+      );
+      return {
+        success: response.data?.status === 'success',
+        filename: response.data?.filename,
+      };
+    } catch (error: any) {
+      const conflict = error.response?.status === 409
+        || error.response?.data?.code === 'workflow_conflict';
+      return {
+        success: false,
+        conflict,
+        currentEtag: error.response?.data?.current_etag,
+        error: error.response?.data?.message || error.message || 'Failed to delete workflow',
       };
     }
   }

@@ -2,19 +2,37 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "desktop-main",
   "description": "Development capability for running the same shell on desktop.",
-  "windows": ["main"],
-  "platforms": ["linux", "macOS", "windows"],
+  "windows": [
+    "main"
+  ],
+  "platforms": [
+    "linux",
+    "macOS",
+    "windows"
+  ],
   "permissions": [
     "core:default",
     {
       "identifier": "http:default",
       "allow": [
-        { "url": "http://127.0.0.1:*" },
-        { "url": "http://localhost:*" },
-        { "url": "http://192.168.*:*" },
-        { "url": "https://*" }
+        {
+          "url": "https://*:*/*"
+        },
+        {
+          "url": "http://127.0.0.1:*/*"
+        },
+        {
+          "url": "http://localhost:*/*"
+        },
+        {
+          "url": "http://:host(192\\.168(?:\\.[0-9]{1,3}){2}):*/*"
+        },
+        {
+          "url": "https://*/*"
+        }
       ]
     },
-    "websocket:default"
+    "websocket:default",
+    "clipboard-manager:allow-write-text"
   ]
 }

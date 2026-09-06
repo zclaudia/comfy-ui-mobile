@@ -7,13 +7,38 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
+import { invoke } from '@tauri-apps/api/core';
 import { IComfyFileInfo } from '@/shared/types/comfy/IComfyFile';
 import { ComfyFileService } from '@/infrastructure/api/ComfyFileService';
 import { isImageFile } from '@/shared/utils/ComfyFileUtils';
 import { extractWorkflowFromPng } from '@/utils/pngMetadataExtractor';
 import type { IComfyJson } from '@/shared/types/app/IComfyJson';
-import { comfyAuthenticatedFetch } from '@/infrastructure/auth/ComfyAuthService';
+import { comfyAuthenticatedFetch, withComfyAuth } from '@/infrastructure/auth/ComfyAuthService';
 import { useAuthenticatedMediaUrl } from '@/hooks/useAuthenticatedMediaUrl';
+import { getNativeGatewayAuthorization } from '@/platform/gatewaySession';
+import { isTauriRuntime } from '@/platform/runtime';
+
+interface NativeDownloadResponse {
+  downloadId: number;
+  filename: string;
+}
+
+const getMediaMimeType = (filename: string): string | undefined => {
+  const extension = filename.split('.').pop()?.toLowerCase();
+  const mimeTypes: Record<string, string> = {
+    avi: 'video/x-msvideo',
+    gif: 'image/gif',
+    jpeg: 'image/jpeg',
+    jpg: 'image/jpeg',
+    mkv: 'video/x-matroska',
+    mov: 'video/quicktime',
+    mp4: 'video/mp4',
+    png: 'image/png',
+    webm: 'video/webm',
+    webp: 'image/webp',
+  };
+  return extension ? mimeTypes[extension] : undefined;
+};
 
 interface FilePreviewModalProps {
   isOpen: boolean;
@@ -296,14 +321,29 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
     return filename.split('.').pop()?.toUpperCase() || '';
   };
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     const downloadUrl = authenticatedMedia.url;
     if (!downloadUrl) return;
 
     setIsDownloading(true);
     try {
+      if (isTauriRuntime() && url && /^https?:\/\//i.test(url)) {
+        const nativeUrl = withComfyAuth(url);
+        await invoke<NativeDownloadResponse>('plugin:media-download|enqueue_download', {
+          payload: {
+            url: nativeUrl,
+            filename,
+            authorization: getNativeGatewayAuthorization(nativeUrl),
+            mimeType: getMediaMimeType(filename),
+          },
+        });
+        toast.success(t('media.downloadStarted'), {
+          description: t('media.downloadStartedDesc', { filename }),
+        });
+        return;
+      }
+
       // Create a hidden link and trigger download directly via browser
-      // This avoids loading the entire file into memory (Blob)
       const link = document.body.appendChild(document.createElement('a'));
 
       // Add download attribute to suggest filename
@@ -418,6 +458,7 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
                     </Button>
 
                     <Button
+                      data-e2e-action="download"
                       onClick={handleDownload}
                       disabled={isDownloading}
                       variant="ghost"

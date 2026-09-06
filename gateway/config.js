@@ -6,6 +6,13 @@ const parseBoolean = (value, fallback = false) => {
   return ['1', 'true', 'yes', 'on'].includes(String(value).toLowerCase());
 };
 
+const parseSameSite = (value) => {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  if (normalized === '') return 'strict';
+  if (['strict', 'lax', 'none'].includes(normalized)) return normalized;
+  throw new Error('GATEWAY_COOKIE_SAMESITE must be one of: strict, lax, none');
+};
+
 const parseInteger = (value, fallback, minimum = 1) => {
   const parsed = Number.parseInt(String(value ?? ''), 10);
   return Number.isFinite(parsed) && parsed >= minimum ? parsed : fallback;
@@ -49,6 +56,10 @@ export const loadGatewayConfig = (env = process.env, cwd = process.cwd()) => {
     .digest('hex');
 
   const launcherUrl = String(env.COMFYUI_LAUNCHER_URL ?? '').trim();
+  const agentModel = String(env.AGENT_LLM_MODEL || '').trim();
+  if (/(sk-|sess-|Bearer\s)/i.test(agentModel)) {
+    throw new Error('AGENT_LLM_MODEL appears to contain a credential; check AGENT_LLM_MODEL and AGENT_LLM_API_KEY');
+  }
 
   return {
     host: env.GATEWAY_HOST || '0.0.0.0',
@@ -81,6 +92,7 @@ export const loadGatewayConfig = (env = process.env, cwd = process.cwd()) => {
       30 * 24 * 60 * 60,
     ),
     secureCookies: parseBoolean(env.GATEWAY_SECURE_COOKIES, false),
+    sessionCookieSameSite: parseSameSite(env.GATEWAY_COOKIE_SAMESITE),
     trustProxy: parseBoolean(env.GATEWAY_TRUST_PROXY, false),
     allowedOrigins: new Set(
       String(env.GATEWAY_ALLOWED_ORIGINS ?? '')
@@ -94,5 +106,14 @@ export const loadGatewayConfig = (env = process.env, cwd = process.cwd()) => {
     requestTimeoutMs: parseInteger(env.GATEWAY_UPSTREAM_TIMEOUT_MS, 10 * 60 * 1000),
     rateLimitPerMinute: parseInteger(env.GATEWAY_RATE_LIMIT_PER_MINUTE, 600),
     loginRateLimitPerMinute: parseInteger(env.GATEWAY_LOGIN_RATE_LIMIT_PER_MINUTE, 10),
+    agentEnabled: parseBoolean(env.GATEWAY_AGENT_ENABLED, false),
+    agentStorePath: path.resolve(cwd, env.GATEWAY_AGENT_STORE || 'gateway/.data/agent.sqlite'),
+    agentModel,
+    agentBaseUrl: String(env.AGENT_LLM_BASE_URL || '').trim(),
+    agentApiKey: String(env.AGENT_LLM_API_KEY || '').trim(),
+    agentMaxSteps: Math.min(30, parseInteger(env.AGENT_MAX_STEPS, 12)),
+    agentMaxPreviews: Math.min(5, parseInteger(env.AGENT_MAX_PREVIEWS, 3)),
+    agentTimeoutMs: Math.min(60 * 60_000, parseInteger(env.AGENT_TIMEOUT_MS, 20 * 60_000)),
+    agentPollMs: Math.max(1000, parseInteger(env.AGENT_POLL_MS, 1500)),
   };
 };

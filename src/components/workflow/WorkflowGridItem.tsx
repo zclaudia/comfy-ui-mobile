@@ -56,6 +56,7 @@ const WorkflowGridItem: React.FC<WorkflowGridItemProps> = ({
 
   return (
     <div
+      data-e2e-workflow-name={workflow.name}
       className={`relative rounded-[10px] overflow-hidden cursor-pointer border transition-colors ${isSelected
         ? 'border-[#3069f0]/70 ring-1 ring-[#3069f0]/40'
         : 'border-white/[0.07] hover:border-white/[0.14]'

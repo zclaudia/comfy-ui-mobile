@@ -11,6 +11,13 @@ import { createGatewayServer } from '../server.js';
 
 const AUTH_TOKEN = 'test-gateway-token-with-enough-entropy';
 
+test('provider credential accidentally placed in model field is rejected without echoing it', () => {
+  const secret = 'sk-test-secret-misplaced';
+  assert.throws(() => loadGatewayConfig({ GATEWAY_AUTH_TOKEN: AUTH_TOKEN, AGENT_LLM_MODEL: secret }), error =>
+    error.message.includes('AGENT_LLM_MODEL') && !error.message.includes(secret));
+  assert.throws(() => loadGatewayConfig({ GATEWAY_AUTH_TOKEN: AUTH_TOKEN, AGENT_LLM_MODEL: `=${secret}` }), error => !error.message.includes(secret));
+});
+
 const listen = (server) => new Promise((resolve, reject) => {
   server.once('error', reject);
   server.listen(0, '127.0.0.1', () => {

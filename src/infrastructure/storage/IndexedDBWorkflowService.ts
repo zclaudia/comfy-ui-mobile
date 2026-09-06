@@ -13,6 +13,8 @@
  */
 
 import type { Workflow } from '@/shared/types/app/IComfyWorkflow'
+import { queueCloudWorkflowDelete } from '@/infrastructure/sync/CloudWorkflowOutbox'
+import { emitWorkflowLocalChange } from '@/infrastructure/sync/WorkflowSyncEvents'
 
 const DB_NAME = 'ComfyMobileUI'
 const DB_VERSION = 3 // Updated to support sortOrder field
@@ -31,6 +33,7 @@ interface DBWorkflow {
   thumbnail?: string
   isValid?: boolean
   sortOrder?: number
+  cloud?: Workflow['cloud']
 }
 
 class IndexedDBWorkflowService {
@@ -129,7 +132,8 @@ class IndexedDBWorkflowService {
       tags: workflow.tags,
       thumbnail: workflow.thumbnail,
       isValid: workflow.isValid,
-      sortOrder: workflow.sortOrder
+      sortOrder: workflow.sortOrder,
+      cloud: workflow.cloud
     }
   }
 
@@ -319,6 +323,16 @@ class IndexedDBWorkflowService {
       console.error('Failed to update workflow in IndexedDB:', error)
       throw error
     }
+  }
+
+  /** Upsert an exact server-backed cache entry without marking it as a local edit. */
+  async cacheWorkflow(workflow: Workflow): Promise<void> {
+    const store = await this.getTransaction('readwrite')
+    return new Promise((resolve, reject) => {
+      const request = store.put(this.workflowToDBFormat(workflow))
+      request.onsuccess = () => resolve()
+      request.onerror = () => reject(new Error(`Failed to cache workflow: ${request.error?.message}`))
+    })
   }
 
   /**
@@ -593,9 +607,30 @@ const indexedDBService = new IndexedDBWorkflowService()
 // Export functions that match WorkflowStorageService API
 export const loadAllWorkflows = () => indexedDBService.loadAllWorkflows()
 export const saveAllWorkflows = (workflows: Workflow[]) => indexedDBService.saveAllWorkflows(workflows)
-export const addWorkflow = (workflow: Workflow) => indexedDBService.addWorkflow(workflow)
-export const updateWorkflow = (workflow: Workflow) => indexedDBService.updateWorkflow(workflow)
-export const removeWorkflow = (workflowId: string) => indexedDBService.removeWorkflow(workflowId)
+export const addWorkflow = async (workflow: Workflow) => {
+  // A copied or newly imported local item is a new cloud object. Reusing the
+  // source's filename/ETag would overwrite it on the next sync.
+  const localWorkflow = { ...workflow, cloud: undefined }
+  await indexedDBService.addWorkflow(localWorkflow)
+  emitWorkflowLocalChange({ type: 'upsert', workflowId: localWorkflow.id })
+}
+export const updateWorkflow = async (workflow: Workflow) => {
+  // Editors can stay mounted while a background sync refreshes the ETag in
+  // IndexedDB. Merge that newest metadata before marking the next edit dirty.
+  const cached = await indexedDBService.findWorkflowById(workflow.id)
+  const cloud = cached?.cloud || workflow.cloud
+  const localWorkflow: Workflow = cloud
+    ? { ...workflow, cloud: { ...cloud, dirty: true, syncError: undefined } }
+    : workflow
+  await indexedDBService.updateWorkflow(localWorkflow)
+  emitWorkflowLocalChange({ type: 'upsert', workflowId: localWorkflow.id })
+}
+export const removeWorkflow = async (workflowId: string) => {
+  const workflow = await indexedDBService.findWorkflowById(workflowId)
+  if (workflow?.cloud) queueCloudWorkflowDelete(workflow.cloud)
+  await indexedDBService.removeWorkflow(workflowId)
+  if (workflow) emitWorkflowLocalChange({ type: 'delete', workflow })
+}
 export const findWorkflowById = (workflowId: string) => indexedDBService.findWorkflowById(workflowId)
 export const workflowExists = (workflowId: string) => indexedDBService.workflowExists(workflowId)
 export const getWorkflowStats = () => indexedDBService.getWorkflowStats()
@@ -606,6 +641,8 @@ export const importWorkflows = (jsonData: string) => indexedDBService.importWork
 export const getWorkflow = (id: string) => indexedDBService.getWorkflow(id)
 export const getStorageQuotaInfo = () => indexedDBService.getStorageQuotaInfo()
 export const isSupported = () => IndexedDBWorkflowService.isSupported()
+export const cacheWorkflowFromCloud = (workflow: Workflow) => indexedDBService.cacheWorkflow(workflow)
+export const removeWorkflowFromCache = (workflowId: string) => indexedDBService.removeWorkflow(workflowId)
 
 // Export service instance for advanced usage
 export default indexedDBService

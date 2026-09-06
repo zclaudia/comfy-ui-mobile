@@ -1,0 +1,180 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { createServer } from 'node:http';
+import { once } from 'node:events';
+import type { AddressInfo } from 'node:net';
+import test from 'node:test';
+import { applyPromptPatch, validatePrompt, WorkflowError } from '../engine.js';
+import type { ObjectInfo, Prompt } from '../engine.js';
+import { applyCanvasPatch, canvasToPrompt, promptToCanvas } from '../canvas.js';
+import type { Canvas } from '../canvas.js';
+import { ComfyAdapter, ComfyRequestError } from '../comfyAdapter.js';
+
+const info: ObjectInfo = {
+  CheckpointLoaderSimple: { input: { required: { ckpt_name: [['v1-5-pruned-emaonly-fp16.safetensors']] } }, output: ['MODEL', 'CLIP', 'VAE'] },
+  CLIPTextEncode: { input: { required: { text: ['STRING'], clip: ['CLIP'] } }, output: ['CONDITIONING'] },
+  EmptyLatentImage: { input: { required: { width: ['INT', { min: 64, max: 4096 }], height: ['INT', { min: 64, max: 4096 }], batch_size: ['INT', { min: 1, max: 8 }] } }, output: ['LATENT'] },
+  KSampler: { input: { required: {
+    model: ['MODEL'], positive: ['CONDITIONING'], negative: ['CONDITIONING'], latent_image: ['LATENT'],
+    seed: ['INT', { min: 0 }], steps: ['INT', { min: 1, max: 100 }], cfg: ['FLOAT', { min: 0, max: 100 }],
+    sampler_name: [['euler']], scheduler: [['normal']], denoise: ['FLOAT', { min: 0, max: 1 }],
+  } }, output: ['LATENT'] },
+  VAEDecode: { input: { required: { samples: ['LATENT'], vae: ['VAE'] } }, output: ['IMAGE'] },
+  SaveImage: { input: { required: { images: ['IMAGE'], filename_prefix: ['STRING'] } }, output: [], output_node: true },
+};
+const sample = JSON.parse(await readFile(new URL('../../../tests/samples/workflows/sample-workflow.json', import.meta.url), 'utf8')) as Canvas;
+const original = canvasToPrompt(sample, info);
+const codes = (prompt: unknown) => validatePrompt(prompt, info).map(d => d.code);
+
+test('real sample imports correct seed widget offsets and connections', () => {
+  assert.equal(original['3'].inputs.seed, 156680208700286);
+  assert.equal(original['3'].inputs.steps, 20);
+  assert.equal(original['3'].inputs.cfg, 8);
+  assert.deepEqual(original['3'].inputs.model, ['4', 0]);
+  assert.deepEqual(codes(original), []);
+});
+
+test('portrait edit round-trips preserving layout, metadata and UI-only widgets', () => {
+  const before = structuredClone(sample);
+  const updated = applyPromptPatch({ version: 2, prompt: original }, 2, [
+    { op: 'set_input', nodeId: '5', input: 'height', value: 768 },
+    { op: 'set_input', nodeId: '6', input: 'text', value: '日系动漫头像' },
+  ], info);
+  const canvas = promptToCanvas(sample, updated.prompt, info);
+  assert.equal(updated.version, 3);
+  assert.deepEqual(canvasToPrompt(canvas, info), updated.prompt);
+  assert.deepEqual(canvas.extra, sample.extra);
+  assert.deepEqual(canvas.nodes.map(n => n.pos), sample.nodes.map(n => n.pos));
+  assert.equal(canvas.nodes.find(n => n.id === 3)!.widgets_values![1], 'randomize');
+  assert.deepEqual(sample, before);
+  assert.equal(original['5'].inputs.height, 512);
+});
+
+test('reconnection updates both canvas slot ends and link table', () => {
+  const prompt = structuredClone(original);
+  prompt['3'].inputs.positive = ['7', 0];
+  const canvas = promptToCanvas(sample, prompt, info);
+  assert.deepEqual(canvasToPrompt(canvas, info), prompt);
+  assert.equal(canvas.nodes.find(n => n.id === 6)!.outputs![0].links, null);
+  assert.equal(canvas.nodes.find(n => n.id === 7)!.outputs![0].links!.length, 2);
+});
+
+test('a missing model can be repaired without accepting an invalid final version', () => {
+  const broken = structuredClone(sample);
+  broken.nodes.find(n => n.id === 4)!.widgets_values![0] = 'missing.safetensors';
+  const current = { version: 0, canvas: broken };
+  const fixed = applyCanvasPatch(current, 0, [{ op: 'set_input', nodeId: '4', input: 'ckpt_name', value: 'v1-5-pruned-emaonly-fp16.safetensors' }], info);
+  assert.deepEqual(codes(fixed.prompt), []);
+  assert.deepEqual(canvasToPrompt(fixed.canvas, info), fixed.prompt);
+  assert.equal(broken.nodes.find(n => n.id === 4)!.widgets_values![0], 'missing.safetensors');
+  assert.throws(() => applyCanvasPatch(current, 0, [{ op: 'set_input', nodeId: '4', input: 'ckpt_name', value: 'still-missing' }], info), WorkflowError);
+});
+
+test('invalid batch and stale version leave original unchanged', () => {
+  const current = { version: 4, prompt: structuredClone(original) };
+  const before = structuredClone(current);
+  assert.throws(() => applyPromptPatch(current, 4, [
+    { op: 'set_input', nodeId: '6', input: 'text', value: 'changed' },
+    { op: 'set_input', nodeId: '5', input: 'height', value: -10 },
+  ], info), WorkflowError);
+  assert.throws(() => applyPromptPatch(current, 3, [{ op: 'remove_node', nodeId: '5' }], info), /latest version/);
+  assert.deepEqual(current, before);
+});
+
+test('add and reconnect in one patch, then remove old source atomically', () => {
+  const result = applyPromptPatch({ version: 0, prompt: original }, 0, [
+    { op: 'add_node', nodeId: '10', node: { class_type: 'CLIPTextEncode', inputs: { clip: ['4', 1], text: 'new' } } },
+    { op: 'set_input', nodeId: '3', input: 'positive', value: ['10', 0] },
+    { op: 'remove_node', nodeId: '6' },
+  ], info);
+  assert.deepEqual(codes(result.prompt), []);
+  assert.throws(() => promptToCanvas(sample, result.prompt, info), /not supported/);
+  assert.throws(() => applyPromptPatch({ version: 0, prompt: original }, 0, [{ op: 'remove_node', nodeId: '4' }], info), /Missing source/);
+});
+
+test('diagnostics identify missing models, types, inputs, malformed links and ranges', () => {
+  const cases: [string, (p: Prompt) => void][] = [
+    ['invalid_choice', p => { p['4'].inputs.ckpt_name = 'not-installed'; }],
+    ['missing_node', p => { p['4'].class_type = 'Unknown'; }],
+    ['required_input', p => { delete p['3'].inputs.model; }],
+    ['invalid_slot', p => { p['3'].inputs.model = ['4', 99]; }],
+    ['incompatible_link', p => { p['3'].inputs.model = ['4', 1]; }],
+    ['out_of_range', p => { p['3'].inputs.denoise = 2; }],
+    ['invalid_number', p => { p['3'].inputs.steps = 1.5; }],
+    ['unknown_input', p => { p['3'].inputs.typo = true; }],
+    ['unsupported_literal', p => { p['3'].inputs.model = ['4', -1]; }],
+  ];
+  for (const [expected, mutate] of cases) {
+    const prompt = structuredClone(original); mutate(prompt);
+    assert.ok(codes(prompt).includes(expected), expected);
+  }
+});
+
+test('cycles and missing output nodes are rejected', () => {
+  const prompt = structuredClone(original);
+  prompt['3'].inputs.latent_image = ['3', 0];
+  assert.ok(codes(prompt).includes('cycle'));
+  delete prompt['9'];
+  assert.ok(codes(prompt).includes('missing_output'));
+});
+
+test('unsafe imported IDs and patch keys cannot affect prototypes', () => {
+  const prompt = JSON.parse('{"__proto__":{"class_type":"SaveImage","inputs":{}}}');
+  assert.ok(codes(prompt).includes('invalid_node'));
+  assert.throws(() => applyPromptPatch({ version: 0, prompt: original }, 0, [
+    { op: 'set_input', nodeId: '3', input: '__proto__', value: true },
+  ], info), /Invalid input/);
+});
+
+test('unsupported canvas modes, nodes, subgraphs and dangling references fail explicitly', () => {
+  for (const mutate of [
+    (c: Canvas) => { c.nodes[0].mode = 4; },
+    (c: Canvas) => { c.nodes[0].type = 'CustomNode'; },
+    (c: Canvas) => { c.subgraphs = []; },
+    (c: Canvas) => { c.links.pop(); },
+    (c: Canvas) => { c.links[0][4] = 99; },
+  ]) {
+    const canvas = structuredClone(sample); mutate(canvas);
+    assert.throws(() => canvasToPrompt(canvas, info), WorkflowError);
+  }
+});
+
+test('adapter uses configured auth, validates before submit and preserves execution metadata', async t => {
+  const requests: { path: string; body?: Record<string, any> }[] = [];
+  let mode = 'success';
+  const server = createServer(async (req, res) => {
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) chunks.push(Buffer.from(chunk));
+    const body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString()) : undefined;
+    requests.push({ path: req.url!, body });
+    res.setHeader('Content-Type', 'application/json');
+    if (req.url!.startsWith('/object_info')) return res.end(JSON.stringify(info));
+    if (req.url!.startsWith('/prompt')) {
+      if (mode === 'reject') { res.statusCode = 400; return res.end(JSON.stringify({ node_errors: { '3': { errors: ['bad input'] } } })); }
+      if (mode === 'disconnect') { req.socket.destroy(); return; }
+      return res.end(JSON.stringify({ prompt_id: 'run-1', number: 2 }));
+    }
+    res.end(JSON.stringify({}));
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  const adapter = new ComfyAdapter({ comfyUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, comfyAuthToken: 'private-token' });
+  assert.deepEqual(await adapter.getObjectInfo(), info);
+  const context = { clientId: 'client-1', taskId: 'task-1', version: 3, workflow: sample };
+  await assert.rejects(adapter.submit({}, info, context), WorkflowError);
+  assert.equal(requests.length, 1);
+  assert.deepEqual(await adapter.submit(original, info, context), { promptId: 'run-1', number: 2 });
+  assert.ok(requests.every(r => new URL(r.path, 'http://localhost').searchParams.get('token') === 'private-token'));
+  assert.deepEqual(requests[1].body!.extra_data.extra_pnginfo.workflow, sample);
+  assert.deepEqual(requests[1].body!.extra_data.comfymobile_agent, { task_id: 'task-1', workflow_version: 3 });
+  mode = 'reject';
+  await assert.rejects(adapter.submit(original, info, context), (e: unknown) => e instanceof ComfyRequestError && e.status === 400 && !e.outcomeUncertain && !!(e.details as any).node_errors['3']);
+  mode = 'disconnect';
+  const before = requests.length;
+  await assert.rejects(adapter.submit(original, info, context), (e: unknown) => e instanceof ComfyRequestError && e.outcomeUncertain && !e.message.includes('private-token'));
+  assert.equal(requests.length, before + 1, 'must not retry an ambiguous POST');
+  await adapter.getQueue();
+  await adapter.getHistory('run-1');
+  await assert.rejects(async () => adapter.getHistory('../queue'), /Invalid prompt ID/);
+});

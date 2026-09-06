@@ -12,7 +12,7 @@ import {
   isReservedApiPath,
 } from './routes.js';
 
-const GATEWAY_VERSION = '0.2.0';
+const GATEWAY_VERSION = '0.3.0';
 const HOP_BY_HOP_HEADERS = new Set([
   'connection',
   'keep-alive',
@@ -138,10 +138,14 @@ const sanitizeRequestHeaders = (headers, target, request, config) => {
       || lowerName === 'cookie'
       || lowerName === 'authorization'
       || lowerName === 'origin'
+      || lowerName.startsWith('sec-fetch-')
     ) continue;
     sanitized[name] = value;
   }
   sanitized.host = target.host;
+  // The Gateway is the sole client ComfyUI sees; forwarding the browser's
+  // cross-site marker trips ComfyUI's CSRF protection with a bare 403.
+  sanitized['sec-fetch-site'] = 'same-origin';
   sanitized['x-forwarded-for'] = clientAddress(request, config);
   sanitized['x-forwarded-host'] = request.headers.host || '';
   sanitized['x-forwarded-proto'] = requestIsSecure(request, config) ? 'https' : 'http';
@@ -335,7 +339,9 @@ const proxyWebSocket = (client, request, config) => {
   });
 };
 
-export const createGatewayServer = (config) => {
+export const createGatewayServer = (config, { agentService } = {}) => {
+  let agent = agentService;
+  let agentHandler;
   const deviceStore = createDeviceStore(config);
   const sessions = createSessionManager(config, deviceStore);
   const rateLimit = createRateLimiter();
@@ -491,6 +497,15 @@ export const createGatewayServer = (config) => {
       return;
     }
 
+    if (url.pathname.startsWith('/api/gateway/agent/')) {
+      const owner = sessions.agentPrincipal(request);
+      if (!owner) { sendJson(response, 401, { error: 'gateway_authentication_required' }); return; }
+      if (!rateLimit(`agent:${owner}`, config.rateLimitPerMinute)) { sendJson(response, 429, { error: 'rate_limit_exceeded' }); return; }
+      if (!agent || !agentHandler) { sendJson(response, 503, { enabled: false, providerReady: false, error: '当前 Gateway 尚未启用工作流助手' }); return; }
+      await agentHandler(agent, owner, request, response, url);
+      return;
+    }
+
     if (url.pathname.startsWith('/api/gateway/launcher/')) {
       if (!sessions.authenticate(request)) {
         sendJson(response, 401, { error: 'gateway_authentication_required' });
@@ -589,18 +604,31 @@ export const createGatewayServer = (config) => {
 
   return {
     server,
-    start: () => new Promise((resolve, reject) => {
+    start: async () => {
+      if (config.agentEnabled || agent) {
+        const [{ AgentService }, { handleAgentRequest }] = await Promise.all([
+          import('./dist/agent/service.js'), import('./dist/agent/routes.js'),
+        ]);
+        agent ??= new AgentService(config);
+        agentHandler = handleAgentRequest;
+        agent.start();
+      }
+      return new Promise((resolve, reject) => {
       server.once('error', reject);
       server.listen(config.port, config.host, () => {
         server.off('error', reject);
         resolve(server.address());
       });
-    }),
-    stop: () => new Promise((resolve, reject) => {
+      });
+    },
+    stop: async () => {
+      await agent?.stop();
+      return new Promise((resolve, reject) => {
       webSocketServer.clients.forEach((client) => client.terminate());
       server.closeIdleConnections?.();
       server.close((error) => (error ? reject(error) : resolve()));
       server.closeAllConnections?.();
-    }),
+      });
+    },
   };
 };

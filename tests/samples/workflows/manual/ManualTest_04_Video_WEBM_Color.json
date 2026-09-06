@@ -1,0 +1,76 @@
+{
+  "id": "manual-test-04-video-webm-color",
+  "revision": 0,
+  "last_node_id": 6,
+  "last_link_id": 5,
+  "nodes": [
+    {
+      "id": 1, "type": "EmptyImage", "title": "黄色帧 x2", "pos": [40, 40], "size": [280, 210],
+      "flags": {}, "order": 0, "mode": 0,
+      "inputs": [
+        { "name": "width", "type": "INT", "widget": { "name": "width" }, "link": null },
+        { "name": "height", "type": "INT", "widget": { "name": "height" }, "link": null },
+        { "name": "batch_size", "type": "INT", "widget": { "name": "batch_size" }, "link": null },
+        { "name": "color", "type": "INT", "widget": { "name": "color" }, "link": null }
+      ],
+      "outputs": [{ "name": "IMAGE", "type": "IMAGE", "slot_index": 0, "links": [1] }],
+      "properties": { "cnr_id": "comfy-core", "Node name for S&R": "EmptyImage" },
+      "widgets_values": [320, 240, 2, 16776960]
+    },
+    {
+      "id": 2, "type": "EmptyImage", "title": "青色帧 x2", "pos": [40, 300], "size": [280, 210],
+      "flags": {}, "order": 1, "mode": 0,
+      "inputs": [
+        { "name": "width", "type": "INT", "widget": { "name": "width" }, "link": null },
+        { "name": "height", "type": "INT", "widget": { "name": "height" }, "link": null },
+        { "name": "batch_size", "type": "INT", "widget": { "name": "batch_size" }, "link": null },
+        { "name": "color", "type": "INT", "widget": { "name": "color" }, "link": null }
+      ],
+      "outputs": [{ "name": "IMAGE", "type": "IMAGE", "slot_index": 0, "links": [2] }],
+      "properties": { "cnr_id": "comfy-core", "Node name for S&R": "EmptyImage" },
+      "widgets_values": [320, 240, 2, 65535]
+    },
+    {
+      "id": 3, "type": "ImageBatch", "title": "合并黄青帧", "pos": [390, 180], "size": [230, 110],
+      "flags": {}, "order": 2, "mode": 0,
+      "inputs": [{ "name": "image1", "type": "IMAGE", "link": 1 }, { "name": "image2", "type": "IMAGE", "link": 2 }],
+      "outputs": [{ "name": "IMAGE", "type": "IMAGE", "slot_index": 0, "links": [3] }],
+      "properties": { "cnr_id": "comfy-core", "Node name for S&R": "ImageBatch" }, "widgets_values": []
+    },
+    {
+      "id": 4, "type": "EmptyImage", "title": "品红帧 x2", "pos": [390, 400], "size": [280, 210],
+      "flags": {}, "order": 3, "mode": 0,
+      "inputs": [
+        { "name": "width", "type": "INT", "widget": { "name": "width" }, "link": null },
+        { "name": "height", "type": "INT", "widget": { "name": "height" }, "link": null },
+        { "name": "batch_size", "type": "INT", "widget": { "name": "batch_size" }, "link": null },
+        { "name": "color", "type": "INT", "widget": { "name": "color" }, "link": null }
+      ],
+      "outputs": [{ "name": "IMAGE", "type": "IMAGE", "slot_index": 0, "links": [4] }],
+      "properties": { "cnr_id": "comfy-core", "Node name for S&R": "EmptyImage" },
+      "widgets_values": [320, 240, 2, 16711935]
+    },
+    {
+      "id": 5, "type": "ImageBatch", "title": "形成六帧序列", "pos": [730, 260], "size": [230, 110],
+      "flags": {}, "order": 4, "mode": 0,
+      "inputs": [{ "name": "image1", "type": "IMAGE", "link": 3 }, { "name": "image2", "type": "IMAGE", "link": 4 }],
+      "outputs": [{ "name": "IMAGE", "type": "IMAGE", "slot_index": 0, "links": [5] }],
+      "properties": { "cnr_id": "comfy-core", "Node name for S&R": "ImageBatch" }, "widgets_values": []
+    },
+    {
+      "id": 6, "type": "SaveWEBM", "title": "保存 VP9 WebM", "pos": [1030, 240], "size": [320, 250],
+      "flags": {}, "order": 5, "mode": 0,
+      "inputs": [{ "name": "images", "type": "IMAGE", "link": 5 }],
+      "outputs": [{ "name": "images", "type": "IMAGE", "slot_index": 0, "links": null }],
+      "properties": { "cnr_id": "comfy-core", "Node name for S&R": "SaveWEBM" },
+      "widgets_values": ["ManualTest/Video_WEBM_Color", "vp9", 2.0, 32.0]
+    }
+  ],
+  "links": [
+    [1, 1, 0, 3, 0, "IMAGE"], [2, 2, 0, 3, 1, "IMAGE"], [3, 3, 0, 5, 0, "IMAGE"],
+    [4, 4, 0, 5, 1, "IMAGE"], [5, 5, 0, 6, 0, "IMAGE"]
+  ],
+  "groups": [], "config": {},
+  "extra": { "manual_test": { "category": "video", "expected": "three-second VP9 WebM" } },
+  "version": 0.4
+}

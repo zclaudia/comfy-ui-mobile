@@ -22,8 +22,9 @@ interface ServerWorkflowInfo {
   folder: string;
   size?: number;
   modified?: Date;
+  etag?: string;
 }
-import { addWorkflow, loadAllWorkflows, getStorageQuotaInfo } from '@/infrastructure/storage/IndexedDBWorkflowService';
+import { cacheWorkflowFromCloud, loadAllWorkflows, getStorageQuotaInfo } from '@/infrastructure/storage/IndexedDBWorkflowService';
 import { formatStorageSize } from '@/infrastructure/storage/WorkflowStorageService';
 import { WorkflowFileService } from '@/core/services/WorkflowFileService';
 import { ComfyFileService } from '@/infrastructure/api/ComfyFileService';
@@ -147,7 +148,8 @@ const WorkflowImport: React.FC = () => {
             filename: relativePath,
             folder,
             size: workflow.size || 0,
-            modified: workflow.modified ? new Date(workflow.modified * 1000) : new Date()
+            modified: workflow.modified ? new Date(workflow.modified * 1000) : new Date(),
+            etag: workflow.etag,
           };
         });
 
@@ -208,6 +210,15 @@ const WorkflowImport: React.FC = () => {
 
       // Get existing workflow names to avoid duplicates
       const existingWorkflows = await loadAllWorkflows();
+      const existingCloudCopy = existingWorkflows.find(
+        workflow => workflow.cloud?.filename === serverWorkflow.filename
+      );
+      if (existingCloudCopy) {
+        toast.info(t('workflow.import.success', { name: existingCloudCopy.name }), {
+          description: 'This cloud workflow is already available locally.',
+        });
+        return;
+      }
       const existingNames = existingWorkflows.map((w: any) => w.name);
 
       console.log('🔍 Import Debug - Existing workflows:', {
@@ -261,7 +272,17 @@ const WorkflowImport: React.FC = () => {
         description: t('workflow.import.description'),
         modifiedAt: serverWorkflow.modified ? new Date(serverWorkflow.modified.getTime()) : new Date(),
         author: 'server', // Mark as server import
-        tags: ['server-import', ...(processResult.workflow.tags || [])]
+        tags: ['server-import', 'cloud', ...(processResult.workflow.tags || [])],
+        cloud: {
+          provider: 'comfyui',
+          filename: serverWorkflow.filename || `${serverWorkflow.name}.json`,
+          etag: downloadResult.etag || serverWorkflow.etag,
+          remoteModified: serverWorkflow.modified?.getTime()
+            ? serverWorkflow.modified.getTime() / 1000
+            : undefined,
+          lastSyncedAt: new Date().toISOString(),
+          dirty: false,
+        },
       };
 
       console.log('🔍 Import Debug - Final workflow before saving:', {
@@ -272,7 +293,7 @@ const WorkflowImport: React.FC = () => {
       });
 
       // Save to IndexedDB
-      await addWorkflow(comfyMobileWorkflow);
+      await cacheWorkflowFromCloud(comfyMobileWorkflow);
 
       // Verify the save worked
       const savedWorkflows = await loadAllWorkflows();
@@ -735,6 +756,7 @@ const WorkflowImport: React.FC = () => {
                   {filteredWorkflows.map((workflow, index) => (
                     <div
                       key={workflow.filename}
+                      data-e2e-server-workflow={workflow.name}
                       className="min-w-0 transition-all duration-300 ease-in-out"
                     >
                       <Card className={`border border-white/5 bg-white/[0.025] hover:bg-white/5 transition-all group ${isImporting === workflow.filename ? 'opacity-70 pointer-events-none' : ''
@@ -761,6 +783,7 @@ const WorkflowImport: React.FC = () => {
                             </div>
 
                             <button
+                              data-e2e-action="import"
                               onClick={() => importWorkflow(workflow)}
                               disabled={isImporting === workflow.filename}
                               className="h-8 px-[13px] flex items-center gap-1.5 rounded-lg border text-[11.5px] font-semibold whitespace-nowrap flex-shrink-0 transition-colors disabled:opacity-60"

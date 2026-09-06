@@ -102,6 +102,7 @@ def setup_routes():
                 # Workflow routes
                 app.router.add_get('/comfymobile/api/workflows/list', list_workflows)
                 app.router.add_get('/comfymobile/api/workflows/content/{filename:.*}', get_workflow_content)
+                app.router.add_delete('/comfymobile/api/workflows/content/{filename:.*}', delete_workflow)
                 app.router.add_post('/comfymobile/api/workflows/save', save_workflow)
                 app.router.add_post('/comfymobile/api/workflows/upload', upload_workflow)
                 
@@ -230,6 +231,7 @@ def setup_routes():
             # Basic workflow routes for compatibility
             routes.get('/comfymobile/api/workflows/list')(list_workflows)
             routes.get('/comfymobile/api/workflows/content/{filename:.*}')(get_workflow_content)
+            routes.delete('/comfymobile/api/workflows/content/{filename:.*}')(delete_workflow)
             routes.post('/comfymobile/api/workflows/save')(save_workflow)
             routes.post('/comfymobile/api/workflows/upload')(upload_workflow)
             
@@ -265,6 +267,10 @@ def setup_routes():
                 attr.router.add_get('/comfymobile/ws', global_websocket_handler)
                 attr.router.add_get('/comfymobile/api/status', api_status)
                 attr.router.add_get('/comfymobile/api/workflows/list', list_workflows)
+                attr.router.add_get('/comfymobile/api/workflows/content/{filename:.*}', get_workflow_content)
+                attr.router.add_delete('/comfymobile/api/workflows/content/{filename:.*}', delete_workflow)
+                attr.router.add_post('/comfymobile/api/workflows/save', save_workflow)
+                attr.router.add_post('/comfymobile/api/workflows/upload', upload_workflow)
                 attr.router.add_post('/comfymobile/api/reboot', reboot_server)
                 attr.router.add_post('/comfymobile/api/translate', translate_text)
                 attr.router.add_get('/comfymobile/api/translation/local/status', local_translation_status)

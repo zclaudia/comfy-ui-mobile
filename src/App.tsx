@@ -28,6 +28,8 @@ import { PromptHistory } from '@/components/history/PromptHistory';
 import { WorkflowStackPage } from '@/components/workflow/WorkflowStackPage';
 import { AppUpdate } from '@/components/server/AppUpdate';
 import CanvasLabPage from '@/components/canvas/CanvasLabPage';
+import CloudWorkflowSyncController from '@/components/workflow/CloudWorkflowSyncController';
+import AgentPage from '@/components/agent/AgentPage';
 
 // Canvas-mode gate: switching Mobile <-> Official remounts the whole editor.
 // Mode switching is data-driven — storage is the only boundary — so entering
@@ -46,10 +48,31 @@ const WorkflowEditorRoute: React.FC = () => {
 
 const AppRouter: React.FC = () => {
   const tryAutoConnect = useConnectionStore((state) => state.tryAutoConnect);
+  const initializeWebSocketListeners = useConnectionStore(
+    (state) => state.initializeWebSocketListeners
+  );
 
   // Global execution error state
   const [globalExecutionError, setGlobalExecutionError] = useState<any>(null);
   const [isRecovering, setIsRecovering] = useState(false);
+
+  useEffect(() => initializeWebSocketListeners(), [initializeWebSocketListeners]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      const state = useConnectionStore.getState();
+      if (
+        state.url
+        && state.autoReconnectEnabled
+        && !state.isConnected
+        && !state.isConnecting
+      ) {
+        void state.tryAutoConnect();
+      }
+    }, 30_000);
+
+    return () => window.clearInterval(timer);
+  }, []);
 
   // Force theme-color to dark on app load
   useEffect(() => {
@@ -209,8 +232,10 @@ const AppRouter: React.FC = () => {
 
   return (
     <>
+      <CloudWorkflowSyncController />
       <Routes>
         <Route path="/" element={<WorkflowList />} />
+        <Route path="/agent" element={<AgentPage />} />
         <Route path="/workflow/:id" element={<WorkflowEditorRoute />} />
         <Route path="/workflow-stack/:id" element={<WorkflowStackPage />} />
         <Route path="/chains" element={<WorkflowChainList />} />

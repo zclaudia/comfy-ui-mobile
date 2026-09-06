@@ -7,6 +7,7 @@ services:
       - gateway/.env
     environment:
       GATEWAY_DEVICE_STORE: /data/devices.json
+      GATEWAY_AGENT_STORE: /data/agent.sqlite
     ports:
       - "8080:8080"
     volumes:

@@ -23,6 +23,7 @@ const ServerSettings: React.FC<ServerSettingsProps> = ({ onBack }) => {
     isConnecting,
     error,
     apiStatus,
+    wsStatus,
     extensionStatus,
     authMode,
     authToken,
@@ -34,8 +35,7 @@ const ServerSettings: React.FC<ServerSettingsProps> = ({ onBack }) => {
     setRememberAuthToken,
     connect,
     disconnect,
-    setError,
-    initializeWebSocketListeners
+    setError
   } = useConnectionStore();
 
   const [inputUrl, setInputUrl] = useState(url);
@@ -67,11 +67,6 @@ const ServerSettings: React.FC<ServerSettingsProps> = ({ onBack }) => {
       setShowAuthSection(true);
     }
   }, [authMode, errorCode]);
-
-  useEffect(() => {
-    const cleanup = initializeWebSocketListeners();
-    return cleanup;
-  }, [initializeWebSocketListeners]);
 
   const validateUrl = (url: string): { isValid: boolean; message?: string } => {
     if (!url.trim()) {
@@ -222,9 +217,15 @@ const ServerSettings: React.FC<ServerSettingsProps> = ({ onBack }) => {
             <div className="h-px bg-white/[0.06]" />
             {[
               { label: 'ComfyUI API', status: (isConnected || isConnecting) ? apiStatus : 'idle' },
+              { label: 'WebSocket', status: (isConnected || isConnecting) ? wsStatus : 'idle' },
               { label: t('common.extension'), status: (isConnected || isConnecting) ? extensionStatus : 'idle' }
             ].map((step, idx) => (
-              <div key={idx} className="h-10 flex items-center justify-between">
+              <div
+                key={idx}
+                className="h-10 flex items-center justify-between"
+                data-e2e-status={step.label === 'WebSocket' ? 'websocket' : undefined}
+                data-state={step.status}
+              >
                 <span className="text-[12.5px] text-[#9aa3b2]">{step.label}</span>
                 <span>
                   {step.status === 'checking' && <Loader2 className="h-4 w-4 text-[#5b8af5] animate-spin" />}

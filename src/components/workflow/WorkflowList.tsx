@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,7 +18,10 @@ import {
   Trash2,
   AlertTriangle,
   CornerLeftUp,
-  Check
+  Check,
+  Cloud,
+  CloudOff,
+  RefreshCw
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -47,6 +50,12 @@ import {
   getPngWorkflowPreview,
 } from '@/utils/pngMetadataExtractor';
 import { generateUUID } from '@/utils/uuid';
+import {
+  WORKFLOW_CLOUD_UPDATED_EVENT,
+  WORKFLOW_SYNC_STATUS_EVENT,
+  getWorkflowSyncStatus,
+  type WorkflowSyncStatus,
+} from '@/infrastructure/sync/WorkflowSyncEvents';
 
 const STORAGE_KEY_FOLDER_PATH = 'comfy_mobile_folder_path';
 
@@ -78,6 +87,7 @@ const WorkflowList: React.FC = () => {
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const [selectedSortOrder, setSelectedSortOrder] = useState<SortOrder>('date-desc');
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [cloudSyncStatus, setCloudSyncStatus] = useState<WorkflowSyncStatus>(getWorkflowSyncStatus);
 
   // Multi-select: pick any workflows/folders, then move or delete them in bulk.
   const [selectionMode, setSelectionMode] = useState(false);
@@ -112,20 +122,32 @@ const WorkflowList: React.FC = () => {
     }
   }, [currentFolderId]);
 
-  // Load workflows
+  const loadWorkflows = useCallback(async () => {
+    try {
+      const stored = await loadAllWorkflows();
+      setWorkflows(stored);
+      initializeRootWorkflows(stored.map((w) => w.id));
+    } catch (error) {
+      console.error('Failed to load workflows:', error);
+      setError(t('workflow.updateError'));
+    }
+  }, [initializeRootWorkflows, t]);
+
+  // IndexedDB is the offline cache. Cloud sync broadcasts after replacing it,
+  // so the home screen updates without a reload or an explicit Import step.
   useEffect(() => {
-    const loadWorkflows = async () => {
-      try {
-        const stored = await loadAllWorkflows();
-        setWorkflows(stored);
-        initializeRootWorkflows(stored.map((w) => w.id));
-      } catch (error) {
-        console.error('Failed to load workflows:', error);
-        setError(t('workflow.updateError'));
-      }
+    void loadWorkflows();
+    const handleCloudUpdate = () => void loadWorkflows();
+    const handleSyncStatus = (event: Event) => {
+      setCloudSyncStatus((event as CustomEvent<WorkflowSyncStatus>).detail);
     };
-    loadWorkflows();
-  }, [initializeRootWorkflows]);
+    window.addEventListener(WORKFLOW_CLOUD_UPDATED_EVENT, handleCloudUpdate);
+    window.addEventListener(WORKFLOW_SYNC_STATUS_EVENT, handleSyncStatus);
+    return () => {
+      window.removeEventListener(WORKFLOW_CLOUD_UPDATED_EVENT, handleCloudUpdate);
+      window.removeEventListener(WORKFLOW_SYNC_STATUS_EVENT, handleSyncStatus);
+    };
+  }, [loadWorkflows]);
 
   // Sync sort order
   useEffect(() => {
@@ -423,6 +445,7 @@ const WorkflowList: React.FC = () => {
   };
 
   const serverUrl = useConnectionStore((s) => s.url);
+  const isConnected = useConnectionStore((s) => s.isConnected);
   const serverHost = useMemo(
     () => (serverUrl || '').replace(/^https?:\/\//, '').replace(/\/+$/, ''),
     [serverUrl]
@@ -476,6 +499,28 @@ const WorkflowList: React.FC = () => {
             </span>
           )}
 
+          <span
+            data-e2e-cloud-sync
+            data-state={cloudSyncStatus.state}
+            title={cloudSyncStatus.message || (isConnected ? 'Cloud workflow sync' : 'Offline workflow cache')}
+            aria-label={cloudSyncStatus.message || 'Cloud workflow sync'}
+            className={`shrink-0 ${
+              cloudSyncStatus.state === 'error' || cloudSyncStatus.state === 'conflict'
+                ? 'text-[#f0a35b]'
+                : isConnected
+                  ? 'text-[#4ade80]'
+                  : 'text-[#66758a]'
+            }`}
+          >
+            {cloudSyncStatus.state === 'syncing' ? (
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" strokeWidth={1.8} />
+            ) : isConnected ? (
+              <Cloud className="w-3.5 h-3.5" strokeWidth={1.8} />
+            ) : (
+              <CloudOff className="w-3.5 h-3.5" strokeWidth={1.8} />
+            )}
+          </span>
+
           <div className="flex-1" />
 
           {/* Gallery */}
@@ -516,6 +561,7 @@ const WorkflowList: React.FC = () => {
           )}
         </div>
         <button
+          data-e2e-action="add-workflow"
           onClick={() => setIsUploadModalOpen(true)}
           className="shrink-0 h-9 px-3.5 flex items-center gap-1.5 rounded-[9px] bg-[#3069f0] hover:bg-[#3f78f5] text-white text-[12.5px] font-semibold transition-colors"
         >

@@ -81,15 +81,31 @@ export const createSessionManager = (config, deviceStore) => {
     return deviceStore.authenticate(token) ? token : null;
   };
 
+  // Existing setup-token/browser login is one administrator identity, not a user account system.
+  // Device tokens get separate durable namespaces; anonymous access cannot run agents.
+  const agentPrincipal = (request) => {
+    const token = bearerToken(request);
+    if (token && config.authToken && safeEqual(token, config.authToken)) return 'administrator';
+    if (token && deviceStore.authenticate(token)) return `device:${crypto.createHash('sha256').update(token).digest('hex')}`;
+    if (!token && validateSession(parseCookies(request.headers.cookie).get(config.sessionCookieName))) return 'administrator';
+    return null;
+  };
+
+  // SameSite=None requires Secure in modern browsers, so pair them automatically.
+  const cookieSameSite = config.sessionCookieSameSite === 'none' ? 'None' : config.sessionCookieSameSite === 'lax' ? 'Lax' : 'Strict';
+  const cookieSecure = (secure) => secure
+    || config.secureCookies
+    || config.sessionCookieSameSite === 'none';
+
   const sessionCookie = ({ value, ttl, persistent }, secure) => {
     const attributes = [
       `${config.sessionCookieName}=${value}`,
       'Path=/',
       'HttpOnly',
-      'SameSite=Strict',
+      `SameSite=${cookieSameSite}`,
     ];
     if (persistent) attributes.push(`Max-Age=${ttl}`);
-    if (secure || config.secureCookies) attributes.push('Secure');
+    if (cookieSecure(secure)) attributes.push('Secure');
     return attributes.join('; ');
   };
 
@@ -98,10 +114,10 @@ export const createSessionManager = (config, deviceStore) => {
       `${config.sessionCookieName}=`,
       'Path=/',
       'HttpOnly',
-      'SameSite=Strict',
+      `SameSite=${cookieSameSite}`,
       'Max-Age=0',
     ];
-    if (secure || config.secureCookies) attributes.push('Secure');
+    if (cookieSecure(secure)) attributes.push('Secure');
     return attributes.join('; ');
   };
 
@@ -110,6 +126,7 @@ export const createSessionManager = (config, deviceStore) => {
     authenticateAdmin,
     authenticateSetupToken,
     authenticatedDeviceToken,
+    agentPrincipal,
     createSession,
     validateSession,
     sessionCookie,

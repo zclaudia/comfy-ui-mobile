@@ -1,0 +1,17 @@
+.agent-transcript {
+  --ztk-fg: #e2e8f0;
+  --ztk-fg-muted: #94a3b8;
+  --ztk-bg-subtle: #0f172a;
+  --ztk-border: #ffffff1a;
+  --ztk-code-bg: #020617;
+  --ztk-code-max-height: 20rem;
+}
+.agent-transcript .ztk-tool-card__header { min-height: 44px; flex-wrap: wrap; }
+.agent-transcript .ztk-tool-card__name { overflow-wrap: anywhere; }
+.agent-transcript .ztk-code-block__action { min-height: 44px; min-width: 44px; }
+.agent-transcript .ztk-code-block__header { min-height: 44px; padding: 0 12px; gap: 8px; flex-wrap: nowrap; }
+.agent-transcript .ztk-code-block__language { min-width: 0; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-transcript .ztk-code-block__actions { flex-shrink: 0; }
+.agent-transcript .ztk-tool-card__summary { min-width: 0; }
+.agent-markdown .ztk-code-block pre { margin: 0; }
+.agent-markdown .ztk-code-block code { font-size: inherit; }

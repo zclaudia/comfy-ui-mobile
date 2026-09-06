@@ -4,6 +4,17 @@
 
 import type { IComfyJson, IComfyGraph } from './base'
 
+export interface CloudWorkflowMetadata {
+  provider: 'comfyui';
+  filename: string;
+  etag?: string;
+  remoteModified?: number;
+  lastSyncedAt?: string;
+  dirty?: boolean;
+  syncError?: string;
+  conflictedFrom?: string;
+}
+
 export interface IComfyWorkflow {
   id: string;
   name: string;
@@ -21,6 +32,7 @@ export interface IComfyWorkflow {
   isValid: boolean;
   author?: string;
   sortOrder?: number;
+  cloud?: CloudWorkflowMetadata;
 }
 
 export interface Workflow extends IComfyWorkflow {}

@@ -1,0 +1,47 @@
+{
+  "id": "manual-test-01-image-load-save",
+  "revision": 0,
+  "last_node_id": 2,
+  "last_link_id": 1,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LoadImage",
+      "title": "1. 读取测试图片",
+      "pos": [80, 180],
+      "size": [315, 314],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        { "name": "image", "type": "COMBO", "widget": { "name": "image" }, "link": null },
+        { "name": "upload", "type": "IMAGEUPLOAD", "widget": { "name": "upload" }, "link": null }
+      ],
+      "outputs": [
+        { "name": "IMAGE", "type": "IMAGE", "slot_index": 0, "links": [1] },
+        { "name": "MASK", "type": "MASK", "slot_index": 1, "links": null }
+      ],
+      "properties": { "cnr_id": "comfy-core", "Node name for S&R": "LoadImage" },
+      "widgets_values": ["example.png", "image"]
+    },
+    {
+      "id": 2,
+      "type": "SaveImage",
+      "title": "2. 保存到图片画廊",
+      "pos": [520, 200],
+      "size": [315, 270],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [{ "name": "images", "type": "IMAGE", "link": 1 }],
+      "outputs": [{ "name": "images", "type": "IMAGE", "links": null }],
+      "properties": { "cnr_id": "comfy-core", "Node name for S&R": "SaveImage" },
+      "widgets_values": ["ManualTest/Image_Load_Save"]
+    }
+  ],
+  "links": [[1, 1, 0, 2, 0, "IMAGE"]],
+  "groups": [],
+  "config": {},
+  "extra": { "manual_test": { "category": "image", "expected": "one PNG" } },
+  "version": 0.4
+}

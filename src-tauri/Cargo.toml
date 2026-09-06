@@ -1,6 +1,6 @@
 [package]
 name = "comfy-mobile-ui"
-version = "0.1.0"
+version = "0.3.0"
 description = "Android client for ComfyUI through the Comfy Mobile Gateway"
 authors = ["Comfy Mobile contributors"]
 edition = "2021"
@@ -17,8 +17,10 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri = { version = "2", features = [] }
 tauri-plugin-http = "2.5.9"
+tauri-plugin-media-download = { path = "plugins/media-download" }
 tauri-plugin-websocket = "2.4.2"
 tauri-plugin-secure-credentials = { path = "plugins/secure-credentials" }
+tauri-plugin-clipboard-manager = "2"
 
 [profile.release]
 codegen-units = 1

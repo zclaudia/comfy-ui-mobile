@@ -137,6 +137,7 @@ const WorkflowUploadModal: React.FC<WorkflowUploadModalProps> = ({
                                 </div>
 
                                 <Input
+                                    data-e2e-workflow-file
                                     ref={fileInputRef}
                                     type="file"
                                     accept=".json,.png"

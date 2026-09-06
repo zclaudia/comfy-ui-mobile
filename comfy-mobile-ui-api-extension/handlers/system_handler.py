@@ -38,6 +38,7 @@ async def api_status(request):
             # Workflow endpoints
             "GET /comfymobile/api/workflows/list", 
             "GET /comfymobile/api/workflows/content/{filename}",
+            "DELETE /comfymobile/api/workflows/content/{filename}",
             "POST /comfymobile/api/workflows/save",
             "POST /comfymobile/api/workflows/upload",
             

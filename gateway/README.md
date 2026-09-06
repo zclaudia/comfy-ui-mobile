@@ -1,5 +1,11 @@
 # Comfy Mobile Gateway
 
+The optional [workflow agent MVP](agent/README.md) adds natural-language workflow
+tasks in the App's 工作流助手 page. It requires Node >=22.13, a compiled agent
+(`npm run build:agent`) and `GATEWAY_AGENT_ENABLED=true`. Real model credentials
+are configured only on the Gateway. See the linked guide for provider setup,
+tests and current limitations.
+
 The Gateway is the only network endpoint the mobile UI should know. It serves
 the production frontend, authenticates users, proxies a strict allowlist of
 ComfyUI HTTP/WebSocket routes, and optionally bridges the legacy launcher.

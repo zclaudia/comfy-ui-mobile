@@ -361,9 +361,15 @@ export const useConnectionStore = create<ConnectionStore>()(
           // Update store when WebSocket state changes
           const handleStateChange = (wsState: GlobalWebSocketState) => {
             const { isConnected: wsConnected } = wsState;
+            const transportLost = !wsConnected && !wsState.isConnecting && get().isConnected;
             set({
               webSocket: wsState,
-              wsStatus: wsConnected ? 'success' : (wsState.isConnecting ? 'checking' : (get().isConnected ? 'failed' : 'idle'))
+              wsStatus: wsConnected ? 'success' : (wsState.isConnecting ? 'checking' : (get().isConnected ? 'failed' : 'idle')),
+              ...(wsConnected
+                ? { isConnected: true, isConnecting: false, error: null, errorCode: null }
+                : transportLost
+                  ? { isConnected: false }
+                  : {})
             });
           };
 

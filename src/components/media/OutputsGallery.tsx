@@ -145,6 +145,8 @@ const LazyImage: React.FC<LazyImageProps> = ({
 
   return (
     <div
+      data-e2e-file-name={file.filename}
+      data-e2e-file-type={isVideoFile(file.filename) ? 'video' : 'image'}
       className={`relative aspect-square overflow-hidden cursor-pointer group transition-transform duration-150 hover:scale-[1.02] active:scale-[0.98] ${isSelected ? 'z-10' : ''}`}
       style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 256px', background: '#0d1016' }}
       onClick={handleClick}

@@ -1,0 +1,27 @@
+services:
+  comfy-mobile-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.gateway
+    env_file:
+      - gateway/.env
+    environment:
+      GATEWAY_DEVICE_STORE: /data/devices.json
+      GATEWAY_AGENT_STORE: /data/agent.sqlite
+    network_mode: host
+    volumes:
+      - gateway-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:18080/api/gateway/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  gateway-data:

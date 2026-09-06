@@ -187,6 +187,7 @@ export function QuickActionPanel({
 
           {/* Execute Workflow Button - ALWAYS ENABLED */}
           <button
+            data-e2e-action="execute"
             className="h-10 px-4 rounded-[10px] border flex items-center gap-2 text-[13px] font-semibold whitespace-nowrap transition-all duration-150 active:scale-95"
             style={{ background: 'rgba(52,199,123,0.13)', borderColor: 'rgba(52,199,123,0.3)', color: '#4ade80' }}
             onClick={handleExecuteClick}

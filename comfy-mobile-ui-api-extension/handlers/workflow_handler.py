@@ -1,6 +1,9 @@
 
 import os
+import ntpath
 import json
+import hashlib
+import tempfile
 from typing import Dict, List, Any, Optional
 from aiohttp import web
 import folder_paths
@@ -33,12 +36,16 @@ def resolve_workflow_path(relative_path: str) -> Optional[str]:
         return None
 
     # Clients send POSIX separators; accept backslashes too so Windows-authored
-    # paths do not silently resolve to a single oddly named file.
-    candidate = relative_path.replace(os.sep, '/').replace('\\', '/').strip('/')
-    if not candidate:
+    # paths do not silently resolve to a single oddly named file. A single
+    # leading slash is also accepted for existing workflows because older API
+    # clients used it as a virtual workflows-root marker.
+    raw_candidate = relative_path.replace(os.sep, '/').replace('\\', '/').strip()
+    if ntpath.splitdrive(raw_candidate)[0]:
         return None
 
-    if os.path.isabs(candidate) or os.path.splitdrive(candidate)[0]:
+    had_leading_slash = raw_candidate.startswith('/')
+    candidate = raw_candidate.strip('/')
+    if not candidate:
         return None
 
     # normpath collapses '..' textually, which is exactly the check we want:
@@ -52,7 +59,10 @@ def resolve_workflow_path(relative_path: str) -> Optional[str]:
     if normalised == os.curdir:
         return None
 
-    return os.path.join(get_workflows_directory(), normalised)
+    resolved = os.path.join(get_workflows_directory(), normalised)
+    if had_leading_slash and not os.path.exists(resolved):
+        return None
+    return resolved
 
 
 def to_relative_workflow_path(absolute_path: str) -> str:
@@ -64,6 +74,50 @@ def to_relative_workflow_path(absolute_path: str) -> str:
     """
     root = get_workflows_directory()
     return os.path.relpath(absolute_path, root).replace(os.sep, '/')
+
+
+def get_workflow_etag(workflow_path: str) -> str:
+    """Return a strong content ETag without exposing filesystem metadata."""
+    digest = hashlib.sha256()
+    with open(workflow_path, 'rb') as workflow_file:
+        for chunk in iter(lambda: workflow_file.read(1024 * 1024), b''):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def atomic_write_workflow(workflow_path: str, workflow_data: Any) -> None:
+    """Write a workflow atomically so readers never observe partial JSON."""
+    parent_dir = os.path.dirname(workflow_path)
+    os.makedirs(parent_dir, exist_ok=True)
+    temporary_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode='w',
+            encoding='utf-8',
+            dir=parent_dir,
+            prefix='.comfy-mobile-',
+            suffix='.tmp',
+            delete=False,
+        ) as temporary_file:
+            temporary_path = temporary_file.name
+            json.dump(workflow_data, temporary_file, indent=2, ensure_ascii=False)
+            temporary_file.flush()
+            os.fsync(temporary_file.fileno())
+        os.replace(temporary_path, workflow_path)
+    finally:
+        if temporary_path and os.path.exists(temporary_path):
+            os.unlink(temporary_path)
+
+
+def workflow_conflict_response(filename: str, workflow_path: str):
+    current_etag = get_workflow_etag(workflow_path) if os.path.isfile(workflow_path) else None
+    return web.json_response({
+        "status": "conflict",
+        "code": "workflow_conflict",
+        "message": f"Workflow file '{filename}' changed on the server.",
+        "filename": filename,
+        "current_etag": current_etag,
+    }, status=409)
 
 async def list_workflows(request):
     """List all workflow files in user/default/workflows directory"""
@@ -116,7 +170,8 @@ async def list_workflows(request):
                         "folder": os.path.dirname(relative_path),
                         "size": file_info["size"],
                         "modified": file_info["modified"],
-                        "modified_iso": file_info["modified_iso"]
+                        "modified_iso": file_info["modified_iso"],
+                        "etag": get_workflow_etag(file_path),
                     })
         
         # Sort by modification time (newest first)
@@ -139,7 +194,7 @@ async def upload_workflow(request):
     try:
         reader = await request.multipart()
         
-        workflow_file = None
+        file_content = None
         filename = None
         overwrite = False
         
@@ -203,9 +258,7 @@ async def upload_workflow(request):
                 "message": f"File encoding error: {str(e)}"
             }, status=400)
         
-        # Save workflow file
-        with open(workflow_path, 'w', encoding='utf-8') as f:
-            json.dump(workflow_data, f, indent=2, ensure_ascii=False)
+        atomic_write_workflow(workflow_path, workflow_data)
         
         file_info = get_file_info(workflow_path)
         
@@ -215,7 +268,8 @@ async def upload_workflow(request):
             "filename": filename,
             "size": file_info["size"],
             "modified": file_info["modified"],
-            "modified_iso": file_info["modified_iso"]
+            "modified_iso": file_info["modified_iso"],
+            "etag": get_workflow_etag(workflow_path),
         })
         
     except Exception as e:
@@ -259,6 +313,7 @@ async def get_workflow_content(request):
             "size": file_info["size"],
             "modified": file_info["modified"],
             "modified_iso": file_info["modified_iso"],
+            "etag": get_workflow_etag(workflow_path),
             "content": content
         })
         
@@ -281,6 +336,7 @@ async def save_workflow(request):
         filename = data.get('filename')
         content = data.get('content')
         overwrite = data.get('overwrite', False)
+        expected_etag = data.get('expected_etag')
         
         if not filename:
             return web.json_response({
@@ -288,28 +344,27 @@ async def save_workflow(request):
                 "message": "Filename is required"
             }, status=400)
             
-        if not content:
+        if content is None:
             return web.json_response({
                 "status": "error",
                 "message": "Workflow content is required"
             }, status=400)
         
-        # Security: ensure filename doesn't contain path traversal
-        if '..' in filename or '/' in filename or '\\' in filename:
+        if not filename.endswith('.json'):
+            filename += '.json'
+
+        workflow_path = resolve_workflow_path(filename)
+        if workflow_path is None:
             return web.json_response({
                 "status": "error",
                 "message": "Invalid filename"
             }, status=400)
-        
-        # Ensure .json extension
-        if not filename.endswith('.json'):
-            filename += '.json'
-            
-        workflows_dir = ensure_workflows_directory()
-        workflow_path = os.path.join(workflows_dir, filename)
-        
-        # Check if file exists and overwrite is not allowed
-        if os.path.exists(workflow_path) and not overwrite:
+
+        file_exists = os.path.isfile(workflow_path)
+        if expected_etag is not None:
+            if not file_exists or get_workflow_etag(workflow_path) != expected_etag:
+                return workflow_conflict_response(filename, workflow_path)
+        elif file_exists and not overwrite:
             return web.json_response({
                 "status": "error",
                 "message": f"Workflow file '{filename}' already exists. Set overwrite=true to replace it."
@@ -325,9 +380,7 @@ async def save_workflow(request):
                     "message": f"Invalid JSON content: {str(e)}"
                 }, status=400)
         
-        # Save workflow file
-        with open(workflow_path, 'w', encoding='utf-8') as f:
-            json.dump(content, f, indent=2, ensure_ascii=False)
+        atomic_write_workflow(workflow_path, content)
         
         file_info = get_file_info(workflow_path)
         
@@ -337,7 +390,8 @@ async def save_workflow(request):
             "filename": filename,
             "size": file_info["size"],
             "modified": file_info["modified"],
-            "modified_iso": file_info["modified_iso"]
+            "modified_iso": file_info["modified_iso"],
+            "etag": get_workflow_etag(workflow_path),
         })
         
     except json.JSONDecodeError as e:
@@ -351,92 +405,47 @@ async def save_workflow(request):
             "message": str(e)
         }, status=500)
 
-async def upload_workflow(request):
-    """Upload a workflow file to the workflows directory"""
+async def delete_workflow(request):
+    """Delete a workflow with optional optimistic concurrency protection."""
     try:
-        reader = await request.multipart()
-        
-        workflow_file = None
-        filename = None
-        overwrite = False
-        
-        # Process multipart form data
-        while True:
-            field = await reader.next()
-            if not field:
-                break
-                
-            if field.name == 'file' or field.name == 'workflow':
-                # Read file content
-                file_content = await field.read()
-                filename = field.filename or 'untitled.json'
-            elif field.name == 'filename':
-                filename = (await field.read()).decode('utf-8').strip()
-            elif field.name == 'overwrite':
-                overwrite_value = (await field.read()).decode('utf-8').strip().lower()
-                overwrite = overwrite_value in ('true', '1', 'yes')
-        
-        if not file_content:
-            return web.json_response({
-                "status": "error",
-                "message": "No workflow file provided"
-            }, status=400)
-            
-        if not filename:
-            filename = "untitled.json"
-        
-        # Security: ensure filename doesn't contain path traversal
-        if '..' in filename or '/' in filename or '\\' in filename:
+        filename = request.match_info['filename']
+        if not filename.endswith('.json'):
+            filename += '.json'
+
+        workflow_path = resolve_workflow_path(filename)
+        if workflow_path is None:
             return web.json_response({
                 "status": "error",
                 "message": "Invalid filename"
             }, status=400)
-        
-        # Ensure .json extension
-        if not filename.endswith('.json'):
-            filename += '.json'
-            
-        workflows_dir = ensure_workflows_directory()
-        workflow_path = os.path.join(workflows_dir, filename)
-        
-        # Check if file exists and overwrite is not allowed
-        if os.path.exists(workflow_path) and not overwrite:
+
+        if not os.path.isfile(workflow_path):
             return web.json_response({
                 "status": "error",
-                "message": f"Workflow file '{filename}' already exists. Set overwrite=true to replace it."
-            }, status=409)
-        
-        # Validate JSON content
-        try:
-            workflow_data = json.loads(file_content.decode('utf-8'))
-        except json.JSONDecodeError as e:
-            return web.json_response({
-                "status": "error",
-                "message": f"Invalid JSON content: {str(e)}"
-            }, status=400)
-        except UnicodeDecodeError as e:
-            return web.json_response({
-                "status": "error", 
-                "message": f"File encoding error: {str(e)}"
-            }, status=400)
-        
-        # Save workflow file
-        with open(workflow_path, 'w', encoding='utf-8') as f:
-            json.dump(workflow_data, f, indent=2, ensure_ascii=False)
-        
-        file_info = get_file_info(workflow_path)
-        
+                "message": f"Workflow file '{filename}' not found"
+            }, status=404)
+
+        expected_etag = request.headers.get('If-Match') or request.query.get('expected_etag')
+        if expected_etag and get_workflow_etag(workflow_path) != expected_etag.strip('"'):
+            return workflow_conflict_response(filename, workflow_path)
+
+        os.unlink(workflow_path)
+        workflows_root = os.path.abspath(get_workflows_directory())
+        parent_dir = os.path.dirname(workflow_path)
+        while os.path.abspath(parent_dir) != workflows_root:
+            try:
+                os.rmdir(parent_dir)
+            except OSError:
+                break
+            parent_dir = os.path.dirname(parent_dir)
+
         return web.json_response({
             "status": "success",
-            "message": f"Workflow '{filename}' uploaded successfully",
-            "filename": filename,
-            "size": file_info["size"],
-            "modified": file_info["modified"],
-            "modified_iso": file_info["modified_iso"]
+            "message": f"Workflow '{filename}' deleted successfully",
+            "filename": filename
         })
-        
     except Exception as e:
         return web.json_response({
             "status": "error",
-            "message": f"Upload failed: {str(e)}"
+            "message": f"Delete failed: {str(e)}"
         }, status=500)

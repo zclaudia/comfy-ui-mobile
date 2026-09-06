@@ -1,12 +1,15 @@
 {
   "name": "comfy-mobile-gateway",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.13"
   },
   "dependencies": {
-    "ws": "^8.18.3"
+    "@ai-sdk/openai-compatible": "2.0.74",
+    "ai": "6.0.277",
+    "ws": "^8.18.3",
+    "zod": "3.25.76"
   }
 }

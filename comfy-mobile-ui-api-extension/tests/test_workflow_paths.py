@@ -11,6 +11,7 @@ Run with:  python tests/test_workflow_paths.py
 """
 
 import importlib.util
+import json
 import os
 import shutil
 import sys
@@ -21,6 +22,9 @@ import types
 # running the tests standalone. A stub is enough: only base_path is used.
 _TEMP_ROOT = tempfile.mkdtemp(prefix="comfymobile-workflow-tests-")
 sys.modules.setdefault("folder_paths", types.SimpleNamespace(base_path=_TEMP_ROOT))
+# Route handlers only need aiohttp while serving requests. Keep these path and
+# atomic-write unit checks runnable in a plain Python environment.
+sys.modules.setdefault("aiohttp", types.SimpleNamespace(web=types.SimpleNamespace()))
 
 _EXT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -56,6 +60,8 @@ _handler = _load_workflow_handler()
 get_workflows_directory = _handler.get_workflows_directory
 resolve_workflow_path = _handler.resolve_workflow_path
 to_relative_workflow_path = _handler.to_relative_workflow_path
+get_workflow_etag = _handler.get_workflow_etag
+atomic_write_workflow = _handler.atomic_write_workflow
 
 FAILURES = []
 
@@ -112,15 +118,15 @@ def main():
         f.write("{}")
 
     print("accepted paths:")
-    check(resolve_workflow_path("root.json") == os.path.realpath(root_file),
+    check(resolve_workflow_path("root.json") == os.path.abspath(root_file),
           "root file")
-    check(resolve_workflow_path("portraits/sdxl/hires.json") == os.path.realpath(nested_file),
+    check(resolve_workflow_path("portraits/sdxl/hires.json") == os.path.abspath(nested_file),
           "nested file")
-    check(resolve_workflow_path("/portraits/sdxl/hires.json") == os.path.realpath(nested_file),
+    check(resolve_workflow_path("/portraits/sdxl/hires.json") == os.path.abspath(nested_file),
           "leading slash is tolerated, not treated as absolute")
-    check(resolve_workflow_path("portraits\\sdxl\\hires.json") == os.path.realpath(nested_file),
+    check(resolve_workflow_path("portraits\\sdxl\\hires.json") == os.path.abspath(nested_file),
           "backslash separators")
-    check(resolve_workflow_path("portraits/../root.json") == os.path.realpath(root_file),
+    check(resolve_workflow_path("portraits/../root.json") == os.path.abspath(root_file),
           "traversal that stays inside is fine")
 
     print("rejected paths:")
@@ -134,7 +140,7 @@ def main():
     # treats "...." as an ordinary (nonexistent) folder name, so the result must
     # stay under the root rather than reach the file outside it.
     mangled = resolve_workflow_path("....//outside/secret.json")
-    root = os.path.realpath(get_workflows_directory())
+    root = os.path.abspath(get_workflows_directory())
     check(mangled is None or mangled.startswith(root + os.sep),
           "mangled traversal stays inside the root")
     check(mangled != os.path.realpath(secret), "mangled traversal misses the outside file")
@@ -191,6 +197,16 @@ def main():
     check(to_relative_workflow_path(nested_file) == "portraits/sdxl/hires.json",
           "nested file maps to POSIX relative path")
     check(to_relative_workflow_path(root_file) == "root.json", "root file")
+
+    print("atomic writes and content etags:")
+    first_etag = get_workflow_etag(root_file)
+    atomic_write_workflow(root_file, {"nodes": [], "version": 0.4})
+    second_etag = get_workflow_etag(root_file)
+    check(first_etag != second_etag, "etag changes with workflow content")
+    with open(root_file, "r", encoding="utf-8") as workflow_file:
+        check(json.load(workflow_file)["version"] == 0.4, "atomic output is valid JSON")
+    leftovers = [name for name in os.listdir(workflows_dir) if name.startswith(".comfy-mobile-")]
+    check(not leftovers, "atomic write leaves no temporary file")
 
     print()
     if FAILURES:
