@@ -179,6 +179,7 @@ const parseRemoteWorkflow = async (
     createdAt: cached?.createdAt || modifiedDate,
     modifiedAt: modifiedDate,
     sortOrder: cached?.sortOrder,
+    agent: cached?.agent,
     author: 'cloud',
     tags: Array.from(new Set([...(processed.workflow.tags || []), 'cloud'])),
     cloud: {
