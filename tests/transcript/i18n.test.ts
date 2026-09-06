@@ -11,7 +11,7 @@ test('assistant translations cover each supported locale and interpolate counter
    const i18n=i18next.createInstance();await i18n.init({lng:lang,resources:{[lang]:{translation:dictionaries[lang]}},fallbackLng:false});
    assert(!i18n.t('agentUI.工作流 v{{version}}',{version:2}).includes('{{'));
    assert(!i18n.t('agentUI.版本历史（{{count}}）',{count:2}).includes('{{'));
-   assert(dictionaries[lang].menu.agent);
+   assert.deepEqual(Object.keys(dictionaries[lang].tabs).sort(),['chats','gallery','workflows']);
  }
 });
 test('all literal assistant UI translation keys exist',()=>{
@@ -19,5 +19,6 @@ test('all literal assistant UI translation keys exist',()=>{
  for(const folder of [root,new URL('transcript/',root)]) for(const name of readdirSync(folder).filter(n=>n.endsWith('.tsx'))){
    const source=readFileSync(new URL(name,folder),'utf8');
    for(const match of source.matchAll(/\bat\('([^']+)'/g)) assert(match[1] in dictionaries.zh.agentUI,`${name}: ${match[1]}`);
+   for(const match of source.matchAll(/\b(?:text|action|title)="([^"]+)"/g)) if(/[\u4e00-\u9fff]/.test(match[1])) assert(match[1] in dictionaries.zh.agentUI,`${name}: ${match[1]}`);
  }
 });
