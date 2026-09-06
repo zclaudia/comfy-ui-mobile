@@ -27,12 +27,13 @@
 
 | 标签 | 路由 | 内容 |
 | --- | --- | --- |
-| 对话 | `/` | 会话列表 |
+| 对话 | `/chats` | 会话列表 |
 | 工作流 | `/workflows` | 现有 WorkflowList，原样迁移 |
 | 画廊 | `/outputs` | 现有 OutputsGallery |
 
 - 侧边菜单删除"工作流助手"和"画廊"两行。
 - 默认标签：首次启动时，助手可用（`authMode === 'gateway'` 且 `providerReady`）落"对话"，否则落"工作流"。之后记住用户上次停留的标签，存 localStorage。
+- `/` 是入口重定向：读取上次停留的标签；没有记录时按助手可用性选择。被重定向到"工作流"的那次不会覆盖记住的标签。
 - 全屏页面不显示标签栏：`/chat/:sessionId`、`/chat/new`、画布编辑器、设置等。编辑器的"返回"改为回到 `/workflows`。
 - "对话"标签在助手不可用时显示引导页：未连接 Gateway 时说明需要 Gateway 并给"打开连接设置"；已连接但 `providerReady` 为假时说明"等待管理员配置语言模型"并给"重新检查"。
 - 有会话处于活跃任务状态时，"对话"标签显示小圆点角标。
@@ -84,12 +85,12 @@
 绑定数据：
 
 - Gateway 会话增加 `workflow: { id, name, filename? }`。`id` 是 App 本地工作流 id，`filename` 是云同步文件名。会话名不再单独维护，取工作流名。
-- 本地工作流增加 `agent: { sessionId, mirroredVersion }`。`mirroredVersion` 是库里这份内容对应的会话版本号，同时记录镜像时的本地 `revision`。
+- 本地工作流增加 `agent: { sessionId, mirroredVersion, mirroredHash }` 字段。`mirroredVersion` 记录库里这份内容对应的会话版本号，`mirroredHash` 是镜像或导入时 `workflow_json` 的内容哈希（键排序后计算）。
 - 解析顺序：先按 `id` 找，找不到按 `filename` 找（换设备后云端下载的工作流 id 不同），都找不到视为未绑定，聊天页提示"工作流已删除，可以从当前版本重新创建"。
 
 助手 → 画布：聊天页每收到 `workflow` 事件，拉取该版本画布，写入绑定工作流的 `workflow_json`，更新 `mirroredVersion`，走现有 `updateWorkflow`，云同步照常标脏上传。会话尚未绑定时（从空白开始，助手第一次建出工作流），App 创建新本地工作流并通过 `PATCH /sessions/:id` 回写绑定。
 
-画布 → 助手：用户在画布改动后回到聊天页，App 比较本地 `revision` 与镜像时记录的值。不一致则在发下一条消息前先调用 `POST /sessions/:id/versions` 把当前画布作为新版本提交，摘要"画布修改"，再发消息。Gateway 对不支持的画布返回 422，聊天页显示提示卡"画布里有助手暂不支持的改动，助手将基于上一版本继续"，用户确认后继续。
+画布 → 助手：用户在画布改动后回到聊天页，App 比较本地 `workflow_json` 的哈希与 `mirroredHash`（IndexedDB 每次写入都会覆盖 `modifiedAt`，所以不能用时间戳）。不一致则在发下一条消息前先调用 `POST /sessions/:id/versions` 把当前画布作为新版本提交，摘要"画布修改"，再发消息。Gateway 对不支持的画布返回 422，聊天页显示提示卡"画布里有助手暂不支持的改动，助手将基于上一版本继续"，用户确认后继续。
 
 编辑器入口：WorkflowHeader 加"对话"按钮。工作流有绑定会话则跳转，否则进 `/chat/new?workflow=<id>`。工作流列表的长按菜单加"和助手对话"。
 

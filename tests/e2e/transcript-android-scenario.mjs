@@ -1,7 +1,10 @@
 /** Run after the model scenario: retain media, summarize once, then exercise native copy/paste. */
 export async function transcriptAndroidScenario({ app, waitFor, assert, adb, sleep }) {
-  await app.evaluate('localStorage.setItem("i18nextLng","zh");location.href="/agent";true').catch(() => {});
-  await waitFor(`!!document.querySelector('video') && !!document.querySelector('textarea:not(:disabled)')`,30000);
+  await app.evaluate('localStorage.setItem("i18nextLng","zh");location.href="/chats";true').catch(() => {});
+  // Session list is assumed most-recent-first, so the top row is the session the model scenario just used.
+  await waitFor(`!!document.querySelector('[data-agent-session]')`,20000);
+  await app.evaluate(`document.querySelector('[data-agent-session]').click();true`);
+  await waitFor(`location.pathname.startsWith('/chat/') && !!document.querySelector('video') && !!document.querySelector('textarea:not(:disabled)')`,30000);
   const before=await app.evaluate(`document.querySelectorAll('[data-agent-turn]').length`);
   const message='请把刚才视频的尺寸、帧数、种子整理成 Markdown 表格，再用 json 代码块列出 width、height、frames、seed。只整理已有信息，不要再次生成。';
   await app.evaluate(`(()=>{const e=document.querySelector('textarea');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,${JSON.stringify(message)});e.dispatchEvent(new Event('input',{bubbles:true}));return true})()`);
