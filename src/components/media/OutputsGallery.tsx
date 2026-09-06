@@ -500,14 +500,14 @@ export const OutputsGallery: React.FC<OutputsGalleryProps> = ({
     // If at root of folder view, we can either stay or go back to main menu
     // User requested Root Folder to main screen behavior
     if (viewMode === 'folders' && selectedSubfolder === '/') {
-      // Just let it fall through to default navigate('/')
+      // Just let it fall through to the default navigate('/workflows')
     }
 
     // Otherwise, use default go back behavior
     if (isFileSelectionMode && onBackClick) {
       onBackClick();
     } else {
-      navigate('/');
+      navigate('/workflows');
     }
   };
 
@@ -1134,8 +1134,8 @@ export const OutputsGallery: React.FC<OutputsGalleryProps> = ({
 
       {/* Immersive Footer */}
       <footer
-        className="fixed bottom-0 inset-x-0 z-50 pt-16 pb-4 pointer-events-none"
-        style={{ background: 'linear-gradient(to top, rgba(5,6,8,.92) 25%, transparent)' }}
+        className="fixed inset-x-0 z-50 pt-16 pb-4 pointer-events-none"
+        style={{ bottom: 'var(--tab-bar-height, 0px)', background: 'linear-gradient(to top, rgba(5,6,8,.92) 25%, transparent)' }}
       >
         <div className="px-3.5 md:px-12 max-w-2xl mx-auto pointer-events-auto">
           {isSelectionMode ? (

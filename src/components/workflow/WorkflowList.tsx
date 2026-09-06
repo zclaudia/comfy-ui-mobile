@@ -734,7 +734,7 @@ const WorkflowList: React.FC = () => {
             exit={{ y: 80, opacity: 0 }}
             transition={{ duration: 0.2, ease: 'easeOut' }}
             className="fixed inset-x-0 z-40 flex justify-center px-4"
-            style={{ bottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+            style={{ bottom: 'calc(var(--tab-bar-height, 0px) + 0.75rem)' }}
           >
             <div
               className="flex items-center gap-2 p-1.5 rounded-[14px] border border-white/[0.09]"

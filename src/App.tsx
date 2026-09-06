@@ -39,6 +39,13 @@ import { RootRedirect } from '@/components/navigation/RootRedirect';
 // a mode must run the exact same cold path as first navigation (workflow_json
 // -> graph -> bounds, loading spinner included). Surgical partial reloads
 // kept leaving stale pieces behind (e.g. links drawn from the previous graph).
+// Keyed by session id so switching between two chats remounts rather than replaying
+// the previous session's messages, composer draft and scroll position.
+const ChatPageRoute: React.FC = () => {
+  const { id } = useParams();
+  return <ChatPage key={id ?? 'new'} />;
+};
+
 const WorkflowEditorRoute: React.FC = () => {
   const { id } = useParams();
   const officialCanvasEnabled = useCanvasV2Store((s) => s.officialCanvasEnabled);
@@ -244,8 +251,8 @@ const AppRouter: React.FC = () => {
           <Route path="/outputs" element={<OutputsGallery />} />
         </Route>
         <Route path="/agent" element={<Navigate to="/chats" replace />} />
-        <Route path="/chat/new" element={<ChatPage />} />
-        <Route path="/chat/:id" element={<ChatPage />} />
+        <Route path="/chat/new" element={<ChatPageRoute />} />
+        <Route path="/chat/:id" element={<ChatPageRoute />} />
         <Route path="/workflow/:id" element={<WorkflowEditorRoute />} />
         <Route path="/workflow-stack/:id" element={<WorkflowStackPage />} />
         <Route path="/chains" element={<WorkflowChainList />} />

@@ -1,6 +1,7 @@
 import { Check, Download, Network } from 'lucide-react';
 import { toast } from 'sonner';
 import { downloadMedia } from '@/platform/mediaDownload';
+import { withComfyAuth } from '@/infrastructure/auth/ComfyAuthService';
 import { useAgentText } from './useAgentText';
 import { AgentMedia, type AgentMediaOutput } from './AgentMedia';
 import { accentChip, chipButton } from './chatStyles';
@@ -24,7 +25,7 @@ export function WorkflowChangeCard({ version, summary, operations, mirrored, onO
 export function ResultCard({ version, outputs, baseUrl }: { version: number; outputs: AgentMediaOutput[]; baseUrl: string }) {
   const at = useAgentText();
   async function save(output: AgentMediaOutput) {
-    const url = `${baseUrl}/view?${new URLSearchParams({ filename: output.filename, subfolder: output.subfolder, type: output.type })}`;
+    const url = withComfyAuth(`${baseUrl}/view?${new URLSearchParams({ filename: output.filename, subfolder: output.subfolder, type: output.type })}`);
     try { await downloadMedia({ url, filename: output.filename }); toast.success(at('已开始保存 {{name}}', { name: output.filename })); }
     catch { toast.error(at('保存失败')); }
   }

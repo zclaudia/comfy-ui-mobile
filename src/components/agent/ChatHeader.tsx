@@ -21,9 +21,9 @@ export function ChatHeader({ title, subtitle, onBack, onOpenCanvas, onRename, on
       {(onRename || onHistory || onDelete) && <Dropdown.Root>
         <Dropdown.Trigger asChild><button className={tile} style={tileStyle} aria-label={at('更多')}><MoreVertical className="w-[17px] h-[17px]" strokeWidth={1.8} /></button></Dropdown.Trigger>
         <Dropdown.Portal><Dropdown.Content align="end" sideOffset={6} className="z-[60] min-w-[180px] p-1 rounded-[12px] border border-white/[0.08] shadow-2xl" style={{ background: '#101217' }}>
-          {onRename && <Dropdown.Item className={item} onSelect={onRename}><Pencil size={15} />{at('重命名')}</Dropdown.Item>}
-          {onHistory && <Dropdown.Item className={item} onSelect={onHistory}><History size={15} />{at('版本历史')}</Dropdown.Item>}
-          {onDelete && <Dropdown.Item className={`${item} text-[#f87c7c]`} onSelect={onDelete}><Trash2 size={15} />{at('删除会话')}</Dropdown.Item>}
+          {onRename && <Dropdown.Item className={item} onSelect={() => setTimeout(onRename, 0)}><Pencil size={15} />{at('重命名')}</Dropdown.Item>}
+          {onHistory && <Dropdown.Item className={item} onSelect={() => setTimeout(onHistory, 0)}><History size={15} />{at('版本历史')}</Dropdown.Item>}
+          {onDelete && <Dropdown.Item className={`${item} text-[#f87c7c]`} onSelect={() => setTimeout(onDelete, 0)}><Trash2 size={15} />{at('删除会话')}</Dropdown.Item>}
         </Dropdown.Content></Dropdown.Portal>
       </Dropdown.Root>}
     </div>

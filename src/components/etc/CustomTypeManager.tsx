@@ -48,7 +48,7 @@ export const CustomTypeManager: React.FC = () => {
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-3">
                 <Button
-                  onClick={() => navigate('/')}
+                  onClick={() => navigate('/workflows')}
                   variant="outline"
                   size="sm"
                   className="bg-white/20 dark:bg-slate-700/20 backdrop-blur-sm border border-white/30 dark:border-slate-600/30 shadow-lg hover:shadow-xl hover:bg-white/30 dark:hover:bg-slate-700/30 transition-all duration-300 h-10 w-10 p-0 flex-shrink-0 rounded-lg"

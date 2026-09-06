@@ -355,7 +355,7 @@ const WorkflowChainList: React.FC = () => {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => navigate('/')}
+            onClick={() => navigate('/workflows')}
             className="rounded-full"
           >
             <ArrowLeft className="h-5 w-5" />
@@ -385,7 +385,7 @@ const WorkflowChainList: React.FC = () => {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => navigate('/')}
+            onClick={() => navigate('/workflows')}
             className="rounded-full"
           >
             <ArrowLeft className="h-5 w-5" />
@@ -411,7 +411,7 @@ const WorkflowChainList: React.FC = () => {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => navigate('/')}
+            onClick={() => navigate('/workflows')}
             className="rounded-full"
           >
             <ArrowLeft className="h-5 w-5" />
@@ -472,7 +472,7 @@ const WorkflowChainList: React.FC = () => {
           <div className="relative flex items-center justify-between p-4 z-10">
             <div className="flex items-center space-x-3">
               <Button
-                onClick={() => navigate('/')}
+                onClick={() => navigate('/workflows')}
                 variant="ghost"
                 size="sm"
                 className="bg-white/20 dark:bg-slate-700/20 backdrop-blur-sm border border-white/30 dark:border-slate-600/30 shadow-lg hover:shadow-xl hover:bg-white/30 dark:hover:bg-slate-700/30 transition-all duration-300 h-10 w-10 p-0 flex-shrink-0 rounded-lg"

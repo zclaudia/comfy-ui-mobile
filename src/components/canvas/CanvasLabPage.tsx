@@ -230,7 +230,7 @@ const CanvasLabPage: React.FC = () => {
       <div className="flex items-center gap-3 px-3 py-2 bg-slate-900 border-b border-slate-800 z-20">
         <button
           className="p-2 rounded-lg text-slate-300 hover:bg-slate-800"
-          onClick={() => navigate('/')}
+          onClick={() => navigate('/workflows')}
           aria-label="Back"
         >
           <ArrowLeft className="w-5 h-5" />
