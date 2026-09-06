@@ -1622,7 +1622,7 @@ import { ChatHeader } from './ChatHeader';
 import { ErrorCard, NoticeCard, ResultCard, WorkflowChangeCard } from './ChatCards';
 import { WorkflowPickerSheet } from './WorkflowPickerSheet';
 import { VersionHistorySheet } from './VersionHistorySheet';
-import { NEW_CHAT_PRESETS, resolveBoundWorkflow, sessionTitle } from './binding';
+import { NEW_CHAT_PRESETS, hashCanvas, resolveBoundWorkflow, sessionTitle } from './binding';
 import { importCanvasIfChanged, mirrorVersion, type MirrorDeps } from './mirror';
 import { useAgentStatus } from './useAgentStatus';
 import { useAgentText } from './useAgentText';
@@ -1648,6 +1648,7 @@ export default function ChatPage() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [missing, setMissing] = useState(false);
+  const [conflict, setConflict] = useState(false);
   const [unsupported, setUnsupported] = useState<string | null>(null);
   const [mirroredVersion, setMirroredVersion] = useState(0);
   const request = useRef<{ text: string; id: string } | null>(null);
@@ -1685,6 +1686,7 @@ export default function ChatPage() {
         const result = await mirrorVersion(session, session.version, version.canvas, mirrorDeps, { fallbackName: at('新对话') });
         if (cancelled) return;
         setMissing(result.kind === 'missing');
+        setConflict(result.kind === 'conflict');
         setMirroredVersion(session.version);
         await reloadWorkflows();
       } catch (e) { if (!cancelled) toast.error(at('写入工作流库失败：{{message}}', { message: e instanceof Error ? e.message : String(e) })); }
@@ -1704,11 +1706,11 @@ export default function ChatPage() {
     if (!target) {
       const created = await api.create(pending ? pending.name : at('新工作流'), pending?.workflow_json, pending ? { id: pending.id, name: pending.name, filename: pending.cloud?.filename } : undefined);
       target = created.session;
-      if (pending) await updateWorkflowAgentBinding(pending.id, { sessionId: target.id, mirroredVersion: 1, mirroredAt: (pending.modifiedAt ?? pending.createdAt).toISOString() });
+      if (pending) await updateWorkflowAgentBinding(pending.id, { sessionId: target.id, mirroredVersion: 1, mirroredHash: hashCanvas(pending.workflow_json) });
     } else if (!unsupported) {
       const result = await importCanvasIfChanged(target, bound, { importVersion: (sid, canvas, base, summary) => api.importVersion(sid, canvas, base, summary), setBinding: updateWorkflowAgentBinding });
       if (result.kind === 'unsupported') { setUnsupported(result.message); return; }
-      if (result.kind === 'imported') { target = { ...target, version: result.version }; setMirroredVersion(result.version); await reloadWorkflows(); }
+      if (result.kind === 'imported') { target = { ...target, version: result.version }; setMirroredVersion(result.version); setConflict(false); await reloadWorkflows(); }
     }
     setUnsupported(null);
     if (!request.current || request.current.text !== text) request.current = { text, id: crypto.randomUUID() };
@@ -1747,6 +1749,7 @@ export default function ChatPage() {
       {!ready && state !== 'loading' && <NoticeCard text="请先连接 Gateway，再使用工作流助手。" action="打开连接设置" onAction={() => navigate('/settings/server')} />}
       {error && <NoticeCard text={error} action="重新连接" onAction={refresh} />}
       {missing && <NoticeCard text="绑定的工作流已从库里删除。" action="从当前版本重新创建" onAction={() => void action(async () => { if (!session) return; const version = await api.version(session.id, session.version); await mirrorVersion(session, session.version, version.canvas, mirrorDeps, { recreate: true, fallbackName: at('新对话') }); setMissing(false); await reloadWorkflows(); })} />}
+      {conflict && <NoticeCard text="画布上有未同步的修改，发送下一条消息时会先导入画布，助手最新版本不会覆盖它。" />}
       {unsupported && <NoticeCard text="画布里有助手暂不支持的改动，助手将基于上一版本继续。" action="继续发送" onAction={() => { void action(send); }} />}
       {pending && !session && <div className="rounded-[10px] border border-white/[0.07] p-3 flex items-center gap-2 text-[12.5px]" style={{ background: '#101217' }}><Network size={15} className="text-[#5b8af5]" />{at('已载入工作流 · {{count}} 个节点', { count: pending.nodeCount })}</div>}
       {!id && !pending && <div className="py-14 flex flex-col items-center text-center gap-3">
@@ -1780,7 +1783,7 @@ export default function ChatPage() {
 
 关键行为说明（实现时不要偏离）：
 - **懒创建**：没有 `id` 时页面不创建会话；第一条消息发送时才 `api.create`，带上选中工作流的画布和绑定，然后 `navigate(/chat/:id, replace)`。
-- **镜像**：effect 监视 `session.version`；大于本页已镜像版本时拉取画布并调用 `mirrorVersion`。首次进入会把当前版本镜像一次（覆盖离线期间的版本）。
+- **镜像**：effect 监视 `session.version`；大于本页已镜像版本时拉取画布并调用 `mirrorVersion`。首次进入会把当前版本镜像一次（覆盖离线期间的版本）。`mirrorVersion` 返回 `conflict`（用户在画布上改过、还没导入）时不覆盖画布，只显示提示卡；下一条消息发送前 `importCanvasIfChanged` 会把画布导入为新版本。
 - **画布导入**：`send()` 在有会话时先 `importCanvasIfChanged`；422 时显示提示卡，用户点"继续发送"会跳过导入。
 - 选择器里选到 `workflow.agent.sessionId` 已存在的工作流时直接跳到那个会话。
 
