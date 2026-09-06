@@ -654,6 +654,6 @@ export { IndexedDBWorkflowService }
 export const updateWorkflowAgentBinding = async (workflowId: string, agent: Workflow['agent']) => {
   const cached = await indexedDBService.findWorkflowById(workflowId)
   if (!cached) return
-  await indexedDBService.updateWorkflow({ ...cached, agent })
+  await indexedDBService.cacheWorkflow({ ...cached, agent })
   emitWorkflowLocalChange({ type: 'upsert', workflowId })
 }

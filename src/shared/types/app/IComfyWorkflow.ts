@@ -19,8 +19,8 @@ export interface CloudWorkflowMetadata {
 export interface AgentWorkflowBinding {
   sessionId: string;
   mirroredVersion: number;
-  /** ISO time written together with modifiedAt when the library copy was last written from a session version. */
-  mirroredAt: string;
+  /** Stable hash of workflow_json as last written from (or pushed to) the session; differs once the user edits the canvas. */
+  mirroredHash: string;
 }
 
 export interface IComfyWorkflow {

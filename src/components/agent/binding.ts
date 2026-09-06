@@ -17,18 +17,27 @@ export function resolveBoundWorkflow(ref: SessionWorkflowRef | undefined, workfl
   return workflows.find(w => w.id === ref.id) ?? (ref.filename ? workflows.find(w => w.cloud?.filename === ref.filename) : undefined);
 }
 
-/** True when the library copy was edited (canvas, cloud download) after the last mirror from the session. */
-export function canvasChangedSinceMirror(workflow: Workflow): boolean {
-  if (!workflow.agent || !workflow.modifiedAt) return false;
-  return workflow.modifiedAt.toISOString() !== workflow.agent.mirroredAt;
+/** Deterministic hash of a canvas: keys sorted so re-serialisation (cloud download, editor save) does not change it. */
+export function hashCanvas(canvas: unknown): string {
+  const text = JSON.stringify(canvas, (_key, value) => (value && typeof value === 'object' && !Array.isArray(value)) ? Object.fromEntries(Object.keys(value as Record<string, unknown>).sort().map(k => [k, (value as Record<string, unknown>)[k]])) : value);
+  let h1 = 0x811c9dc5, h2 = 0x9e3779b9;
+  for (let i = 0; i < text.length; i++) { const c = text.charCodeAt(i); h1 = Math.imul(h1 ^ c, 0x01000193) >>> 0; h2 = Math.imul(h2 ^ c, 0x85ebca6b) >>> 0; }
+  return `${h1.toString(16).padStart(8, '0')}${h2.toString(16).padStart(8, '0')}`;
+}
+
+/** True when the library copy no longer matches what this session last mirrored/pushed. Unbound workflows never import. */
+export function canvasChangedSinceMirror(workflow: Workflow, sessionId: string): boolean {
+  if (!workflow.agent) return false;
+  return workflow.agent.sessionId !== sessionId || hashCanvas(workflow.workflow_json) !== workflow.agent.mirroredHash;
 }
 
 export function chooseDefaultTab(lastTab: string | null, agentAvailable: boolean): TabPath {
+  if (lastTab === '/chats' && !agentAvailable) return '/workflows';
   if (lastTab && (TAB_PATHS as string[]).includes(lastTab)) return lastTab as TabPath;
   return agentAvailable ? '/chats' : '/workflows';
 }
 
-export function sessionTitle(session: { name: string; preview?: string; workflow?: SessionWorkflowRef }, fallback: string): string {
+export function sessionTitle(session: { preview?: string; workflow?: SessionWorkflowRef }, fallback: string): string {
   if (session.workflow) return session.workflow.name;
   return session.preview?.trim() || fallback;
 }
