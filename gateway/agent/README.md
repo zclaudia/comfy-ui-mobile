@@ -119,7 +119,7 @@ All paths start with `/api/gateway/agent`; use existing cookie/device authentica
 | Method/path | Behavior |
 | --- | --- |
 | GET `/status` | Enabled/provider status and budgets, no secrets |
-| GET/POST `/sessions` | List own sessions with `lastMessage`, `lastActivity`, `active`, `lastState`, `workflow`, `thumbnail` / create with optional canvas copy and `workflow` binding `{id, name, filename?}` |
+| GET/POST `/sessions` | List own sessions with `preview`, `lastMessage`, `lastActivity`, `active`, `lastState`, `workflow`, `thumbnail` / create with optional canvas copy and `workflow` binding `{id, name, filename?}` (the binding name becomes the session name) |
 | GET `/sessions/:id?after=N` | Snapshot plus up to 200 events after cursor N |
 | POST `/sessions/:id/messages` | `{requestId: UUID, message}`; idempotent request ID, one active task per session |
 | POST `/sessions/:id/cancel` | `{taskId}` |
