@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import ReactDOM from 'react-dom';
-import { X, Settings, Download, Upload, RotateCcw, Package, Trash2, FolderOpen, Database, Layers, Video, Link as LinkIcon, Image, ChevronRight, ChevronDown, Check, KeyRound, Bot } from 'lucide-react';
+import { X, Settings, Download, Upload, RotateCcw, Package, Trash2, FolderOpen, Database, Layers, Video, Link as LinkIcon, Image, ChevronRight, ChevronDown, Check, KeyRound } from 'lucide-react';
 import { useConnectionStore } from '@/ui/store/connectionStore';
 import { CacheService, CacheClearResult, BrowserCapabilities } from '@/services/cacheService';
 import { useNavigate } from 'react-router-dom';
@@ -28,7 +28,6 @@ interface SideMenuProps {
   onWidgetTypeSettingsClick: () => void;
   onVideoDownloadClick: () => void;
   onChainsClick: () => void;
-  onGalleryClick: () => void;
 }
 
 // Design-spec section tints (icon tile bg + icon color per section)
@@ -101,8 +100,7 @@ const SideMenu: React.FC<SideMenuProps> = ({
   onBrowserDataBackupClick,
   onWidgetTypeSettingsClick,
   onVideoDownloadClick,
-  onChainsClick,
-  onGalleryClick
+  onChainsClick
 }) => {
   const { url, isConnected, error, remoteVersion } = useConnectionStore();
   const [cacheSize, setCacheSize] = useState<number>(0);
@@ -230,22 +228,6 @@ const SideMenu: React.FC<SideMenuProps> = ({
                     {error}
                   </div>
                 )}
-              </GroupCard>
-            </div>
-
-            {/* NAVIGATION */}
-            <div>
-              <SectionLabel>{t('menu.navigation')}</SectionLabel>
-              <GroupCard>
-                <MenuRow icon={<Bot size={18} />} tint={TINT.nav} label={t('menu.agent', '工作流助手')} sub={t('menu.agentDescription', '用自然语言生成和调整工作流')} onClick={() => { onClose(); navigate('/agent'); }} />
-                <MenuRow
-                  icon={<Image className="w-4 h-4" strokeWidth={1.8} />}
-                  tint={TINT.nav}
-                  label={t('menu.gallery')}
-                  sub={t('menu.gallerySub')}
-                  onClick={onGalleryClick}
-                  divider={false}
-                />
               </GroupCard>
             </div>
 

@@ -780,7 +780,6 @@ const WorkflowList: React.FC = () => {
         onWidgetTypeSettingsClick={() => handleNavigation('/settings/widget-types')}
         onVideoDownloadClick={() => handleNavigation('/videos/download')}
         onChainsClick={() => handleNavigation('/chains')}
-        onGalleryClick={() => handleNavigation('/outputs')}
       />
 
       <WorkflowUploadModal
