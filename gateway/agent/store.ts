@@ -56,25 +56,27 @@ export class AgentStore {
       (SELECT substr(json_extract(e.data,'$.text'),1,100) FROM events e WHERE e.session_id=s.id AND e.kind='user' ORDER BY e.seq LIMIT 1) AS preview,
       (SELECT substr(json_extract(e.data,'$.text'),1,140) FROM events e WHERE e.session_id=s.id AND e.kind IN ('user','assistant') ORDER BY e.seq DESC LIMIT 1) AS last_message,
       (SELECT e.created FROM events e WHERE e.session_id=s.id ORDER BY e.seq DESC LIMIT 1) AS last_activity,
-      (SELECT MAX(e.seq) FROM events e WHERE e.session_id=s.id) AS last_seq,
       (SELECT COUNT(*) FROM tasks t WHERE t.session_id=s.id AND t.state IN ('queued','running','waiting_comfy','reconciling')) AS active,
       (SELECT t.state FROM tasks t WHERE t.session_id=s.id ORDER BY t.rowid DESC LIMIT 1) AS last_state,
-      (SELECT json_extract(e.data,'$.outputs[0]') FROM events e WHERE e.session_id=s.id AND e.kind='result' ORDER BY e.seq DESC LIMIT 1) AS thumbnail
+      (SELECT json_extract(e.data,'$.outputs[0]') FROM events e WHERE e.session_id=s.id AND e.kind='result' AND json_extract(e.data,'$.outputs[0]') IS NOT NULL ORDER BY e.seq DESC LIMIT 1) AS thumbnail
       FROM sessions s WHERE s.owner=? ORDER BY s.rowid DESC LIMIT 100`).all(owner);
     return rows.map(r => {
       const session = JSON.parse(r.data as string) as Session;
-      const thumbnail = r.thumbnail ? JSON.parse(r.thumbnail as string) as Partial<MediaRef> : undefined;
+      let thumbnail: Partial<MediaRef> | undefined;
+      if (r.thumbnail) {
+        try { const parsed = JSON.parse(r.thumbnail as string); if (parsed && typeof parsed === 'object' && typeof parsed.filename === 'string') thumbnail = parsed; }
+        catch { thumbnail = undefined; }
+      }
       return {
         ...session,
         ...(r.preview ? { preview: r.preview as string } : {}),
         ...(r.last_message ? { lastMessage: r.last_message as string } : {}),
         lastActivity: Number(r.last_activity ?? session.created),
-        lastSeq: Number(r.last_seq ?? 0),
         active: Number(r.active) > 0,
         ...(r.last_state ? { lastState: r.last_state as State } : {}),
-        ...(thumbnail?.filename ? { thumbnail: { filename: String(thumbnail.filename), subfolder: String(thumbnail.subfolder ?? ''), type: String(thumbnail.type ?? 'output') } } : {}),
+        ...(thumbnail ? { thumbnail: { filename: String(thumbnail.filename), subfolder: String(thumbnail.subfolder ?? ''), type: String(thumbnail.type ?? 'output') } } : {}),
       };
-    }).sort((a, b) => b.lastSeq - a.lastSeq || b.created - a.created).map(({ lastSeq: _, ...summary }) => summary);
+    }).sort((a, b) => b.lastActivity - a.lastActivity);
   }
   create(owner: string, name: string, canvas?: Canvas, workflow?: SessionWorkflow): Session {
     return this.transaction(() => {
@@ -87,13 +89,14 @@ export class AgentStore {
   updateSession(id: string, patch: { name?: string; workflow?: SessionWorkflow | null }): Session {
     return this.transaction(() => {
       const session = this.session(id);
-      if (patch.name !== undefined) session.name = patch.name;
       if (patch.workflow === null) delete session.workflow;
       else if (patch.workflow) { session.workflow = patch.workflow; session.name = patch.workflow.name; }
+      if (patch.name !== undefined) session.name = patch.name;
       this.db.prepare('UPDATE sessions SET data=? WHERE id=?').run(JSON.stringify(session), id);
       return session;
     });
   }
+  /** Callers must cancel active tasks first (see AgentService.deleteSession); a running task would otherwise hit FK errors. */
   deleteSession(id: string) {
     this.transaction(() => {
       this.session(id);
