@@ -17,10 +17,13 @@ export function useAgentStatus() {
     if (!url || authMode !== 'gateway') { setState('no-gateway'); return; }
     const controller = new AbortController();
     setState('loading');
+    // A gateway that accepts the connection but never answers would otherwise leave the app stuck on 'loading'.
+    let timedOut = false;
+    const timeout = setTimeout(() => { timedOut = true; controller.abort(); }, 4000);
     api.status(controller.signal)
-      .then(value => { if (controller.signal.aborted) return; setStatus(value); setState(value.providerReady ? 'ready' : 'no-provider'); })
-      .catch(() => { if (!controller.signal.aborted) setState('error'); });
-    return () => controller.abort();
+      .then(value => { clearTimeout(timeout); if (controller.signal.aborted) return; setStatus(value); setState(value.providerReady ? 'ready' : 'no-provider'); })
+      .catch(() => { clearTimeout(timeout); if (timedOut || !controller.signal.aborted) setState('error'); });
+    return () => { clearTimeout(timeout); controller.abort(); };
   }, [api, url, authMode, attempt]);
   const retry = useCallback(() => setAttempt(n => n + 1), []);
   return { api, status, state, ready: state === 'ready', retry };

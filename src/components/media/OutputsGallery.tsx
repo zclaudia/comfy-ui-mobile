@@ -860,7 +860,7 @@ export const OutputsGallery: React.FC<OutputsGalleryProps> = ({
   const totalFiles = files.images.length + files.videos.length;
 
   return (
-    <div className="fixed inset-0 overflow-y-auto overflow-x-hidden pt-safe pb-safe z-0" style={{ background: '#050608' }}>
+    <div className="fixed inset-0 overflow-y-auto overflow-x-hidden pt-safe pb-safe z-0" style={{ background: '#050608', paddingBottom: 'var(--tab-bar-height, 0px)' }}>
       {/* Immersive Fixed Header */}
       <header
         ref={headerRef}

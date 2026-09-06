@@ -101,6 +101,22 @@ export default function ChatPage() {
     })();
   }, [api, session, mirroredVersion, mirrorError, mirrorDeps, reloadWorkflows, fallbackName]);
 
+  // A workflow re-downloaded from cloud on another device has a new id, so the binding only resolves through the
+  // filename. Teach the session the id and filename it actually matched, once per resolution, so it stops guessing.
+  const filenameSynced = useRef('');
+  useEffect(() => {
+    const ref = session?.workflow, filename = bound?.cloud?.filename;
+    if (!session || !ref || !bound || !filename) return;
+    if (filename === ref.filename && bound.id === ref.id) return;
+    const key = `${session.id}|${bound.id}|${filename}`;
+    if (filenameSynced.current === key) return;
+    filenameSynced.current = key;
+    // updateSession renames the session after workflow.name, so keep the name the session already carries.
+    void api.update(session.id, { workflow: { id: bound.id, name: ref.name, filename } })
+      .then(({ session: next }) => setSnapshot(p => p ? { ...p, session: next } : p))
+      .catch(() => { /* best effort; the filename fallback still resolves the binding */ });
+  }, [api, session, bound, setSnapshot]);
+
   async function action(fn: () => Promise<void>) {
     setBusy(true);
     try { await fn(); } catch (e) { toast.error(at(e instanceof Error ? e.message : '操作失败')); }
@@ -129,11 +145,7 @@ export default function ChatPage() {
     else setSnapshot(await api.snapshot(target.id));
   }
 
-  // A renamed but unbound session keeps its own name; the placeholder falls through to the first message.
-  // New sessions are created with the localised placeholder, so both spellings count as "unnamed".
-  const placeholder = new Set(['新工作流', at('新工作流')]);
-  const named = session && !session.workflow && !!session.name && !placeholder.has(session.name);
-  const title = session ? (named ? session.name : sessionTitle(session, firstMessage || at('新对话'))) : pending ? pending.name : at('新对话');
+  const title = session ? sessionTitle(session, firstMessage || at('新对话')) : pending ? pending.name : at('新对话');
   const subtitle = session ? [session.version ? `V${session.version}` : '', bound ? `${bound.nodeCount}N` : ''].filter(Boolean).join(' · ') : pending ? `${pending.nodeCount}N` : undefined;
   const chips = [
     { icon: <ImageIcon size={14} strokeWidth={1.8} />, label: at('生成一张图片'), onClick: () => setDraft(at(NEW_CHAT_PRESETS.image)) },

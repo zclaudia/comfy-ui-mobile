@@ -32,7 +32,6 @@ interface SideMenuProps {
 
 // Design-spec section tints (icon tile bg + icon color per section)
 const TINT = {
-  nav: { bg: 'rgba(61,123,253,.1)', fg: '#5b8af5' },
   mgmt: { bg: 'rgba(154,123,240,.1)', fg: '#9a8af0' },
   sync: { bg: 'rgba(79,184,186,.12)', fg: '#56bfc1' },
   models: { bg: 'rgba(240,171,82,.1)', fg: '#e0a860' },

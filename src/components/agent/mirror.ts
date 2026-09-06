@@ -28,8 +28,9 @@ export async function mirrorVersion(session: AgentSession, version: number, canv
   if (bound) {
     const sameSession = bound.agent?.sessionId === session.id;
     if (sameSession && (bound.agent?.mirroredVersion ?? 0) >= version) return { kind: 'unchanged', workflow: bound };
-    // A canvas edited since the last mirror must not be overwritten; the next message imports it instead.
-    if (sameSession && hashCanvas(bound.workflow_json) !== bound.agent!.mirroredHash) return { kind: 'conflict', workflow: bound };
+    // A canvas edited since its last mirror must not be overwritten, whoever mirrored it; the next message imports it
+    // instead. A copy with no binding at all (a fresh cloud download on another device) is adopted and stamped.
+    if (bound.agent && hashCanvas(bound.workflow_json) !== bound.agent.mirroredHash) return { kind: 'conflict', workflow: bound };
     const workflow: Workflow = { ...bound, workflow_json: canvas, nodeCount: nodeCount(canvas), modifiedAt: now, agent };
     await deps.update(workflow);
     return { kind: 'updated', workflow };
@@ -44,7 +45,7 @@ export async function mirrorVersion(session: AgentSession, version: number, canv
 
 export type ImportResult = { kind: 'unchanged' } | { kind: 'imported'; version: number } | { kind: 'unsupported'; message: string };
 
-/** Before a message, push canvas edits so the agent works on what the user sees. 422 means the canvas uses unsupported nodes. */
+/** Before a message, push canvas edits so the agent works on what the user sees. 400/422 mean the canvas uses unsupported nodes. */
 export async function importCanvasIfChanged(
   session: AgentSession, bound: Workflow | undefined,
   deps: { importVersion: (id: string, canvas: IComfyJson, baseVersion: number, summary: string) => Promise<{ version: number }>; setBinding: (workflowId: string, agent: Workflow['agent']) => Promise<void> },
@@ -55,7 +56,7 @@ export async function importCanvasIfChanged(
     await deps.setBinding(bound.id, { sessionId: session.id, mirroredVersion: version, mirroredHash: hashCanvas(bound.workflow_json) });
     return { kind: 'imported', version };
   } catch (error) {
-    if (error instanceof AgentRequestError && error.status === 422) return { kind: 'unsupported', message: error.message };
+    if (error instanceof AgentRequestError && (error.status === 400 || error.status === 422)) return { kind: 'unsupported', message: error.message };
     throw error;
   }
 }

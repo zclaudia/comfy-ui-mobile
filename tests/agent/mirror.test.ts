@@ -39,12 +39,25 @@ test('mirrorVersion updates the bound workflow with the version canvas and hash'
 });
 
 test('mirrorVersion ignores the version guard when the workflow belongs to another session', async () => {
+  // The canvas still matches what session A mirrored, so there is no user edit to protect: session B takes it over.
   const other = wf('a', { agent: { sessionId: 'sA', mirroredVersion: 5, mirroredHash: hashCanvas(canvas(1)) } });
   const session: AgentSession = { id: 'sB', name: '海报', version: 1, created: 0, workflow: { id: 'a', name: '海报' } };
   const d = deps([other]);
   const result = await mirrorVersion(session, 1, canvas(2), d);
   assert.equal(result.kind, 'updated');
   assert.deepEqual(d.updated[0].agent, { sessionId: 'sB', mirroredVersion: 1, mirroredHash: hashCanvas(canvas(2)) });
+});
+
+test('mirrorVersion protects an edited canvas that another session mirrored, but adopts an unbound copy', async () => {
+  const session: AgentSession = { id: 'sB', name: '海报', version: 1, created: 0, workflow: { id: 'a', name: '海报' } };
+  const editedElsewhere = wf('a', { workflow_json: canvas(7), nodeCount: 7, agent: { sessionId: 'sA', mirroredVersion: 5, mirroredHash: hashCanvas(canvas(1)) } });
+  const edited = deps([editedElsewhere]);
+  assert.equal((await mirrorVersion(session, 1, canvas(2), edited)).kind, 'conflict');
+  assert.equal(edited.updated.length, 0, 'the edit stays whoever owns the binding');
+  // A copy re-downloaded from cloud on another device carries no binding at all; nothing to protect, so it is stamped.
+  const fresh = deps([wf('a', { workflow_json: canvas(7), nodeCount: 7 })]);
+  assert.equal((await mirrorVersion(session, 1, canvas(2), fresh)).kind, 'updated');
+  assert.deepEqual(fresh.updated[0].agent, { sessionId: 'sB', mirroredVersion: 1, mirroredHash: hashCanvas(canvas(2)) });
 });
 
 test('mirrorVersion refuses to overwrite a canvas edited since the last mirror', async () => {
@@ -86,6 +99,8 @@ test('importCanvasIfChanged pushes edited canvases, skips clean ones and reports
   assert.deepEqual(await importCanvasIfChanged(session, otherSession, ok), { kind: 'imported', version: 3 }, 'a workflow taken over from another session is re-pushed');
   const unsupported = { ...ok, importVersion: async () => { throw new AgentRequestError(422, '工作流暂不支持或存在错误'); } };
   assert.deepEqual(await importCanvasIfChanged(session, edited, unsupported), { kind: 'unsupported', message: '工作流暂不支持或存在错误' });
+  const rejected = { ...ok, importVersion: async () => { throw new AgentRequestError(400, '画布缺少必要字段'); } };
+  assert.deepEqual(await importCanvasIfChanged(session, edited, rejected), { kind: 'unsupported', message: '画布缺少必要字段' }, 'a 400 is a canvas the agent cannot take, not a crash');
   const conflict = { ...ok, importVersion: async () => { throw new AgentRequestError(409, '版本已改变'); } };
   await assert.rejects(importCanvasIfChanged(session, edited, conflict), /版本已改变/);
 });

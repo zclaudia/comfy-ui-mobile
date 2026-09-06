@@ -17,9 +17,14 @@ export function resolveBoundWorkflow(ref: SessionWorkflowRef | undefined, workfl
   return workflows.find(w => w.id === ref.id) ?? (ref.filename ? workflows.find(w => w.cloud?.filename === ref.filename) : undefined);
 }
 
-/** Deterministic hash of a canvas: keys sorted so re-serialisation (cloud download, editor save) does not change it. */
+/**
+ * Deterministic hash of a canvas graph: keys sorted so re-serialisation (cloud download, editor save) does not change it.
+ * Only `nodes` and `links` are hashed — cloud sync rewrites `extra` (name/description/tags/comfy_mobile_cloud) on upload
+ * and download, which is metadata, not a canvas edit, and must not look like one.
+ */
 export function hashCanvas(canvas: unknown): string {
-  const text = JSON.stringify(canvas, (_key, value) => (value && typeof value === 'object' && !Array.isArray(value)) ? Object.fromEntries(Object.keys(value as Record<string, unknown>).sort().map(k => [k, (value as Record<string, unknown>)[k]])) : value);
+  const graph = { nodes: (canvas as { nodes?: unknown })?.nodes ?? [], links: (canvas as { links?: unknown })?.links ?? [] };
+  const text = JSON.stringify(graph, (_key, value) => (value && typeof value === 'object' && !Array.isArray(value)) ? Object.fromEntries(Object.keys(value as Record<string, unknown>).sort().map(k => [k, (value as Record<string, unknown>)[k]])) : value);
   let h1 = 0x811c9dc5, h2 = 0x9e3779b9;
   for (let i = 0; i < text.length; i++) { const c = text.charCodeAt(i); h1 = Math.imul(h1 ^ c, 0x01000193) >>> 0; h2 = Math.imul(h2 ^ c, 0x85ebca6b) >>> 0; }
   return `${h1.toString(16).padStart(8, '0')}${h2.toString(16).padStart(8, '0')}`;
@@ -37,7 +42,13 @@ export function chooseDefaultTab(lastTab: string | null, agentAvailable: boolean
   return agentAvailable ? '/chats' : '/workflows';
 }
 
-export function sessionTitle(session: { preview?: string; workflow?: SessionWorkflowRef }, fallback: string): string {
+/** Names new sessions get before anyone renames them; they must fall through to the preview. Keep in sync with `agentUI.新工作流`. */
+export const SESSION_NAME_PLACEHOLDERS = new Set(['新工作流', 'New workflow', '新しいワークフロー', '새 워크플로']);
+
+/** Bound workflow name → a name the user actually chose → the first message → the fallback. */
+export function sessionTitle(session: { name?: string; preview?: string; workflow?: SessionWorkflowRef }, fallback: string): string {
   if (session.workflow) return session.workflow.name;
+  const name = session.name?.trim();
+  if (name && !SESSION_NAME_PLACEHOLDERS.has(name)) return name;
   return session.preview?.trim() || fallback;
 }
