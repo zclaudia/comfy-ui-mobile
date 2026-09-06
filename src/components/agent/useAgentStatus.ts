@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AgentApi, type AgentStatus } from '@/infrastructure/api/AgentApi';
 import { useConnectionStore } from '@/ui/store/connectionStore';
 
@@ -6,7 +6,8 @@ export type AgentAvailability = 'loading' | 'no-gateway' | 'no-provider' | 'erro
 
 /** Resolves whether the chat feature can be used with the current connection. Re-runs when the connection changes. */
 export function useAgentStatus() {
-  const { url, authMode } = useConnectionStore();
+  const url = useConnectionStore(s => s.url);
+  const authMode = useConnectionStore(s => s.authMode);
   const api = useMemo(() => new AgentApi(url), [url]);
   const [status, setStatus] = useState<AgentStatus | null>(null);
   const [state, setState] = useState<AgentAvailability>('loading');
@@ -21,5 +22,6 @@ export function useAgentStatus() {
       .catch(() => { if (!controller.signal.aborted) setState('error'); });
     return () => controller.abort();
   }, [api, url, authMode, attempt]);
-  return { api, status, state, ready: state === 'ready', retry: () => setAttempt(n => n + 1) };
+  const retry = useCallback(() => setAttempt(n => n + 1), []);
+  return { api, status, state, ready: state === 'ready', retry };
 }

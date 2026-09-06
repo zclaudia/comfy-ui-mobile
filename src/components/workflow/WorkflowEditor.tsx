@@ -3663,7 +3663,7 @@ const WorkflowEditor: React.FC = () => {
           <h2 className="mb-1.5 text-[14px] font-bold text-[#e9ebef]">{t('workflow.loadFailed')}</h2>
           <p className="mb-4 text-[11.5px] leading-relaxed text-[#8a919e]">{error}</p>
           <button
-            onClick={() => navigate('/')}
+            onClick={() => navigate('/workflows')}
             className="h-9 rounded-[10px] bg-[#3069f0] px-4 text-[12px] font-semibold text-white transition-colors hover:bg-[#3f78f5]"
           >
             {t('workflow.backToList')}
@@ -3719,7 +3719,7 @@ const WorkflowEditor: React.FC = () => {
             setIsNodePanelVisible(false);
             setSelectedNode(null);
           } else {
-            navigate('/');
+            navigate('/workflows');
           }
         }}
         onSaveChanges={handleSaveChanges}

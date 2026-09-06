@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BrowserRouter, Routes, Route, useParams } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useParams, Navigate } from 'react-router-dom';
 import { useCanvasV2Store } from '@/ui/store/canvasV2Store';
 import { toast } from 'sonner';
 import WorkflowList from '@/components/workflow/WorkflowList';
@@ -29,7 +29,9 @@ import { WorkflowStackPage } from '@/components/workflow/WorkflowStackPage';
 import { AppUpdate } from '@/components/server/AppUpdate';
 import CanvasLabPage from '@/components/canvas/CanvasLabPage';
 import CloudWorkflowSyncController from '@/components/workflow/CloudWorkflowSyncController';
-import AgentPage from '@/components/agent/AgentPage';
+import SessionListPage from '@/components/agent/SessionListPage';
+import { TabLayout } from '@/components/navigation/TabLayout';
+import { RootRedirect } from '@/components/navigation/RootRedirect';
 
 // Canvas-mode gate: switching Mobile <-> Official remounts the whole editor.
 // Mode switching is data-driven — storage is the only boundary — so entering
@@ -234,8 +236,13 @@ const AppRouter: React.FC = () => {
     <>
       <CloudWorkflowSyncController />
       <Routes>
-        <Route path="/" element={<WorkflowList />} />
-        <Route path="/agent" element={<AgentPage />} />
+        <Route path="/" element={<RootRedirect />} />
+        <Route element={<TabLayout />}>
+          <Route path="/chats" element={<SessionListPage />} />
+          <Route path="/workflows" element={<WorkflowList />} />
+          <Route path="/outputs" element={<OutputsGallery />} />
+        </Route>
+        <Route path="/agent" element={<Navigate to="/chats" replace />} />
         <Route path="/workflow/:id" element={<WorkflowEditorRoute />} />
         <Route path="/workflow-stack/:id" element={<WorkflowStackPage />} />
         <Route path="/chains" element={<WorkflowChainList />} />
@@ -245,7 +252,6 @@ const AppRouter: React.FC = () => {
         <Route path="/reboot" element={<ServerReboot />} />
         <Route path="/import/server" element={<WorkflowImport />} />
         <Route path="/upload/server" element={<WorkflowUpload />} />
-        <Route path="/outputs" element={<OutputsGallery />} />
         <Route path="/models/download" element={<ModelDownload />} />
         <Route path="/models/browser" element={<ModelBrowserPage />} />
         <Route path="/browser-data-backup" element={<BrowserDataBackup />} />
