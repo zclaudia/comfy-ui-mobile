@@ -621,9 +621,12 @@ export const updateWorkflow = async (workflow: Workflow) => {
   // IndexedDB. Merge that newest metadata before marking the next edit dirty.
   const cached = await indexedDBService.findWorkflowById(workflow.id)
   const cloud = cached?.cloud || workflow.cloud
-  const localWorkflow: Workflow = cloud
-    ? { ...workflow, cloud: { ...cloud, dirty: true, syncError: undefined } }
-    : workflow
+  const agent = workflow.agent ?? cached?.agent
+  const localWorkflow: Workflow = {
+    ...workflow,
+    ...(agent ? { agent } : {}),
+    ...(cloud ? { cloud: { ...cloud, dirty: true, syncError: undefined } } : {}),
+  }
   await indexedDBService.updateWorkflow(localWorkflow)
   emitWorkflowLocalChange({ type: 'upsert', workflowId: localWorkflow.id })
 }

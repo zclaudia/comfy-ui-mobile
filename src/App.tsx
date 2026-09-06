@@ -31,6 +31,7 @@ import CanvasLabPage from '@/components/canvas/CanvasLabPage';
 import CloudWorkflowSyncController from '@/components/workflow/CloudWorkflowSyncController';
 import SessionListPage from '@/components/agent/SessionListPage';
 import ChatPage from '@/components/agent/ChatPage';
+import { useAgentActivityPoll } from '@/components/agent/useAgentActivityPoll';
 import { TabLayout } from '@/components/navigation/TabLayout';
 import { RootRedirect } from '@/components/navigation/RootRedirect';
 
@@ -67,6 +68,8 @@ const AppRouter: React.FC = () => {
   const [isRecovering, setIsRecovering] = useState(false);
 
   useEffect(() => initializeWebSocketListeners(), [initializeWebSocketListeners]);
+
+  useAgentActivityPoll();
 
   useEffect(() => {
     const timer = window.setInterval(() => {
