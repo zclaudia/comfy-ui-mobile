@@ -30,6 +30,7 @@ import { AppUpdate } from '@/components/server/AppUpdate';
 import CanvasLabPage from '@/components/canvas/CanvasLabPage';
 import CloudWorkflowSyncController from '@/components/workflow/CloudWorkflowSyncController';
 import SessionListPage from '@/components/agent/SessionListPage';
+import ChatPage from '@/components/agent/ChatPage';
 import { TabLayout } from '@/components/navigation/TabLayout';
 import { RootRedirect } from '@/components/navigation/RootRedirect';
 
@@ -243,6 +244,8 @@ const AppRouter: React.FC = () => {
           <Route path="/outputs" element={<OutputsGallery />} />
         </Route>
         <Route path="/agent" element={<Navigate to="/chats" replace />} />
+        <Route path="/chat/new" element={<ChatPage />} />
+        <Route path="/chat/:id" element={<ChatPage />} />
         <Route path="/workflow/:id" element={<WorkflowEditorRoute />} />
         <Route path="/workflow-stack/:id" element={<WorkflowStackPage />} />
         <Route path="/chains" element={<WorkflowChainList />} />
