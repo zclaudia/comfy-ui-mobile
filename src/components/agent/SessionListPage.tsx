@@ -83,8 +83,8 @@ export default function SessionListPage() {
       <div className="max-w-[1600px] mx-auto h-[52px] px-4 flex items-center gap-2.5">
         <button onClick={() => setMenuOpen(true)} className="shrink-0 -ml-1 p-1.5 text-[#c8ccd4] hover:text-white transition-colors" aria-label={at('菜单')}><Menu className="w-5 h-5" strokeWidth={1.7} /></button>
         <div className="w-[26px] h-[26px] shrink-0 rounded-[7px] bg-[#3069f0] flex items-center justify-center"><Bot size={16} strokeWidth={2} className="text-white" /></div>
-        <span className="text-[13.5px] font-semibold">{at('对话')}</span>
-        {serverHost && <span className="shrink-0 font-mono text-[11px] text-[#565d6b] px-1.5 py-[3px] border border-white/10 rounded-[5px] max-w-[164px] truncate">{serverHost}</span>}
+        <span className="shrink-0 text-[13.5px] font-semibold">{at('对话')}</span>
+        {serverHost && <span className="min-w-0 shrink font-mono text-[11px] text-[#565d6b] px-1.5 py-[3px] border border-white/10 rounded-[5px] max-w-[164px] truncate">{serverHost}</span>}
         <div className="flex-1" />
         {ready && <button data-agent-new onClick={() => navigate('/chat/new')} className="shrink-0 h-9 px-3.5 flex items-center gap-1.5 rounded-[9px] bg-[#3069f0] hover:bg-[#3f78f5] text-white text-[12.5px] font-semibold transition-colors"><Plus className="w-[13px] h-[13px]" strokeWidth={2.4} />{at('新对话')}</button>}
       </div>

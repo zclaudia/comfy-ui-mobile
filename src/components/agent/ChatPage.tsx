@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Bot, Film, Image as ImageIcon, Loader2, Network, Square } from 'lucide-react';
+import { Bot, ChevronDown, Film, Image as ImageIcon, Loader2, Network, Square } from 'lucide-react';
 import { toast } from 'sonner';
 import { SimpleConfirmDialog } from '@/components/ui/SimpleConfirmDialog';
 import { addWorkflow, loadAllWorkflows, updateWorkflow, updateWorkflowAgentBinding } from '@/infrastructure/storage/IndexedDBWorkflowService';
@@ -55,7 +55,8 @@ export default function ChatPage() {
   const request = useRef<{ text: string; files: string; id: string } | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
   const followLatest = useRef(true);
-  const [showLatest, setShowLatest] = useState(false);
+  const [atBottom, setAtBottom] = useState(true);
+  const [unread, setUnread] = useState(false);
 
   useEffect(() => () => { alive.current = false; }, []);
   const reloadWorkflows = useCallback(() => loadAllWorkflows().then(setWorkflows).catch(() => setWorkflows([])), []);
@@ -72,7 +73,7 @@ export default function ChatPage() {
   const fallbackName = useMemo(() => firstMessage || at('新对话'), [firstMessage, at]);
   const task = snapshot?.tasks.find(t => active.has(t.state));
   useEffect(() => { if (snapshot) setActive(!!task); }, [snapshot, task, setActive]);
-  useEffect(() => { if (followLatest.current) bottom.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); else setShowLatest(true); }, [events.length]);
+  useEffect(() => { if (followLatest.current) bottom.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); else setUnread(true); }, [events.length]);
 
   const mirrorDeps: MirrorDeps = useMemo(() => ({
     workflows: loadAllWorkflows,
@@ -105,6 +106,21 @@ export default function ChatPage() {
       finally { mirroring.current = 0; }
     })();
   }, [api, session, mirroredVersion, mirrorError, mirrorDeps, reloadWorkflows, fallbackName]);
+
+  // The jump button tracks the scroll position itself, so it is offered whenever the user is reading back through
+  // history, not only when a new event arrived while they were away from the bottom.
+  const trackScroll = useCallback((el: HTMLElement) => {
+    const near = el.scrollHeight - el.scrollTop - el.clientHeight < 100;
+    followLatest.current = near;
+    setAtBottom(near);
+    if (near) setUnread(false);
+  }, []);
+  const jumpToLatest = useCallback(() => {
+    followLatest.current = true;
+    setAtBottom(true);
+    setUnread(false);
+    bottom.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, []);
 
   // A workflow re-downloaded from cloud on another device has a new id, so the binding only resolves through the
   // filename. Teach the session the id and filename it actually matched, once per resolution, so it stops guessing.
@@ -173,33 +189,42 @@ export default function ChatPage() {
     return null;
   };
 
-  return <main className="h-dvh overflow-hidden flex flex-col text-[#e9ebef]" style={{ background: '#0b0c0f', paddingTop: 'env(safe-area-inset-top)' }}>
+  return <main className="h-dvh overflow-hidden flex flex-col text-[#e9ebef]" style={{ background: '#0b0c0f' }}>
     <ChatHeader title={title} subtitle={subtitle} onBack={() => navigate('/chats')}
       onOpenCanvas={bound ? () => navigate(`/workflow/${bound.id}`) : undefined}
       onRename={session ? () => setRenameOpen(true) : undefined}
       onHistory={session && snapshot?.versions.length ? () => setHistoryOpen(true) : undefined}
       onDelete={session ? () => setDeleteOpen(true) : undefined} />
-    <div onScroll={e => { const el = e.currentTarget; followLatest.current = el.scrollHeight - el.scrollTop - el.clientHeight < 100; if (followLatest.current) setShowLatest(false); }} className="w-full max-w-4xl mx-auto flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-4 space-y-3">
-      {state === 'no-gateway' && <NoticeCard text="请先连接 Gateway，再使用工作流助手。" action="打开连接设置" onAction={() => navigate('/settings/server')} />}
-      {state === 'no-provider' && <NoticeCard text="助手尚未连接语言模型，管理员配置后即可开始对话。" action="重新检查" onAction={retry} />}
-      {state === 'error' && <NoticeCard text="暂时无法连接助手。" action="重新检查" onAction={retry} />}
-      {error && <NoticeCard text={error} action="重新连接" onAction={refresh} />}
-      {mirrorError && <NoticeCard text={at('写入工作流库失败：{{message}}', { message: mirrorError })} action="重试" onAction={() => setMirrorError('')} />}
-      {missing && <NoticeCard text="绑定的工作流已从库里删除。" action="从当前版本重新创建" onAction={() => void action(async () => { if (!session) return; const version = await api.version(session.id, session.version); await mirrorVersion(session, session.version, version.canvas, mirrorDeps, { recreate: true, fallbackName }); setMissing(false); await reloadWorkflows(); })} />}
-      {conflict && <NoticeCard text="画布上有未同步的修改，发送下一条消息时会先导入画布，助手最新版本不会覆盖它。" />}
-      {unsupported && <NoticeCard text="画布里有助手暂不支持的改动，助手将基于上一版本继续。" action="继续发送" onAction={() => { void action(send); }} />}
-      {pending && !session && <div className="rounded-[10px] border border-white/[0.07] p-3 flex items-center gap-2 text-[12.5px]" style={{ background: '#101217' }}><Network size={15} className="text-[#5b8af5]" />{at('已载入工作流 · {{count}} 个节点', { count: pending.nodeCount })}</div>}
-      {!id && !pending && <div className="py-14 flex flex-col items-center text-center gap-3">
-        <div className="w-[52px] h-[52px] rounded-[14px] bg-[#3069f0]/12 border border-[#3069f0]/25 flex items-center justify-center"><Bot size={26} strokeWidth={1.8} className="text-[#5b8af5]" /></div>
-        <p className="text-[16px] font-semibold">{at('你想创作什么？')}</p>
-        <p className="text-[12.5px] text-[#66758a] max-w-[280px] leading-relaxed">{at('直接描述目标。助手会根据已安装的模型选择合适的工作流，生成预览并写入你的工作流库。')}</p>
+    <div className="relative flex-1 min-h-0 flex flex-col">
+      <div onScroll={e => trackScroll(e.currentTarget)} className="w-full max-w-4xl mx-auto flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-4 space-y-3">
+        {state === 'no-gateway' && <NoticeCard text="请先连接 Gateway，再使用工作流助手。" action="打开连接设置" onAction={() => navigate('/settings/server')} />}
+        {state === 'no-provider' && <NoticeCard text="助手尚未连接语言模型，管理员配置后即可开始对话。" action="重新检查" onAction={retry} />}
+        {state === 'error' && <NoticeCard text="暂时无法连接助手。" action="重新检查" onAction={retry} />}
+        {error && <NoticeCard text={error} action="重新连接" onAction={refresh} />}
+        {mirrorError && <NoticeCard text={at('写入工作流库失败：{{message}}', { message: mirrorError })} action="重试" onAction={() => setMirrorError('')} />}
+        {missing && <NoticeCard text="绑定的工作流已从库里删除。" action="从当前版本重新创建" onAction={() => void action(async () => { if (!session) return; const version = await api.version(session.id, session.version); await mirrorVersion(session, session.version, version.canvas, mirrorDeps, { recreate: true, fallbackName }); setMissing(false); await reloadWorkflows(); })} />}
+        {conflict && <NoticeCard text="画布上有未同步的修改，发送下一条消息时会先导入画布，助手最新版本不会覆盖它。" />}
+        {unsupported && <NoticeCard text="画布里有助手暂不支持的改动，助手将基于上一版本继续。" action="继续发送" onAction={() => { void action(send); }} />}
+        {pending && !session && <div className="rounded-[10px] border border-white/[0.07] p-3 flex items-center gap-2 text-[12.5px]" style={{ background: '#101217' }}><Network size={15} className="text-[#5b8af5]" />{at('已载入工作流 · {{count}} 个节点', { count: pending.nodeCount })}</div>}
+        {!id && !pending && <div className="py-14 flex flex-col items-center text-center gap-3">
+          <div className="w-[52px] h-[52px] rounded-[14px] bg-[#3069f0]/12 border border-[#3069f0]/25 flex items-center justify-center"><Bot size={26} strokeWidth={1.8} className="text-[#5b8af5]" /></div>
+          <p className="text-[16px] font-semibold">{at('你想创作什么？')}</p>
+          <p className="text-[12.5px] text-[#66758a] max-w-[280px] leading-relaxed">{at('直接描述目标。助手会根据已安装的模型选择合适的工作流，生成预览并写入你的工作流库。')}</p>
+        </div>}
+        {id && <AgentTranscript events={events} tasks={snapshot?.tasks ?? []} caughtUp={caughtUp} renderContent={renderContent} baseUrl={api.baseUrl} />}
+        <div ref={bottom} />
+      </div>
+      {!atBottom && <div className="pointer-events-none absolute inset-x-0 bottom-3 mx-auto max-w-4xl px-4 flex justify-end">
+        <button data-agent-jump-latest onClick={jumpToLatest} aria-label={at('回到最新消息')} title={at('回到最新消息')}
+          className="pointer-events-auto relative w-10 h-10 flex items-center justify-center rounded-full border border-white/[0.1] text-[#c8ccd4] shadow-lg shadow-black/40 transition-colors hover:text-white"
+          style={{ background: 'rgba(24,27,34,0.92)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}>
+          <ChevronDown className="w-[18px] h-[18px]" strokeWidth={2} />
+          {unread && <span className="absolute top-0 right-0 w-2.5 h-2.5 rounded-full bg-[#3069f0] border-2 border-[#181b22]" />}
+        </button>
       </div>}
-      {id && <AgentTranscript events={events} tasks={snapshot?.tasks ?? []} caughtUp={caughtUp} renderContent={renderContent} baseUrl={api.baseUrl} />}
-      <div ref={bottom} />
     </div>
     <footer className="shrink-0 border-t border-white/[0.08]" style={{ background: 'rgba(11,12,15,0.95)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
       <div className="max-w-4xl mx-auto px-3 pt-2.5 pb-3 space-y-2.5">
-        {showLatest && <button className="text-[12px] text-[#5b8af5] font-semibold" onClick={() => { followLatest.current = true; setShowLatest(false); bottom.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); }}>{at('回到最新消息')}</button>}
         {!id && <div className="flex gap-2 overflow-x-auto scrollbar-hide">{chips.map(chip => <button key={chip.label} onClick={chip.onClick} className="h-[34px] px-3 shrink-0 rounded-[9px] border border-white/[0.08] bg-white/[0.035] text-[12px] font-medium text-[#c8ccd4] flex items-center gap-1.5">{chip.icon}{chip.label}</button>)}</div>}
         {task && <div role="status" className="h-10 pl-3 pr-1.5 rounded-[10px] border border-[#3069f0]/30 bg-[#3069f0]/10 flex items-center gap-2 text-[12.5px] font-medium text-[#5b8af5]">
           <Loader2 size={14} className="animate-spin" /><span className="flex-1">{at(states[task.state] ?? '正在处理')}</span>

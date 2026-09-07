@@ -32,6 +32,9 @@ const extensionMediaType: Record<string, string> = { png: 'image/png', jpg: 'ima
 const MAX_VISION_IMAGES = 4;
 const MAX_VISION_BYTES = 20 * 1024 * 1024;
 const truncate = (data: unknown, size = 12000): string => { const text = JSON.stringify(data) ?? 'null'; return text.length <= size ? text : `${text.slice(0, size)}… [truncated]`; };
+/** Tool arguments and results are replayed to every client that opens the session, so keep the value itself while it is
+ *  small and degrade to a truncated string once it is not. The transcript renders either shape. */
+const payload = (data: unknown, size = 4000): unknown => { const text = JSON.stringify(data) ?? 'null'; return text.length <= size ? data : `${text.slice(0, size)}… [truncated]`; };
 
 export class AgentService {
   readonly store: AgentStore;
@@ -212,7 +215,7 @@ export class AgentService {
   private tools(task: Task, info: ObjectInfo, signal: AbortSignal): ToolSet {
     const execute = <T>(name: string, fn: (args: T, callId: string) => unknown | Promise<unknown>) => async (args: T, options: { toolCallId: string }) => {
       const callId = options.toolCallId;
-      this.store.event(task.sessionId, task.id, 'tool_started', { callId, name });
+      this.store.event(task.sessionId, task.id, 'tool_started', { callId, name, args: payload(args) });
       let result: unknown;
       try {
         const current = this.fresh(task);
@@ -226,7 +229,7 @@ export class AgentService {
       }
       const diagnostics = result && typeof result === 'object' && 'diagnostics' in result && Array.isArray(result.diagnostics) ? result.diagnostics.slice(0, 8).map(d => ({ code: String(d.code ?? '').slice(0, 100), message: String(d.message ?? '').slice(0, 300) })) : [];
       const isError = diagnostics.length > 0 || !!(result && typeof result === 'object' && 'error' in result);
-      this.store.event(task.sessionId, task.id, 'tool_finished', { callId, name, isError, ...(diagnostics.length ? { diagnostics } : {}), ...(isError ? { errorMessage: `工具 ${name} 未完成，请查看诊断或助手说明` } : {}) });
+      this.store.event(task.sessionId, task.id, 'tool_finished', { callId, name, isError, result: payload(result), ...(diagnostics.length ? { diagnostics } : {}), ...(isError ? { errorMessage: `工具 ${name} 未完成，请查看诊断或助手说明` } : {}) });
       return result;
     };
     const mutation = (name: string, args: unknown, callId: string, fn: () => unknown) => this.store.transaction(() => {

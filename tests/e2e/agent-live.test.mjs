@@ -142,6 +142,31 @@ await test('Agent real application cases', {timeout:1200000}, async t => {
     assert.equal(new Set([...first.events,...second.events].map(e=>e.seq)).size,205);
     assert.equal((await json(`/sessions/${pagesId}?after=${second.cursor}`)).events.length,0);
   });
+  await t.test('attachments survive submission, deduplicate by content and reach the real model',async()=>{
+    const attachmentId=await create(canvas);
+    const attachment={filename:uploaded.name,subfolder:uploaded.subfolder || '',type:'input',kind:'image',name:'ComfyMobileE2E-attachment.png',size:fixture.length};
+    const requestId=randomUUID();
+    const body={requestId,message:'只说明附件图片的主色和可供 LoadImage 使用的文件路径，不修改或运行工作流。',attachments:[attachment]};
+    const first=await json(`/sessions/${attachmentId}/messages`,body,202);
+    assert.equal((await json(`/sessions/${attachmentId}/messages`,body,202)).taskId,first.taskId);
+    assert.equal((await request(base+`/sessions/${attachmentId}/messages`,{...body,attachments:[{...attachment,filename:'different.png'}]})).status,409);
+    const snap=await finish(attachmentId,first.taskId);
+    assert.deepEqual(snap.tasks[0].attachments,[attachment]);
+    assert.deepEqual(snap.events.find(e=>e.kind==='user').data.attachments,[attachment]);
+    assert.ok(assistant(snap).includes(uploaded.name),'model omitted attachment loader path');
+    assert.equal(snap.session.version,1);assert.equal(executions(snap).length,0);
+    assert.ok(!JSON.stringify(snap).includes('data:image/'),'image bytes leaked into persisted transcript');
+    const only=await json(`/sessions/${attachmentId}/messages`,{requestId:randomUUID(),message:'',attachments:[attachment]},202);
+    const onlySnap=await finish(attachmentId,only.taskId);
+    assert.ok(assistant(onlySnap).trim(),'attachment-only message has no response');
+    assert.equal(executions(onlySnap).length,0);
+    const before=onlySnap.tasks.length;
+    for(const attachments of [[{...attachment,filename:'../escape.png'}],[{...attachment,type:'output'}],Array(9).fill(attachment)]) {
+      assert.equal((await request(base+`/sessions/${attachmentId}/messages`,{requestId:randomUUID(),message:'x',attachments})).status,400);
+    }
+    assert.equal((await snapshot(attachmentId)).tasks.length,before);
+    assert.match(assistant(snap),/紫|purple|violet/i,'model did not identify the generated purple image');
+  });
   await t.test('another device cannot read or mutate admin sessions',async()=>{
     const response=await request('/api/gateway/devices/register',{token,deviceName:`ComfyMobileE2E-Agent-${runId}`});assert.equal(response.status,201);
     const device=await response.json();

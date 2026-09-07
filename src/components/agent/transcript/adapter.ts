@@ -8,6 +8,9 @@ export function buildTranscript(events: AgentEvent[], tasks: AgentTask[] = [], c
   const seen = new Set<number>();
   const apply = (event: TranscriptEvent) => { state = applyTranscriptEvent(state, event); };
   const tools = new Set(events.filter(e => e.kind === 'tool_started' || e.kind === 'tool_finished').map(e => `${e.taskId}:${e.data.callId}`));
+  // Older gateways put args and results only on the legacy `tool` event, which is skipped as a duplicate card below.
+  // Lift its payload onto the started/finished pair so those sessions still expand; newer events carry it directly.
+  const details = new Map(events.filter(e => e.kind === 'tool' && e.data.callId).map(e => [`${e.taskId}:${e.data.callId}`, e.data]));
   for (const event of [...events].sort((a, b) => a.seq - b.seq)) {
     if (seen.has(event.seq)) continue;
     seen.add(event.seq);
@@ -23,8 +26,9 @@ export function buildTranscript(events: AgentEvent[], tasks: AgentTask[] = [], c
     } else if (['tool_started', 'tool_finished', 'tool'].includes(kind) && taskId) {
       if (kind === 'tool' && data.callId && tools.has(`${taskId}:${data.callId}`)) continue;
       const toolCallId = String(data.callId || id);
-      apply({ type: 'tool_started', turnId: taskId, toolCallId, name: String(data.name || '工具'), at: created });
-      if (kind !== 'tool_started') apply({ type: 'tool_finished', turnId: taskId, toolCallId, isError: kind === 'tool' ? !!data.result?.error : !!data.isError, errorMessage: data.errorMessage, result: data.diagnostics ? { diagnostics: data.diagnostics } : undefined, at: created });
+      const detail = (data.callId ? details.get(`${taskId}:${data.callId}`) : undefined) ?? (kind === 'tool' ? data : undefined);
+      apply({ type: 'tool_started', turnId: taskId, toolCallId, name: String(data.name || '工具'), input: data.args ?? detail?.args, at: created });
+      if (kind !== 'tool_started') apply({ type: 'tool_finished', turnId: taskId, toolCallId, isError: kind === 'tool' ? !!data.result?.error : !!data.isError, errorMessage: data.errorMessage, result: data.result ?? detail?.result ?? (data.diagnostics ? { diagnostics: data.diagnostics } : undefined), at: created });
     } else if (kind === 'state' && taskId) {
       if (data.state === 'completed') apply({ type: 'turn_finished', turnId: taskId, at: created });
       if (data.state === 'failed') apply({ type: 'turn_failed', turnId: taskId, error: String(data.error || '任务未完成'), at: created });

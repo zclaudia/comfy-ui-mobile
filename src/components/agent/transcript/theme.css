@@ -13,5 +13,11 @@
 .agent-transcript .ztk-code-block__language { min-width: 0; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .agent-transcript .ztk-code-block__actions { flex-shrink: 0; }
 .agent-transcript .ztk-tool-card__summary { min-width: 0; }
+/* The kit renders .ztk-tool-card__body but ships no rule for it, so the expanded content would sit flush against the
+   card border, out of line with the header above it. */
+.agent-transcript .ztk-tool-card__body { padding: 10px 12px 12px; border-top: 1px solid var(--ztk-border); }
+/* A call that recorded no arguments, result or error has nothing behind the chevron; do not offer one. */
+.agent-transcript [data-tool-expandable="false"] .ztk-tool-card__chevron { display: none; }
+.agent-transcript [data-tool-expandable="false"] .ztk-tool-card__header { cursor: default; }
 .agent-markdown .ztk-code-block pre { margin: 0; }
 .agent-markdown .ztk-code-block code { font-size: inherit; }

@@ -231,6 +231,35 @@ test('transcript tool lifecycle includes read tools, failures and stable receipt
   } finally {await service.stop()}
 });
 
+test('tool events carry the arguments and result the transcript expands', async () => {
+  const model=scripted([call('inspect_environment',{}),call('get_node_schema',{name:'KSampler'}),answer('ok')]);
+  const service=new AgentService(config(),{model,adapter:new FakeComfy()});
+  try {
+    const session=await service.createSession('alice','payloads');
+    const task=service.enqueue(session.id,'alice',randomUUID(),'检查环境');
+    await drain(service,task.id);
+    const events=service.snapshot(session.id,'alice',0).events;
+    const starts=events.filter(e=>e.kind==='tool_started');const finishes=events.filter(e=>e.kind==='tool_finished');
+    assert.deepEqual(starts.map(e=>e.data.args),[{},{name:'KSampler'}]);
+    // A tool that takes no arguments is still worth expanding, so its result rides the finish event.
+    assert(finishes.every(e=>e.data.result!==undefined));
+    assert(JSON.stringify(finishes[0].data.result).includes('checkpoints'));
+  } finally {await service.stop()}
+});
+
+test('an oversized tool payload degrades to a truncated string instead of bloating every replay', async () => {
+  const service=new AgentService(config(),{model:scripted([call('create_from_template',{checkpoint,text:'x'.repeat(6000)}),answer()]),adapter:new FakeComfy()});
+  try {
+    const session=await service.createSession('alice','truncation');
+    const task=service.enqueue(session.id,'alice',randomUUID(),'创建工作流');
+    await drain(service,task.id);
+    const start=service.snapshot(session.id,'alice',0).events.find(e=>e.kind==='tool_started')!;
+    assert.equal(typeof start.data.args,'string');
+    assert.match(start.data.args as string,/… \[truncated\]$/);
+    assert((start.data.args as string).length<4200);
+  } finally {await service.stop()}
+});
+
 test('replayed mutation call IDs reuse receipts and preserve a matched tool lifecycle', async () => {
   const creation=call('create_from_template',{checkpoint,text:'receipt demo'});
   const service=new AgentService(config(),{model:scripted([creation,creation,answer()]),adapter:new FakeComfy()});

@@ -1891,7 +1891,9 @@
         "已连接 Gateway，但助手接口没有响应。可能是 Gateway 未启用助手或正在重启。": "Gateway is connected, but the assistant endpoint isn't responding. The assistant may be disabled on the Gateway, or the Gateway may be restarting.",
         "在服务器上部署 Gateway，并在其配置里启用助手和语言模型": "Deploy Gateway on your server and enable the assistant and a language model in its configuration",
         "在连接设置里把服务器地址改为 Gateway 地址并登录": "In connection settings, change the server address to the Gateway address and sign in",
-        "查看 Gateway 部署指南": "View the Gateway deployment guide"
+        "查看 Gateway 部署指南": "View the Gateway deployment guide",
+        "参数": "Arguments",
+        "结果": "Result"
     },
     "tabs": {
         "chats": "Chats",

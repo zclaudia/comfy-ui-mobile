@@ -18,6 +18,22 @@ const names: Record<string, string> = {
 };
 const statuses: Record<string, string> = { queued: '等待助手处理', running: '正在处理', waiting_comfy: 'ComfyUI 正在生成', reconciling: '正在核对提交状态' };
 
+const detailLabel = 'font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500 mb-1';
+const detailBody = 'whitespace-pre-wrap break-words text-[11.5px] leading-5 text-slate-300 max-h-60 overflow-y-auto rounded-lg bg-black/25 px-2.5 py-2';
+const blank = (value: unknown) => value === undefined || value === null || value === '' || (typeof value === 'object' && Object.keys(value as object).length === 0);
+const format = (value: unknown) => {
+  const text = typeof value === 'string' ? value : JSON.stringify(value, null, 2) ?? '';
+  return text.length > 4000 ? `${text.slice(0, 4000)}\n…` : text;
+};
+/** Arguments and results only exist for the tools that record them, so a card with nothing behind it stays unexpandable
+ *  rather than opening onto a restatement of its own header. */
+function toolDetail(call: { input?: unknown; result?: unknown; errorMessage?: string }) {
+  const input = blank(call.input) ? undefined : call.input;
+  const result = blank(call.result) ? undefined : call.result;
+  const error = call.errorMessage || undefined;
+  return input === undefined && result === undefined && !error ? null : { input, result, error };
+}
+
 
 export function AgentTranscript({ events, tasks, caughtUp, renderContent, baseUrl = '' }: {
   events: AgentEvent[]; tasks: AgentTask[]; caughtUp: boolean; renderContent: (event: AgentEvent) => ReactNode; baseUrl?: string;
@@ -44,7 +60,15 @@ export function AgentTranscript({ events, tasks, caughtUp, renderContent, baseUr
           const call = item.toolCalls[block.toolCallId];
           if (!call) return null;
           const summary = call.status === 'running' ? '执行中' : call.status === 'error' ? '未完成' : call.status === 'cancelled' ? '已停止等待' : call.name === 'submit_preview' ? '已提交，生成结果见下方' : '已完成';
-          return <ToolCallCard key={call.id} toolCall={call} displayName={at(names[call.name] ?? '执行工作流操作')} displaySummary={at(summary)} renderExpanded={() => <div className="break-words text-xs"><p>{at(names[call.name] ?? call.name)} · {at(summary)}</p>{call.errorMessage && <p>{at(call.errorMessage)}</p>}{!!call.result && <pre className="whitespace-pre-wrap">{JSON.stringify(call.result, null, 2)}</pre>}</div>} />;
+          const detail = toolDetail(call);
+          return <div key={call.id} data-tool-expandable={!!detail}>
+            <ToolCallCard toolCall={call} displayName={at(names[call.name] ?? '执行工作流操作')} displaySummary={at(summary)}
+              renderExpanded={detail ? () => <div className="space-y-2.5">
+                {detail.error && <p className="text-[12px] text-amber-300 break-words">{at(detail.error)}</p>}
+                {detail.input !== undefined && <section><h4 className={detailLabel}>{at('参数')}</h4><pre className={detailBody}>{format(detail.input)}</pre></section>}
+                {detail.result !== undefined && <section><h4 className={detailLabel}>{at('结果')}</h4><pre className={detailBody}>{format(detail.result)}</pre></section>}
+              </div> : undefined} />
+          </div>;
         })}</div>
         {item.status === 'failed' && <p role="alert" className="text-amber-300 mt-3">{at(item.error || '任务未完成')}</p>}
         <p className="text-xs text-slate-500 mt-3" data-turn-status={item.status}>{at(item.status === 'complete' ? '本轮完成' : item.status === 'cancelled' ? '助手已停止；已提交的生成可能继续运行' : item.status === 'failed' ? '本轮未完成' : statuses[task?.state ?? ''] ?? '正在处理')}</p>

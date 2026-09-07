@@ -610,7 +610,7 @@ if (process.env.E2E_AGENT_LIVE === '1') {
   await test('real agent repairs, previews, saves and reopens a workflow on Android', async () => {
     const { agentAndroidScenario } = await import('./agent-android-scenario.mjs');
     try {
-      await agentAndroidScenario({ app, waitFor, assert, admin, adb, connect, pkg, activity, sleep });
+      await agentAndroidScenario({ app, waitFor, assert, admin, adb, connect, pkg, activity, sleep, videoOutput });
     } catch (error) {
       const { mkdir, writeFile } = await import('node:fs/promises');
       const directory = new URL('../output/agent-android/', import.meta.url);
