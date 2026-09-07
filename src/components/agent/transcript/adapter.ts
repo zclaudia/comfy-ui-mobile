@@ -33,7 +33,7 @@ export function buildTranscript(events: AgentEvent[], tasks: AgentTask[] = [], c
       if (data.state === 'completed') apply({ type: 'turn_finished', turnId: taskId, at: created });
       if (data.state === 'failed') apply({ type: 'turn_failed', turnId: taskId, error: String(data.error || '任务未完成'), at: created });
       if (data.state === 'cancelled') apply({ type: 'turn_cancelled', turnId: taskId, at: created });
-    } else if (['workflow', 'result', 'execution_error', 'saved'].includes(kind)) {
+    } else if (['workflow', 'result', 'execution_error', 'saved', 'context'].includes(kind)) {
       if (taskId) apply({ type: 'custom_block', turnId: taskId, blockId: id, blockType: kind, payload: event });
       else apply({ type: 'marker', markerId: id, markerType: kind, payload: event, at: created });
     }

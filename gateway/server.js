@@ -498,9 +498,12 @@ export const createGatewayServer = (config, { agentService } = {}) => {
     }
 
     if (url.pathname.startsWith('/api/gateway/agent/')) {
-      const owner = sessions.agentPrincipal(request);
-      if (!owner) { sendJson(response, 401, { error: 'gateway_authentication_required' }); return; }
-      if (!rateLimit(`agent:${owner}`, config.rateLimitPerMinute)) { sendJson(response, 429, { error: 'rate_limit_exceeded' }); return; }
+      // The principal is per-client so devices keep separate rate-limit buckets; the owner is shared so they see the
+      // same sessions.
+      const principal = sessions.agentPrincipal(request);
+      const owner = sessions.agentOwner(request);
+      if (!principal || !owner) { sendJson(response, 401, { error: 'gateway_authentication_required' }); return; }
+      if (!rateLimit(`agent:${principal}`, config.rateLimitPerMinute)) { sendJson(response, 429, { error: 'rate_limit_exceeded' }); return; }
       if (!agent || !agentHandler) { sendJson(response, 503, { enabled: false, providerReady: false, error: '当前 Gateway 尚未启用工作流助手' }); return; }
       await agentHandler(agent, owner, request, response, url);
       return;

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Bot, ChevronDown, Film, Image as ImageIcon, Loader2, Network, Square } from 'lucide-react';
+import { Bot, ChevronDown, Film, Image as ImageIcon, Loader2, Network, Settings2, Square } from 'lucide-react';
 import { toast } from 'sonner';
 import { SimpleConfirmDialog } from '@/components/ui/SimpleConfirmDialog';
 import { addWorkflow, loadAllWorkflows, updateWorkflow, updateWorkflowAgentBinding } from '@/infrastructure/storage/IndexedDBWorkflowService';
@@ -31,7 +31,7 @@ export default function ChatPage() {
   const navigate = useNavigate();
   const { id } = useParams();
   const [params] = useSearchParams();
-  const { api, ready, state, retry } = useAgentStatus();
+  const { api, ready, state, status, retry } = useAgentStatus();
   const setActive = useAgentActivityStore(s => s.setActive);
   const { snapshot, events, error, caughtUp, setSnapshot, refresh } = useSessionSnapshot(api, id);
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
@@ -183,6 +183,7 @@ export default function ChatPage() {
     const data = event.data;
     if (event.kind === 'workflow') return <WorkflowChangeCard key={event.seq} version={data.version} summary={data.summary} operations={data.operations} mirrored={data.version <= writtenVersion && !!bound} onOpenCanvas={bound ? () => navigate(`/workflow/${bound.id}`) : undefined} />;
     if (event.kind === 'result') return <ResultCard key={event.seq} version={data.version} outputs={data.outputs ?? []} baseUrl={api.baseUrl} />;
+    if (event.kind === 'context' && data.status === 'compacted') return <p key={event.seq} className="text-xs text-slate-400">{at('已压缩较早上下文，完整聊天记录仍保留')}</p>;
     if (event.kind === 'saved') return <p key={event.seq} className="text-[11px] text-[#4ade80]">✓ {at('版本 {{version}} 已保存', { version: data.version })}</p>;
     if (event.kind === 'execution_error') return <ErrorCard key={event.seq} title="这次生成未成功" detail={data.diagnostic || JSON.stringify(data, null, 2)} />;
     if (event.kind === 'state' && data.state === 'failed') return <NoticeCard key={event.seq} text={data.error || '任务未完成'} />;
@@ -198,7 +199,7 @@ export default function ChatPage() {
     <div className="relative flex-1 min-h-0 flex flex-col">
       <div onScroll={e => trackScroll(e.currentTarget)} className="w-full max-w-4xl mx-auto flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-4 space-y-3">
         {state === 'no-gateway' && <NoticeCard text="请先连接 Gateway，再使用工作流助手。" action="打开连接设置" onAction={() => navigate('/settings/server')} />}
-        {state === 'no-provider' && <NoticeCard text="助手尚未连接语言模型，管理员配置后即可开始对话。" action="重新检查" onAction={retry} />}
+        {state === 'no-provider' && <NoticeCard text="Gateway 已连接，添加语言模型后即可开始对话。" action="添加模型" onAction={() => navigate('/settings/agent')} />}
         {state === 'error' && <NoticeCard text="暂时无法连接助手。" action="重新检查" onAction={retry} />}
         {error && <NoticeCard text={error} action="重新连接" onAction={refresh} />}
         {mirrorError && <NoticeCard text={at('写入工作流库失败：{{message}}', { message: mirrorError })} action="重试" onAction={() => setMirrorError('')} />}
@@ -225,9 +226,11 @@ export default function ChatPage() {
     </div>
     <footer className="shrink-0 border-t border-white/[0.08]" style={{ background: 'rgba(11,12,15,0.95)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
       <div className="max-w-4xl mx-auto px-3 pt-2.5 pb-3 space-y-2.5">
+        {status && <button className="max-w-full flex items-center gap-1.5 text-[11px] text-slate-400" onClick={() => navigate('/settings/agent')} aria-label={at('助手模型')}><Settings2 size={13} className="shrink-0" /><span className="truncate">{status.model ?? at('添加模型')}{status.contextWindow ? ` · ${status.contextWindow.toLocaleString()} tokens` : ''} · {at(status.vision ? '支持图片理解' : '仅文本')}</span></button>}
+        {attachments.items.some(a => a.kind === 'image') && status?.vision === false && <p className="text-xs text-amber-300">{at('当前模型仅接收图片路径；如需理解图片内容，请选择支持 Vision 的模型。')}</p>}
         {!id && <div className="flex gap-2 overflow-x-auto scrollbar-hide">{chips.map(chip => <button key={chip.label} onClick={chip.onClick} className="h-[34px] px-3 shrink-0 rounded-[9px] border border-white/[0.08] bg-white/[0.035] text-[12px] font-medium text-[#c8ccd4] flex items-center gap-1.5">{chip.icon}{chip.label}</button>)}</div>}
         {task && <div role="status" className="h-10 pl-3 pr-1.5 rounded-[10px] border border-[#3069f0]/30 bg-[#3069f0]/10 flex items-center gap-2 text-[12.5px] font-medium text-[#5b8af5]">
-          <Loader2 size={14} className="animate-spin" /><span className="flex-1">{at(states[task.state] ?? '正在处理')}</span>
+          <Loader2 size={14} className="animate-spin" /><span className="flex-1">{at(task.state === 'running' && events.filter(e => e.taskId === task.id && e.kind === 'context').at(-1)?.data.status === 'compacting' ? '正在压缩上下文' : states[task.state] ?? '正在处理')}</span>
           <button className="h-7 px-2.5 rounded-[7px] border border-white/10 bg-white/5 text-[11.5px] font-semibold text-[#c8ccd4] flex items-center gap-1.5" disabled={busy} onClick={() => void action(async () => { if (session) await api.cancel(session.id, task.id); })}><Square size={10} fill="currentColor" />{at('停止')}</button>
         </div>}
         <ChatComposer value={draft} onChange={setDraft} disabled={!ready} placeholder={ready ? at('描述你想要的效果，或告诉助手如何调整…') : at('等待模型连接')}

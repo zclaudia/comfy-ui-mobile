@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
-import { mkdirSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { ModelMessage } from 'ai';
@@ -17,8 +17,8 @@ export interface Version { version: number; canvas: Canvas; summary: string; sav
 export interface Task {
   id: string; sessionId: string; requestId: string; message: string; attachments?: Attachment[]; state: State;
   created: number; deadline: number; steps: number; previews: number;
-  messages: ModelMessage[]; completionChecked?: boolean; execution?: { attempt: string; version: number; promptId?: string; submitted: number };
-  result?: unknown; error?: string;
+  messages: ModelMessage[]; completionChecked?: boolean; awaitingCompletion?: boolean; execution?: { attempt: string; version: number; promptId?: string; submitted: number };
+  result?: unknown; error?: string; modelId?: string; contextScale?: number; contextRetried?: boolean;
 }
 export interface AgentEvent { seq: number; taskId: string | null; kind: string; data: unknown; created: number }
 /** ComfyUI loader nodes address input files as `subfolder/filename`; keep the text reference in that form. */
@@ -46,7 +46,41 @@ export class AgentStore {
       CREATE TABLE IF NOT EXISTS versions(session_id TEXT NOT NULL REFERENCES sessions(id), version INTEGER NOT NULL, data TEXT NOT NULL, PRIMARY KEY(session_id, version));
       CREATE TABLE IF NOT EXISTS events(seq INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL REFERENCES sessions(id), task_id TEXT, kind TEXT NOT NULL, data TEXT NOT NULL, created INTEGER NOT NULL);
       CREATE INDEX IF NOT EXISTS event_session ON events(session_id, seq);
-      CREATE TABLE IF NOT EXISTS receipts(task_id TEXT NOT NULL, call_id TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(task_id,call_id));`);
+      CREATE TABLE IF NOT EXISTS receipts(task_id TEXT NOT NULL, call_id TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(task_id,call_id));
+      CREATE TABLE IF NOT EXISTS agent_settings(key TEXT PRIMARY KEY, data TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS session_context(session_id TEXT PRIMARY KEY REFERENCES sessions(id), data TEXT NOT NULL);`);
+    if (path !== ':memory:') for (const file of [path, `${path}-wal`, `${path}-shm`]) if (existsSync(file)) chmodSync(file, 0o600);
+  }
+  setting<T>(key: string): T | undefined {
+    const row = this.db.prepare('SELECT data FROM agent_settings WHERE key=?').get(key);
+    return row ? JSON.parse(row.data as string) as T : undefined;
+  }
+  setSetting(key: string, value: unknown) {
+    this.db.prepare('INSERT OR REPLACE INTO agent_settings VALUES(?,?)').run(key, JSON.stringify(value));
+  }
+  context(id: string): { messages: ModelMessage[]; cursor: number } | undefined {
+    const row = this.db.prepare('SELECT data FROM session_context WHERE session_id=?').get(id);
+    return row ? JSON.parse(row.data as string) : undefined;
+  }
+  saveContext(task: Task) {
+    const cursor = Number(this.db.prepare('SELECT MAX(seq) AS seq FROM events WHERE session_id=?').get(task.sessionId)?.seq ?? 0);
+    this.db.prepare('INSERT OR REPLACE INTO session_context VALUES(?,?)').run(task.sessionId, JSON.stringify({ messages: task.messages, cursor }));
+  }
+  // Sessions were once namespaced per device token, so a chat started on the phone was invisible in the browser and a
+  // rotated token stranded its history under a namespace no principal could present any more. All authenticated clients
+  // are the same person, so adopt those rows into the shared namespace once, in both the column and the stored document.
+  // Keep this value in step with SHARED_AGENT_OWNER in gateway/auth.js.
+  adoptLegacyDeviceSessions(owner = 'administrator'): number {
+    const rows = this.db.prepare("SELECT id, data FROM sessions WHERE owner LIKE 'device:%'").all() as { id: string; data: string }[];
+    if (!rows.length) return 0;
+    return this.transaction(() => {
+      const update = this.db.prepare('UPDATE sessions SET owner=?, data=? WHERE id=?');
+      for (const row of rows) {
+        const session = { ...JSON.parse(row.data) as Session, owner };
+        update.run(owner, JSON.stringify(session), row.id);
+      }
+      return rows.length;
+    });
   }
   close() { this.db.close(); }
   transaction<T>(fn: () => T): T {
@@ -111,6 +145,7 @@ export class AgentStore {
     this.transaction(() => {
       this.session(id);
       this.db.prepare('DELETE FROM receipts WHERE task_id IN (SELECT id FROM tasks WHERE session_id=?)').run(id);
+      this.db.prepare('DELETE FROM session_context WHERE session_id=?').run(id);
       this.db.prepare('DELETE FROM events WHERE session_id=?').run(id);
       this.db.prepare('DELETE FROM versions WHERE session_id=?').run(id);
       this.db.prepare('DELETE FROM tasks WHERE session_id=?').run(id);
@@ -151,7 +186,7 @@ export class AgentStore {
       : this.db.prepare("SELECT data FROM tasks WHERE state IN ('queued','running','waiting_comfy','reconciling') ORDER BY rowid").all();
     return rows.map(r => JSON.parse(r.data as string));
   }
-  enqueue(sessionId: string, requestId: string, message: string, durationMs: number, attachments: Attachment[] = []): Task {
+  enqueue(sessionId: string, requestId: string, message: string, durationMs: number, attachments: Attachment[] = [], modelId?: string): Task {
     return this.transaction(() => {
       const existing = this.db.prepare('SELECT data FROM tasks WHERE session_id=? AND request_id=?').get(sessionId, requestId);
       if (existing) {
@@ -161,7 +196,7 @@ export class AgentStore {
       }
       if (this.tasks(sessionId).some(t => activeStates.includes(t.state))) throw new AgentHttpError(409, '请先等待或停止当前任务');
       if (this.tasks().length >= 20) throw new AgentHttpError(429, '后台任务队列已满');
-      const task: Task = { id: randomUUID(), sessionId, requestId, message, ...(attachments.length ? { attachments } : {}), state: 'queued', created: Date.now(), deadline: Date.now() + durationMs, steps: 0, previews: 0, messages: [] };
+      const task: Task = { id: randomUUID(), sessionId, requestId, message, ...(attachments.length ? { attachments } : {}), state: 'queued', ...(modelId ? { modelId } : {}), created: Date.now(), deadline: Date.now() + durationMs, steps: 0, previews: 0, messages: [] };
       this.db.prepare('INSERT INTO tasks VALUES(?,?,?,?,?)').run(task.id, sessionId, requestId, task.state, JSON.stringify(task));
       this.event(sessionId, task.id, 'user', { text: message, ...(attachments.length ? { attachments } : {}) });
       this.event(sessionId, task.id, 'state', { state: 'queued' });
@@ -176,13 +211,15 @@ export class AgentStore {
     return this.db.prepare('SELECT seq,task_id,kind,data,created FROM events WHERE session_id=? AND seq>? ORDER BY seq LIMIT 200').all(id, after)
       .map(r => ({ seq: Number(r.seq), taskId: r.task_id as string | null, kind: r.kind as string, data: JSON.parse(r.data as string), created: Number(r.created) }));
   }
-  recentMessages(id: string): { role: 'user' | 'assistant'; content: string }[] {
-    return this.db.prepare("SELECT kind,data FROM events WHERE session_id=? AND kind IN ('user','assistant') ORDER BY seq DESC LIMIT 20").all(id).reverse()
+  recentMessages(id: string): ModelMessage[] {
+    const context = this.context(id);
+    const messages = this.db.prepare("SELECT kind,data FROM events WHERE session_id=? AND seq>? AND kind IN ('user','assistant') ORDER BY seq").all(id, context?.cursor ?? 0)
       .map(r => {
         const data = JSON.parse(r.data as string) as { text?: unknown; attachments?: Attachment[] };
-        const text = String(data.text ?? '').slice(0, 8000);
+        const text = String(data.text ?? '');
         return { role: r.kind as 'user' | 'assistant', content: r.kind === 'user' ? describeAttachments(text, data.attachments) : text };
       });
+    return [...(context?.messages ?? []), ...messages];
   }
   receipt(taskId: string, callId: string): unknown | undefined {
     const row = this.db.prepare('SELECT data FROM receipts WHERE task_id=? AND call_id=?').get(taskId, callId);

@@ -18,7 +18,10 @@ export interface AgentTask { id: string; state: string; error?: string; message:
 export interface AgentEvent { seq: number; kind: string; taskId: string | null; data: Record<string, any>; created: number }
 export interface AgentVersion { version: number; summary: string; saved: boolean; created: number }
 export interface AgentSnapshot { session: AgentSession; tasks: AgentTask[]; versions: AgentVersion[]; events: AgentEvent[]; cursor: number; hasMore: boolean }
-export interface AgentStatus { enabled: boolean; providerReady: boolean; model: string | null }
+export interface AgentStatus { enabled: boolean; providerReady: boolean; model: string | null; modelId?: string | null; vision?: boolean; contextWindow?: number; maxOutputTokens?: number }
+export interface AgentModelInput { name: string; model: string; baseUrl: string; apiKey?: string; contextWindow: number; maxOutputTokens: number; vision: boolean }
+export interface AgentModel extends Omit<AgentModelInput, 'apiKey'> { id: string; hasApiKey: boolean }
+export interface AgentModels { models: AgentModel[]; activeId: string | null }
 export type SessionPatch = { name?: string; workflow?: SessionWorkflowRef | null };
 
 export class AgentApi {
@@ -39,6 +42,10 @@ export class AgentApi {
     return result as T;
   }
   status(signal?: AbortSignal) { return this.request<AgentStatus>('/status', {}, signal); }
+  models(signal?: AbortSignal) { return this.request<AgentModels>('/models', {}, signal); }
+  saveModel(input: AgentModelInput, id?: string) { return this.request<{ model: AgentModel }>(id ? `/models/${encodeURIComponent(id)}` : '/models', { method: id ? 'PUT' : 'POST', body: input }); }
+  activateModel(id: string) { return this.request<AgentModels>(`/models/${encodeURIComponent(id)}/activate`, { body: {} }); }
+  deleteModel(id: string) { return this.request<AgentModels>(`/models/${encodeURIComponent(id)}`, { method: 'DELETE' }); }
   sessions(signal?: AbortSignal) { return this.request<{ sessions: AgentSession[] }>('/sessions', {}, signal); }
   create(name: string, canvas?: IComfyJson, workflow?: SessionWorkflowRef) {
     return this.request<{ session: AgentSession }>('/sessions', { body: { name, ...(canvas ? { canvas } : {}), ...(workflow ? { workflow } : {}) } });

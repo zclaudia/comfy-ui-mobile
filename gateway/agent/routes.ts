@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { z } from 'zod';
+import { modelInput } from './models.js';
 import { AgentHttpError } from './store.js';
 import { WorkflowError } from '../workflow/engine.js';
 import type { AgentService } from './service.js';
@@ -34,6 +35,14 @@ export async function handleAgentRequest(service: AgentService, owner: string, r
     const path = url.pathname.slice('/api/gateway/agent'.length);
     const method = request.method;
     if (path === '/status' && method === 'GET') return send(200, service.status());
+    if (path === '/models' && method === 'GET') return send(200, service.models.list());
+    if (path === '/models' && method === 'POST') return send(201, { model: service.models.save(modelInput.parse(await readBody(request))) });
+    const modelPath = /^\/models\/([^/]+)(\/activate)?$/.exec(path);
+    if (modelPath && id.safeParse(modelPath[1]).success) {
+      if (modelPath[2] && method === 'POST') return send(200, service.models.activate(modelPath[1]));
+      if (!modelPath[2] && method === 'PUT') return send(200, { model: service.models.save(modelInput.parse(await readBody(request)), modelPath[1]) });
+      if (!modelPath[2] && method === 'DELETE') return send(200, service.models.remove(modelPath[1]));
+    }
     if (path === '/sessions' && method === 'GET') return send(200, { sessions: service.store.list(owner) });
     if (path === '/sessions' && method === 'POST') {
       const body = createInput.parse(await readBody(request));

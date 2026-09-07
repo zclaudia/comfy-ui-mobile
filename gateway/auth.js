@@ -23,6 +23,8 @@ const sign = (secret, value) => crypto
   .update(value)
   .digest('base64url');
 
+export const SHARED_AGENT_OWNER = 'administrator';
+
 const bearerToken = (request) => {
   const authorization = request.headers.authorization || '';
   return authorization.startsWith('Bearer ')
@@ -81,8 +83,8 @@ export const createSessionManager = (config, deviceStore) => {
     return deviceStore.authenticate(token) ? token : null;
   };
 
-  // Existing setup-token/browser login is one administrator identity, not a user account system.
-  // Device tokens get separate durable namespaces; anonymous access cannot run agents.
+  // Identifies the calling client so devices keep separate rate-limit buckets. It is NOT the storage namespace:
+  // agentOwner decides what a client can read, so one device cannot exhaust another's quota while still sharing history.
   const agentPrincipal = (request) => {
     const token = bearerToken(request);
     if (token && config.authToken && safeEqual(token, config.authToken)) return 'administrator';
@@ -90,6 +92,11 @@ export const createSessionManager = (config, deviceStore) => {
     if (!token && validateSession(parseCookies(request.headers.cookie).get(config.sessionCookieName))) return 'administrator';
     return null;
   };
+
+  // Every device is enrolled by whoever holds the setup token, so all authenticated clients are the same person and
+  // share one session namespace: a chat started on the phone is readable in the browser and on the next device.
+  // Keep this value in step with the legacy-namespace adoption in gateway/agent/store.ts.
+  const agentOwner = (request) => (agentPrincipal(request) ? SHARED_AGENT_OWNER : null);
 
   // SameSite=None requires Secure in modern browsers, so pair them automatically.
   const cookieSameSite = config.sessionCookieSameSite === 'none' ? 'None' : config.sessionCookieSameSite === 'lax' ? 'Lax' : 'Strict';
@@ -127,6 +134,7 @@ export const createSessionManager = (config, deviceStore) => {
     authenticateSetupToken,
     authenticatedDeviceToken,
     agentPrincipal,
+    agentOwner,
     createSession,
     validateSession,
     sessionCookie,

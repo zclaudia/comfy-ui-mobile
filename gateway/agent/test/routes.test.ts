@@ -10,7 +10,7 @@ import { AgentService } from '../../dist/agent/service.js';
 import { textToImage } from '../templates.js';
 import { info } from './fixture.js';
 
-test('real Gateway agent routes enforce auth, device isolation, payload validation and version access', async t => {
+test('real Gateway agent routes enforce auth, cross-device session sharing, payload validation and version access', async t => {
   const folder = mkdtempSync(join(tmpdir(), 'agent-routes-'));
   t.after(() => rmSync(folder, { recursive: true, force: true }));
   const token = 'route-test-admin-token-long-enough';
@@ -32,9 +32,10 @@ test('real Gateway agent routes enforce auth, device isolation, payload validati
   assert.equal((await fetch(`${base}/api/gateway/agent/sessions/${session.id}`, { headers: { Cookie: cookie } })).status, 200);
   const registration = await request('/devices/register', { token, deviceName: 'test-device' });
   const device = (await registration.json()).deviceToken;
-  assert.equal((await request(`/agent/sessions/${session.id}`, undefined, device)).status, 404);
-  assert.equal((await request(`/agent/sessions/${session.id}/versions/1`, undefined, device)).status, 404);
-  assert.equal((await request(`/agent/sessions/${session.id}/restore`, { version: 1, baseVersion: 1 }, device)).status, 404);
+  // A device is enrolled with the setup token, so it is the same person: it reads and continues the browser's sessions.
+  assert.equal((await request(`/agent/sessions/${session.id}`, undefined, device)).status, 200);
+  assert.equal((await request(`/agent/sessions/${session.id}/versions/1`, undefined, device)).status, 200);
+  assert((await (await request('/agent/sessions', undefined, device)).json()).sessions.some((s: { id: string }) => s.id === session.id), 'device lists the browser session');
   assert.equal((await request(`/agent/sessions/${session.id}/versions/1`)).status, 200);
   assert.equal((await request(`/agent/sessions/${session.id}/save`, { version: 1 })).status, 200);
   assert.equal((await request(`/agent/sessions/${session.id}/messages`, { requestId: randomUUID(), message: 'test' })).status, 503);
@@ -54,6 +55,7 @@ test('real Gateway agent routes enforce auth, device isolation, payload validati
   const data = await response.json();
   assert.equal(data.versions[0].saved, true);
   assert.equal(data.tasks.length, 0);
+  assert.equal((await request(`/agent/sessions/${session.id}/restore`, { version: 1, baseVersion: 1 }, device)).status, 200);
 
   const call = (method: string, path: string, body?: unknown, auth = token) => fetch(`${base}/api/gateway${path}`, { method, headers: { ...(auth ? { Authorization: `Bearer ${auth}` } : {}), 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
   const boundCreate = await request('/agent/sessions', { name: 'ignored', canvas, workflow: { id: 'wf-1', name: '海报', filename: '海报.json' } });
@@ -64,7 +66,7 @@ test('real Gateway agent routes enforce auth, device isolation, payload validati
   assert.deepEqual(listed.workflow, { id: 'wf-1', name: '海报', filename: '海报.json' });
   assert.equal(listed.active, false);
   assert.equal(typeof listed.lastActivity, 'number');
-  assert.equal((await call('PATCH', `/agent/sessions/${bound.id}`, { workflow: null }, device)).status, 404);
+  assert.equal((await call('PATCH', `/agent/sessions/${bound.id}`, { workflow: null }, device)).status, 200);
   assert.equal((await call('PATCH', `/agent/sessions/${bound.id}`, { owner: 'x' })).status, 400);
   const patched = await call('PATCH', `/agent/sessions/${bound.id}`, { name: '新名字', workflow: null });
   assert.equal(patched.status, 200);
@@ -74,8 +76,8 @@ test('real Gateway agent routes enforce auth, device isolation, payload validati
   assert.equal((await imported.json()).version, 2);
   assert.equal((await call('POST', `/agent/sessions/${bound.id}/versions`, { canvas, baseVersion: 1 })).status, 409);
   assert.equal((await call('POST', `/agent/sessions/${bound.id}/versions`, { canvas: { ...canvas, nodes: [{ ...canvas.nodes[0], mode: 4 }] }, baseVersion: 2 })).status, 422);
-  assert.equal((await call('DELETE', `/agent/sessions/${bound.id}`, undefined, device)).status, 404);
-  assert.equal((await call('DELETE', `/agent/sessions/${bound.id}`)).status, 200);
+  assert.equal((await call('DELETE', `/agent/sessions/${bound.id}`, undefined, device)).status, 200);
+  assert.equal((await call('DELETE', `/agent/sessions/${bound.id}`)).status, 404);
   assert.equal((await request(`/agent/sessions/${bound.id}`)).status, 404);
 });
 

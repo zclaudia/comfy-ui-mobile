@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bot, Film, Image as ImageIcon, Menu, Network, Plus, Search, X } from 'lucide-react';
+import { Bot, Film, Image as ImageIcon, Menu, Network, Plus, Search, Settings2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import AppSideMenu from '@/components/controls/AppSideMenu';
 import { SimpleConfirmDialog } from '@/components/ui/SimpleConfirmDialog';
@@ -86,6 +86,7 @@ export default function SessionListPage() {
         <span className="shrink-0 text-[13.5px] font-semibold">{at('对话')}</span>
         {serverHost && <span className="min-w-0 shrink font-mono text-[11px] text-[#565d6b] px-1.5 py-[3px] border border-white/10 rounded-[5px] max-w-[164px] truncate">{serverHost}</span>}
         <div className="flex-1" />
+        {state !== 'no-gateway' && <button onClick={() => navigate('/settings/agent')} className="shrink-0 h-9 w-9 flex items-center justify-center rounded-[9px] border border-white/10 text-slate-400" aria-label={at('助手模型')}><Settings2 size={17} /></button>}
         {ready && <button data-agent-new onClick={() => navigate('/chat/new')} className="shrink-0 h-9 px-3.5 flex items-center gap-1.5 rounded-[9px] bg-[#3069f0] hover:bg-[#3f78f5] text-white text-[12.5px] font-semibold transition-colors"><Plus className="w-[13px] h-[13px]" strokeWidth={2.4} />{at('新对话')}</button>}
       </div>
     </header>

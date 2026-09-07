@@ -167,7 +167,7 @@ test('cancel, version restore and provider-not-configured states', async () => {
   try {
     const session = await unavailable.createSession('a', 'empty');
     assert.equal(unavailable.status().providerReady, false);
-    assert.throws(() => unavailable.enqueue(session.id, 'a', randomUUID(), 'test'), /provider/);
+    assert.throws(() => unavailable.enqueue(session.id, 'a', randomUUID(), 'test'), /配置助手模型/);
     assert.equal(unavailable.store.tasks().length, 0);
   } finally { await unavailable.stop(); }
 });
@@ -329,4 +329,27 @@ test('uploaded images reach the model as image parts only while vision is enable
       assert.equal(typeof message.content, 'string', 'persisted task messages carry only the text form');
     }
   }
+});
+
+test('sessions recorded under a per-device namespace are adopted so every client sees them', async () => {
+  const dir=mkdtempSync(join(tmpdir(),'agent-adopt-'));
+  const path=join(dir,'agent.sqlite');
+  try {
+    const seed=new AgentStore(path);
+    const mine=seed.create('administrator','browser chat');
+    const phone=seed.create('device:aaa','phone chat');
+    const stranded=seed.create('device:rotated-away','stranded chat');
+    seed.close();
+
+    const service=new AgentService({...config(path)},{model:scripted([answer()]),adapter:new FakeComfy()});
+    try {
+      // Every authenticated client resolves to the one shared namespace, so all three are now listed together.
+      const listed=service.store.list('administrator').map(s=>s.id).sort();
+      assert.deepEqual(listed,[mine.id,phone.id,stranded.id].sort());
+      // The owner inside the stored document moves too, so reads that check it do not 404.
+      assert.equal(service.store.session(phone.id,'administrator').owner,'administrator');
+      assert.equal(service.store.session(stranded.id,'administrator').owner,'administrator');
+      assert.equal(service.store.adoptLegacyDeviceSessions(),0,'adoption is idempotent');
+    } finally {await service.stop()}
+  } finally {rmSync(dir,{recursive:true,force:true})}
 });

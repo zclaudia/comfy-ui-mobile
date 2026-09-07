@@ -31,6 +31,7 @@ import CanvasLabPage from '@/components/canvas/CanvasLabPage';
 import CloudWorkflowSyncController from '@/components/workflow/CloudWorkflowSyncController';
 import SessionListPage from '@/components/agent/SessionListPage';
 import ChatPage from '@/components/agent/ChatPage';
+import ModelSettingsPage from '@/components/agent/ModelSettingsPage';
 import { useAgentActivityPoll } from '@/components/agent/useAgentActivityPoll';
 import { TabLayout } from '@/components/navigation/TabLayout';
 import { RootRedirect } from '@/components/navigation/RootRedirect';
@@ -261,6 +262,7 @@ const AppRouter: React.FC = () => {
         <Route path="/chains" element={<WorkflowChainList />} />
         <Route path="/chains/create" element={<WorkflowChainEditor />} />
         <Route path="/chains/edit/:id" element={<WorkflowChainEditor />} />
+        <Route path="/settings/agent" element={<ModelSettingsPage />} />
         <Route path="/settings/server" element={<ServerSettings />} />
         <Route path="/reboot" element={<ServerReboot />} />
         <Route path="/import/server" element={<WorkflowImport />} />
