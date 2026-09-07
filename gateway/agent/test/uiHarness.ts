@@ -18,6 +18,12 @@ const comfy = createServer(async (req, res) => {
     res.end('<svg xmlns="http://www.w3.org/2000/svg" width="512" height="768"><defs><linearGradient id="g" x2="1" y2="1"><stop stop-color="#2563eb"/><stop offset="1" stop-color="#6d28d9"/></linearGradient></defs><rect width="512" height="768" fill="url(#g)"/><circle cx="256" cy="290" r="120" fill="#c4b5fd" opacity=".45"/><text x="256" y="505" text-anchor="middle" fill="white" font-size="32">MVP TEST PREVIEW</text><text x="256" y="550" text-anchor="middle" fill="#c4b5fd" font-size="20">Synthetic output · no GPU</text></svg>'); return;
   }
   res.setHeader('Content-Type', 'application/json');
+  if (url.pathname === '/upload/image' && req.method === 'POST') {
+    // Minimal multipart parse: only the filename matters for the synthetic input folder.
+    const buffers = []; for await (const chunk of req) buffers.push(chunk);
+    const name = /filename="([^"]+)"/.exec(Buffer.concat(buffers).toString('latin1'))?.[1] ?? 'upload.bin';
+    res.end(JSON.stringify({ name, subfolder: 'agent-chat', type: 'input' })); return;
+  }
   if (url.pathname === '/comfymobile/api/workflows/list') { res.end(JSON.stringify({ status: 'success', workflows: [] })); return; }
   if (url.pathname === '/object_info') { res.end(JSON.stringify(info)); return; }
   if (url.pathname === '/prompt' && req.method === 'POST') {

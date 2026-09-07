@@ -39,6 +39,13 @@ test('real Gateway agent routes enforce auth, device isolation, payload validati
   assert.equal((await request(`/agent/sessions/${session.id}/save`, { version: 1 })).status, 200);
   assert.equal((await request(`/agent/sessions/${session.id}/messages`, { requestId: randomUUID(), message: 'test' })).status, 503);
   assert.equal((await request(`/agent/sessions/${session.id}/messages`, { requestId: randomUUID(), message: 'test', owner: 'somebody' })).status, 400);
+  // Attachment validation runs before the provider check: a valid attachment-only message reaches the 503, invalid ones stop at 400.
+  assert.equal((await request(`/agent/sessions/${session.id}/messages`, { requestId: randomUUID(), attachments: [{ filename: 'ref.png', subfolder: 'agent', kind: 'image' }] })).status, 503);
+  assert.equal((await request(`/agent/sessions/${session.id}/messages`, { requestId: randomUUID(), message: '' })).status, 400);
+  assert.equal((await request(`/agent/sessions/${session.id}/messages`, { requestId: randomUUID(), message: 'x', attachments: [{ filename: '../etc/passwd', kind: 'image' }] })).status, 400);
+  assert.equal((await request(`/agent/sessions/${session.id}/messages`, { requestId: randomUUID(), message: 'x', attachments: [{ filename: 'a.png', subfolder: '../models', kind: 'image' }] })).status, 400);
+  assert.equal((await request(`/agent/sessions/${session.id}/messages`, { requestId: randomUUID(), message: 'x', attachments: [{ filename: 'a.png', type: 'output', kind: 'image' }] })).status, 400);
+  assert.equal((await request(`/agent/sessions/${session.id}/messages`, { requestId: randomUUID(), message: 'x', attachments: Array.from({ length: 9 }, (_, i) => ({ filename: `${i}.png`, kind: 'image' })) })).status, 400);
   assert.equal((await request('/agent/sessions', { name: 'bad', canvas: { ...canvas, nodes: [{ ...canvas.nodes[0], mode: 4 }] } })).status, 422);
   assert.equal((await request(`/agent/sessions/${session.id}?after=-1`)).status, 400);
   assert.equal((await request(`/agent/sessions/${session.id}/versions/9999`)).status, 404);

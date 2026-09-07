@@ -30,6 +30,7 @@ GATEWAY_AGENT_STORE=gateway/.data/agent.sqlite
 AGENT_LLM_BASE_URL=https://your-provider.example/v1
 AGENT_LLM_MODEL=your-tool-capable-model
 AGENT_LLM_API_KEY=your-api-key
+AGENT_LLM_VISION=true
 AGENT_MAX_STEPS=12
 AGENT_MAX_PREVIEWS=3
 AGENT_TIMEOUT_MS=1200000
@@ -121,7 +122,7 @@ All paths start with `/api/gateway/agent`; use existing cookie/device authentica
 | GET `/status` | Enabled/provider status and budgets, no secrets |
 | GET/POST `/sessions` | List own sessions with `preview`, `lastMessage`, `lastActivity`, `active`, `lastState`, `workflow`, `thumbnail` / create with optional canvas copy and `workflow` binding `{id, name, filename?}` (the binding name becomes the session name) |
 | GET `/sessions/:id?after=N` | Snapshot plus up to 200 events after cursor N |
-| POST `/sessions/:id/messages` | `{requestId: UUID, message}`; idempotent request ID, one active task per session |
+| POST `/sessions/:id/messages` | `{requestId: UUID, message?, attachments?: [{filename, subfolder?, type?: 'input'\|'temp', kind: 'image'\|'video'\|'audio'\|'file', name?, size?}]}` (max 8; message or attachments required); files are uploaded to ComfyUI's input folder by the App beforehand and described to the model as loader-node paths; with `AGENT_LLM_VISION=true` (default) up to 4 PNG/JPEG/WebP/GIF attachments (≤20MB each) are also sent to the model as image input for that task's own message, fetched from ComfyUI once per task and never persisted in task messages; idempotent request ID, one active task per session |
 | POST `/sessions/:id/cancel` | `{taskId}` |
 | GET `/sessions/:id/versions/:version` | Read immutable canvas/version |
 | POST `/sessions/:id/save` | `{version}` |

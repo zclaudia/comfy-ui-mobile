@@ -111,6 +111,7 @@ export const loadGatewayConfig = (env = process.env, cwd = process.cwd()) => {
     agentModel,
     agentBaseUrl: String(env.AGENT_LLM_BASE_URL || '').trim(),
     agentApiKey: String(env.AGENT_LLM_API_KEY || '').trim(),
+    agentVision: parseBoolean(env.AGENT_LLM_VISION, true),
     agentMaxSteps: Math.min(30, parseInteger(env.AGENT_MAX_STEPS, 12)),
     agentMaxPreviews: Math.min(5, parseInteger(env.AGENT_MAX_PREVIEWS, 3)),
     agentTimeoutMs: Math.min(60 * 60_000, parseInteger(env.AGENT_TIMEOUT_MS, 20 * 60_000)),

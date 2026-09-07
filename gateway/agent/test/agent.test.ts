@@ -32,6 +32,14 @@ class FakeComfy extends ComfyAdapter {
     if (this.mode === 'lost') throw new ComfyRequestError(0, undefined, true);
     return { promptId };
   }
+  files: Record<string, { bytes: Uint8Array; mediaType: string }> = {};
+  fileReads = 0;
+  override async getFile(ref: { filename: string; subfolder: string; type: string }) {
+    this.fileReads++;
+    const file = this.files[`${ref.type}/${ref.subfolder}/${ref.filename}`];
+    if (!file) throw new ComfyRequestError(404, undefined);
+    return file;
+  }
   override async getQueue() { return { queue_running: this.mode === 'pending' ? Object.values(this.executions).map((e: any) => e.prompt) : [], queue_pending: [] }; }
   override async getHistory(promptId: string) { return this.mode === 'pending' ? {} : { [promptId]: this.executions[promptId] }; }
   override async getRecentHistory() { return this.mode === 'pending' ? {} : this.executions; }
@@ -251,4 +259,45 @@ test('history lists a bounded first-message preview without crossing device owne
     assert.equal(list.length,1);assert.equal(list[0].preview,'A paper boat at sunrise');
     assert(!JSON.stringify(list).includes('Private request'));
   } finally {await service.stop()}
+});
+
+test('uploaded images reach the model as image parts only while vision is enabled, and never persist into task messages', async () => {
+  const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const attachments = [
+    { filename: 'ref.png', subfolder: 'agent-chat', type: 'input' as const, kind: 'image' as const },
+    { filename: 'missing.png', subfolder: 'agent-chat', type: 'input' as const, kind: 'image' as const },
+    { filename: 'clip.mp4', subfolder: 'agent-chat', type: 'input' as const, kind: 'video' as const },
+  ];
+  const userParts = (model: MockLanguageModelV3, step: number) => {
+    const user = model.doGenerateCalls[step].prompt.filter(m => m.role === 'user').at(-1)!;
+    return Array.isArray(user.content) ? user.content : [];
+  };
+  for (const vision of [true, false]) {
+    const adapter = new FakeComfy();
+    adapter.files['input/agent-chat/ref.png'] = { bytes: png, mediaType: 'image/png' };
+    const model = scripted([call('inspect_environment', {}), answer('看到了参考图。')]);
+    const service = new AgentService({ ...config(), agentVision: vision }, { model, adapter });
+    assert.equal(service.status().vision, vision);
+    const session = await service.createSession('a', '视觉');
+    const task = service.enqueue(session.id, 'a', randomUUID(), '按这张图的风格再画一张', attachments);
+    const done = await drain(service, task.id);
+    assert.equal(done.state, 'completed', done.error);
+    const first = userParts(model, 0);
+    const images = first.filter(p => p.type === 'file');
+    const text = first.find(p => p.type === 'text') as { text: string } | undefined;
+    if (vision) {
+      assert.equal(images.length, 1, 'the readable PNG is attached; the missing file and the video are skipped');
+      assert.equal((images[0] as { mediaType: string }).mediaType, 'image/png');
+      assert.match(text!.text, /agent-chat\/ref\.png/, 'the path reference stays alongside the pixels');
+      assert.equal(adapter.fileReads, 2, 'each image is fetched once per task, not once per step');
+      assert.ok(userParts(model, 1).some(p => p.type === 'file'), 'later steps of the same task still see the image');
+    } else {
+      assert.equal(images.length, 0);
+      assert.equal(adapter.fileReads, 0);
+    }
+    for (const message of service.store.task(task.id).messages) {
+      if (message.role !== 'user') continue;
+      assert.equal(typeof message.content, 'string', 'persisted task messages carry only the text form');
+    }
+  }
 });

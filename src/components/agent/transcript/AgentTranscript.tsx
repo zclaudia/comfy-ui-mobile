@@ -3,7 +3,8 @@ import { copyText } from '../../../platform/clipboard';
 import { useMemo, type ReactNode } from 'react';
 import { ToolCallCard, TranscriptCapabilitiesProvider } from '@zclaudia/agent-transcript-kit/react';
 import '@zclaudia/agent-transcript-kit/transcript.css';
-import type { AgentEvent, AgentTask } from '../../../infrastructure/api/AgentApi';
+import type { AgentAttachment, AgentEvent, AgentTask } from '../../../infrastructure/api/AgentApi';
+import { SentAttachments } from '../ChatAttachments';
 import { AgentMarkdown } from '../AgentMarkdown';
 import { buildTranscript } from './adapter';
 import './theme.css';
@@ -18,15 +19,20 @@ const names: Record<string, string> = {
 const statuses: Record<string, string> = { queued: '等待助手处理', running: '正在处理', waiting_comfy: 'ComfyUI 正在生成', reconciling: '正在核对提交状态' };
 
 
-export function AgentTranscript({ events, tasks, caughtUp, renderContent }: {
-  events: AgentEvent[]; tasks: AgentTask[]; caughtUp: boolean; renderContent: (event: AgentEvent) => ReactNode;
+export function AgentTranscript({ events, tasks, caughtUp, renderContent, baseUrl = '' }: {
+  events: AgentEvent[]; tasks: AgentTask[]; caughtUp: boolean; renderContent: (event: AgentEvent) => ReactNode; baseUrl?: string;
 }) {
   const at = useAgentText();
   const capabilities = useMemo(() => ({ copyText, labels: { copy: at('复制'), copied: at('已复制'), copyFailed: at('复制失败，请长按选择代码后复制') } }), [at]);
   const transcript = useMemo(() => buildTranscript(events, tasks, caughtUp), [events, tasks, caughtUp]);
+  // The transcript kit only carries text for user messages; look attachments up by the event id it derives from seq.
+  const attachments = useMemo(() => new Map(events.filter(e => e.kind === 'user' && Array.isArray(e.data.attachments)).map(e => [`event:${e.seq}`, e.data.attachments as AgentAttachment[]])), [events]);
   return <TranscriptCapabilitiesProvider value={capabilities}><section aria-label={at('对话记录')} className="agent-transcript space-y-4">
     {transcript.items.map(item => {
-      if (item.kind === 'user_message') return <article key={item.id} className="ml-8 rounded-2xl bg-blue-600/20 border border-blue-500/20 p-4 text-sm"><p className="text-xs text-slate-500 mb-1">{at('你')}</p><div className="whitespace-pre-wrap break-words">{item.text}</div></article>;
+      if (item.kind === 'user_message') {
+        const sent = attachments.get(item.id) ?? [];
+        return <article key={item.id} className="ml-8 rounded-2xl bg-blue-600/20 border border-blue-500/20 p-4 text-sm"><p className="text-xs text-slate-500 mb-1">{at('你')}</p>{sent.length > 0 && <SentAttachments attachments={sent} baseUrl={baseUrl} />}{item.text && <div className="whitespace-pre-wrap break-words">{item.text}</div>}</article>;
+      }
       if (item.kind === 'marker') return <div key={item.id}>{renderContent(item.payload as AgentEvent)}</div>;
       const task = tasks.find(t => t.id === item.id);
       return <article key={item.id} data-agent-turn={item.id} className="min-w-0 rounded-2xl border border-white/5 bg-white/[0.035] p-3 text-sm leading-7">

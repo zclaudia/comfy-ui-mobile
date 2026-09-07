@@ -42,6 +42,28 @@ export class ComfyAdapter {
     return data;
   }
 
+  /** Read a file from ComfyUI's input/output/temp folders. The caller bounds size and media type before use. */
+  async getFile(ref: { filename: string; subfolder: string; type: string }, signal?: AbortSignal, maxBytes = 20 * 1024 * 1024): Promise<{ bytes: Uint8Array; mediaType: string }> {
+    const url = new URL('/view', this.baseUrl);
+    url.search = new URLSearchParams({ filename: ref.filename, subfolder: ref.subfolder, type: ref.type }).toString();
+    if (this.config.comfyAuthToken) url.searchParams.set('token', this.config.comfyAuthToken);
+    const timeout = AbortSignal.timeout(this.config.timeoutMs ?? 15_000);
+    let response: Response;
+    let bytes: Uint8Array;
+    try {
+      response = await fetch(url, { signal: signal ? AbortSignal.any([signal, timeout]) : timeout, redirect: 'error' });
+      if (!response.ok) throw new ComfyRequestError(response.status, undefined);
+      const length = Number(response.headers.get('content-length') ?? 0);
+      if (length > maxBytes) throw new ComfyRequestError(413, undefined);
+      bytes = new Uint8Array(await response.arrayBuffer());
+    } catch (error) {
+      if (error instanceof ComfyRequestError) throw error;
+      throw new ComfyRequestError(0, undefined);
+    }
+    if (bytes.byteLength > maxBytes) throw new ComfyRequestError(413, undefined);
+    return { bytes, mediaType: (response.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase() };
+  }
+
   async getObjectInfo(signal?: AbortSignal): Promise<ObjectInfo> {
     const result = await this.request('/object_info', undefined, signal);
     if (!result || typeof result !== 'object' || Array.isArray(result)

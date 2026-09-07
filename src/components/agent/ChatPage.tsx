@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Bot, Film, Image as ImageIcon, Loader2, Network, Send, Square } from 'lucide-react';
+import { Bot, Film, Image as ImageIcon, Loader2, Network, Square } from 'lucide-react';
 import { toast } from 'sonner';
 import { SimpleConfirmDialog } from '@/components/ui/SimpleConfirmDialog';
 import { addWorkflow, loadAllWorkflows, updateWorkflow, updateWorkflowAgentBinding } from '@/infrastructure/storage/IndexedDBWorkflowService';
@@ -13,6 +13,9 @@ import { ErrorCard, NoticeCard, ResultCard, WorkflowChangeCard } from './ChatCar
 import { WorkflowPickerSheet } from './WorkflowPickerSheet';
 import { VersionHistorySheet } from './VersionHistorySheet';
 import { RenameSheet } from './RenameSheet';
+import { ChatComposer } from './ChatComposer';
+import { useAttachments } from './useAttachments';
+import { MAX_ATTACHMENTS } from './attachments';
 import { NEW_CHAT_PRESETS, hashCanvas, resolveBoundWorkflow, sessionTitle } from './binding';
 import { importCanvasIfChanged, mirrorVersion, type MirrorDeps } from './mirror';
 import { useAgentStatus } from './useAgentStatus';
@@ -34,6 +37,8 @@ export default function ChatPage() {
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [pending, setPending] = useState<Workflow | null>(null); // workflow chosen for a not-yet-created session
   const [draft, setDraft] = useState(() => params.get('draft') ?? '');
+  const onRejectFile = useCallback((reason: string, file: File) => toast.error(`${file.name}: ${at(reason, { count: MAX_ATTACHMENTS })}`), [at]);
+  const attachments = useAttachments(api.baseUrl, onRejectFile);
   const [busy, setBusy] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(params.get('pick') === '1');
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -47,7 +52,7 @@ export default function ChatPage() {
   const [mirrorError, setMirrorError] = useState('');
   const mirroring = useRef(0); // version currently being written to the library, 0 when idle
   const alive = useRef(true);
-  const request = useRef<{ text: string; id: string } | null>(null);
+  const request = useRef<{ text: string; files: string; id: string } | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
   const followLatest = useRef(true);
   const [showLatest, setShowLatest] = useState(false);
@@ -124,7 +129,10 @@ export default function ChatPage() {
   }
 
   async function send() {
-    const text = draft.trim(); if (!text) return;
+    const text = draft.trim();
+    const files = attachments.uploaded;
+    if (!text && !files.length) return;
+    if (attachments.uploading || attachments.failed) { toast.error(at(attachments.failed ? '有附件上传失败，请重试或移除' : '附件仍在上传')); return; }
     let target: AgentSession | undefined = session;
     if (!target && id) return; // an existing route whose snapshot has not arrived yet must never lazy-create a session
     if (!target) {
@@ -137,9 +145,10 @@ export default function ChatPage() {
       if (result.kind === 'imported') { target = { ...target, version: result.version }; setMirroredVersion(result.version); setWrittenVersion(result.version); setConflict(false); await reloadWorkflows(); }
     }
     setUnsupported(null);
-    if (!request.current || request.current.text !== text) request.current = { text, id: crypto.randomUUID() };
-    await api.message(target.id, text, request.current.id);
-    request.current = null; setDraft('');
+    const fileKey = JSON.stringify(files);
+    if (!request.current || request.current.text !== text || request.current.files !== fileKey) request.current = { text, files: fileKey, id: crypto.randomUUID() };
+    await api.message(target.id, text, request.current.id, files);
+    request.current = null; setDraft(''); attachments.clear();
     try { if (!localStorage.getItem(BACKGROUND_HINT_KEY)) { toast.info(at('离开页面后，后台任务继续运行。')); localStorage.setItem(BACKGROUND_HINT_KEY, '1'); } } catch { /* storage unavailable */ }
     if (!session) { setPending(null); if (alive.current) navigate(`/chat/${target.id}`, { replace: true }); }
     else setSnapshot(await api.snapshot(target.id));
@@ -152,7 +161,7 @@ export default function ChatPage() {
     { icon: <Film size={14} strokeWidth={1.8} />, label: at('生成一段短视频'), onClick: () => setDraft(at(NEW_CHAT_PRESETS.video)) },
     { icon: <Network size={14} strokeWidth={1.8} />, label: at('从我的工作流开始'), onClick: () => setPickerOpen(true) },
   ];
-  const canSend = ready && !busy && !task && !!draft.trim() && (!id || !!session);
+  const canSend = ready && !busy && !task && (!!draft.trim() || attachments.uploaded.length > 0) && !attachments.uploading && !attachments.failed && (!id || !!session);
 
   const renderContent = (event: AgentEvent) => {
     const data = event.data;
@@ -185,21 +194,20 @@ export default function ChatPage() {
         <p className="text-[16px] font-semibold">{at('你想创作什么？')}</p>
         <p className="text-[12.5px] text-[#66758a] max-w-[280px] leading-relaxed">{at('直接描述目标。助手会根据已安装的模型选择合适的工作流，生成预览并写入你的工作流库。')}</p>
       </div>}
-      {id && <AgentTranscript events={events} tasks={snapshot?.tasks ?? []} caughtUp={caughtUp} renderContent={renderContent} />}
+      {id && <AgentTranscript events={events} tasks={snapshot?.tasks ?? []} caughtUp={caughtUp} renderContent={renderContent} baseUrl={api.baseUrl} />}
       <div ref={bottom} />
     </div>
     <footer className="shrink-0 border-t border-white/[0.08]" style={{ background: 'rgba(11,12,15,0.95)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
-      <div className="max-w-4xl mx-auto p-4 space-y-2.5">
+      <div className="max-w-4xl mx-auto px-3 pt-2.5 pb-3 space-y-2.5">
         {showLatest && <button className="text-[12px] text-[#5b8af5] font-semibold" onClick={() => { followLatest.current = true; setShowLatest(false); bottom.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); }}>{at('回到最新消息')}</button>}
         {!id && <div className="flex gap-2 overflow-x-auto scrollbar-hide">{chips.map(chip => <button key={chip.label} onClick={chip.onClick} className="h-[34px] px-3 shrink-0 rounded-[9px] border border-white/[0.08] bg-white/[0.035] text-[12px] font-medium text-[#c8ccd4] flex items-center gap-1.5">{chip.icon}{chip.label}</button>)}</div>}
         {task && <div role="status" className="h-10 pl-3 pr-1.5 rounded-[10px] border border-[#3069f0]/30 bg-[#3069f0]/10 flex items-center gap-2 text-[12.5px] font-medium text-[#5b8af5]">
           <Loader2 size={14} className="animate-spin" /><span className="flex-1">{at(states[task.state] ?? '正在处理')}</span>
           <button className="h-7 px-2.5 rounded-[7px] border border-white/10 bg-white/5 text-[11.5px] font-semibold text-[#c8ccd4] flex items-center gap-1.5" disabled={busy} onClick={() => void action(async () => { if (session) await api.cancel(session.id, task.id); })}><Square size={10} fill="currentColor" />{at('停止')}</button>
         </div>}
-        <form className="flex items-end gap-2" onSubmit={e => { e.preventDefault(); if (canSend) void action(send); }}>
-          <textarea aria-label={at('给助手的消息')} value={draft} onChange={e => setDraft(e.target.value)} rows={2} maxLength={8000} disabled={!ready} placeholder={ready ? at('描述你想要的效果，或告诉助手如何调整…') : at('等待模型连接')} className="flex-1 min-w-0 resize-none rounded-[12px] border border-white/[0.08] bg-white/[0.045] p-3 text-[13px] disabled:opacity-50 focus:outline-none focus:border-[#3069f0]/50" />
-          <button type="submit" aria-label={at('发送消息')} disabled={!canSend} className={`w-11 h-11 shrink-0 rounded-[12px] flex items-center justify-center ${canSend ? 'bg-[#3069f0] text-white' : 'bg-[#23262d] text-[#565d6b]'}`}><Send size={18} /></button>
-        </form>
+        <ChatComposer value={draft} onChange={setDraft} disabled={!ready} placeholder={ready ? at('描述你想要的效果，或告诉助手如何调整…') : at('等待模型连接')}
+          attachments={attachments.items} onAddFiles={attachments.add} onRemoveAttachment={attachments.remove} onRetryAttachment={attachments.retry}
+          canSend={canSend} onSend={() => void action(send)} />
       </div>
     </footer>
     <RenameSheet open={renameOpen} onOpenChange={setRenameOpen} initial={title} onSubmit={name => void action(async () => {

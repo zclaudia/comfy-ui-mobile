@@ -10,15 +10,25 @@ export const activeStates: State[] = ['queued', 'running', 'waiting_comfy', 'rec
 export interface SessionWorkflow { id: string; name: string; filename?: string }
 export interface Session { id: string; owner: string; name: string; version: number; created: number; workflow?: SessionWorkflow }
 export interface MediaRef { filename: string; subfolder: string; type: string }
+/** A file the user uploaded to ComfyUI's input folder before sending a message. */
+export interface Attachment extends MediaRef { kind: 'image' | 'video' | 'audio' | 'file'; name?: string; size?: number }
 export interface SessionSummary extends Session { preview?: string; lastMessage?: string; lastActivity: number; active: boolean; lastState?: State; thumbnail?: MediaRef }
 export interface Version { version: number; canvas: Canvas; summary: string; saved: boolean; created: number }
 export interface Task {
-  id: string; sessionId: string; requestId: string; message: string; state: State;
+  id: string; sessionId: string; requestId: string; message: string; attachments?: Attachment[]; state: State;
   created: number; deadline: number; steps: number; previews: number;
   messages: ModelMessage[]; completionChecked?: boolean; execution?: { attempt: string; version: number; promptId?: string; submitted: number };
   result?: unknown; error?: string;
 }
 export interface AgentEvent { seq: number; taskId: string | null; kind: string; data: unknown; created: number }
+/** ComfyUI loader nodes address input files as `subfolder/filename`; keep the text reference in that form. */
+export function attachmentPath(attachment: MediaRef) { return attachment.subfolder ? `${attachment.subfolder}/${attachment.filename}` : attachment.filename; }
+/** Uploaded files are untrusted data: describe them with their ComfyUI input path so the model can wire them into loader nodes. */
+export function describeAttachments(text: string, attachments?: Attachment[]) {
+  if (!attachments?.length) return text;
+  const lines = attachments.map(a => `- ${a.kind} "${attachmentPath(a)}"${a.name && a.name !== a.filename ? ` (original name: ${a.name})` : ''}`);
+  return `${text}\n\n[User uploaded ${attachments.length} file(s) to the ComfyUI "${attachments[0].type}" folder. Reference them by path in LoadImage.image, LoadAudio.audio or LoadVideo.file, or as create_model_workflow reference assets:\n${lines.join('\n')}]`;
+}
 export class AgentHttpError extends Error {
   constructor(public readonly status: number, message: string) { super(message); }
 }
@@ -141,19 +151,19 @@ export class AgentStore {
       : this.db.prepare("SELECT data FROM tasks WHERE state IN ('queued','running','waiting_comfy','reconciling') ORDER BY rowid").all();
     return rows.map(r => JSON.parse(r.data as string));
   }
-  enqueue(sessionId: string, requestId: string, message: string, durationMs: number): Task {
+  enqueue(sessionId: string, requestId: string, message: string, durationMs: number, attachments: Attachment[] = []): Task {
     return this.transaction(() => {
       const existing = this.db.prepare('SELECT data FROM tasks WHERE session_id=? AND request_id=?').get(sessionId, requestId);
       if (existing) {
         const task = JSON.parse(existing.data as string) as Task;
-        if (task.message !== message) throw new AgentHttpError(409, '请求 ID 已用于其他消息');
+        if (task.message !== message || JSON.stringify(task.attachments ?? []) !== JSON.stringify(attachments)) throw new AgentHttpError(409, '请求 ID 已用于其他消息');
         return task;
       }
       if (this.tasks(sessionId).some(t => activeStates.includes(t.state))) throw new AgentHttpError(409, '请先等待或停止当前任务');
       if (this.tasks().length >= 20) throw new AgentHttpError(429, '后台任务队列已满');
-      const task: Task = { id: randomUUID(), sessionId, requestId, message, state: 'queued', created: Date.now(), deadline: Date.now() + durationMs, steps: 0, previews: 0, messages: [] };
+      const task: Task = { id: randomUUID(), sessionId, requestId, message, ...(attachments.length ? { attachments } : {}), state: 'queued', created: Date.now(), deadline: Date.now() + durationMs, steps: 0, previews: 0, messages: [] };
       this.db.prepare('INSERT INTO tasks VALUES(?,?,?,?,?)').run(task.id, sessionId, requestId, task.state, JSON.stringify(task));
-      this.event(sessionId, task.id, 'user', { text: message });
+      this.event(sessionId, task.id, 'user', { text: message, ...(attachments.length ? { attachments } : {}) });
       this.event(sessionId, task.id, 'state', { state: 'queued' });
       return task;
     });
@@ -168,7 +178,11 @@ export class AgentStore {
   }
   recentMessages(id: string): { role: 'user' | 'assistant'; content: string }[] {
     return this.db.prepare("SELECT kind,data FROM events WHERE session_id=? AND kind IN ('user','assistant') ORDER BY seq DESC LIMIT 20").all(id).reverse()
-      .map(r => ({ role: r.kind as 'user' | 'assistant', content: String(JSON.parse(r.data as string).text).slice(0, 8000) }));
+      .map(r => {
+        const data = JSON.parse(r.data as string) as { text?: unknown; attachments?: Attachment[] };
+        const text = String(data.text ?? '').slice(0, 8000);
+        return { role: r.kind as 'user' | 'assistant', content: r.kind === 'user' ? describeAttachments(text, data.attachments) : text };
+      });
   }
   receipt(taskId: string, callId: string): unknown | undefined {
     const row = this.db.prepare('SELECT data FROM receipts WHERE task_id=? AND call_id=?').get(taskId, callId);

@@ -104,3 +104,21 @@ test('deleteSession', () => {
 
   store.close();
 });
+
+test('attachments ride along with the user message and are described to the model', () => {
+  const store = new AgentStore(':memory:');
+  const session = store.create('me', '参考图');
+  const attachments = [{ filename: 'ref.png', subfolder: 'agent', type: 'input', kind: 'image' as const, name: 'IMG_0001.png', size: 1234 }];
+  const task = store.enqueue(session.id, 'r-1', '按这张图的风格再画一张', 60_000, attachments);
+  assert.deepEqual(task.attachments, attachments);
+  assert.equal(store.enqueue(session.id, 'r-1', '按这张图的风格再画一张', 60_000, attachments).id, task.id, 'same request id with same payload is idempotent');
+  assert.throws(() => store.enqueue(session.id, 'r-1', '按这张图的风格再画一张', 60_000, []), /请求 ID/);
+  const user = store.events(session.id).find(e => e.kind === 'user')!;
+  assert.deepEqual(user.data, { text: '按这张图的风格再画一张', attachments });
+  const [message] = store.recentMessages(session.id);
+  assert.match(message.content, /^按这张图的风格再画一张/);
+  assert.match(message.content, /image "agent\/ref\.png" \(original name: IMG_0001\.png\)/);
+  assert.match(message.content, /LoadImage\.image/);
+  assert.equal(store.list('me')[0].preview, '按这张图的风格再画一张');
+  assert.equal(store.enqueue(store.create('me', '无附件').id, 'r-2', '纯文字', 60_000).attachments, undefined, 'text-only tasks carry no attachment key');
+});

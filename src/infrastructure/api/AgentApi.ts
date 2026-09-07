@@ -7,6 +7,9 @@ export { AgentRequestError };
 
 export interface SessionWorkflowRef { id: string; name: string; filename?: string }
 export interface AgentMediaRef { filename: string; subfolder: string; type: string }
+export type AgentAttachmentKind = 'image' | 'video' | 'audio' | 'file';
+/** A file uploaded to ComfyUI's input folder and referenced by a chat message. */
+export interface AgentAttachment extends AgentMediaRef { type: 'input' | 'temp'; kind: AgentAttachmentKind; name?: string; size?: number }
 export interface AgentSession {
   id: string; name: string; version: number; created: number; workflow?: SessionWorkflowRef;
   preview?: string; lastMessage?: string; lastActivity?: number; active?: boolean; lastState?: string; thumbnail?: AgentMediaRef;
@@ -46,7 +49,9 @@ export class AgentApi {
     return this.request<{ version: number }>(`/sessions/${encodeURIComponent(id)}/versions`, { body: { canvas, baseVersion, summary } });
   }
   snapshot(id: string, after = 0, signal?: AbortSignal) { return this.request<AgentSnapshot>(`/sessions/${encodeURIComponent(id)}?after=${after}`, {}, signal); }
-  message(id: string, message: string, requestId: string) { return this.request<{ taskId: string }>(`/sessions/${encodeURIComponent(id)}/messages`, { body: { message, requestId } }); }
+  message(id: string, message: string, requestId: string, attachments: AgentAttachment[] = []) {
+    return this.request<{ taskId: string }>(`/sessions/${encodeURIComponent(id)}/messages`, { body: { message, requestId, ...(attachments.length ? { attachments } : {}) } });
+  }
   cancel(id: string, taskId: string) { return this.request(`/sessions/${encodeURIComponent(id)}/cancel`, { body: { taskId } }); }
   restore(id: string, version: number, baseVersion: number) { return this.request(`/sessions/${encodeURIComponent(id)}/restore`, { body: { version, baseVersion } }); }
   version(id: string, version: number) { return this.request<AgentVersion & { canvas: IComfyJson }>(`/sessions/${encodeURIComponent(id)}/versions/${version}`); }
