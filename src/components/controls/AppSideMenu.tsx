@@ -12,6 +12,7 @@ const AppSideMenu: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpe
       onClose={onClose}
       onServerSettingsClick={() => go('/settings/server')}
       onApiKeysClick={() => go('/settings/api-keys')}
+      onAgentModelsClick={() => go('/settings/agent')}
       onImportWorkflowsClick={() => go('/import/server')}
       onUploadWorkflowsClick={() => go('/upload/server')}
       onServerRebootClick={() => go('/reboot')}

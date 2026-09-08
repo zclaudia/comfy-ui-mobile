@@ -16,7 +16,7 @@ const names: Record<string, string> = {
   validate_workflow: '验证工作流', patch_workflow: '调整工作流', apply_workflow_patch: '调整工作流',
   submit_preview: '提交生成任务', save_workflow_version: '保存工作流版本',
 };
-const statuses: Record<string, string> = { queued: '等待助手处理', running: '正在处理', waiting_comfy: 'ComfyUI 正在生成', reconciling: '正在核对提交状态' };
+const statuses: Record<string, string> = { queued: '等待助手处理', running: '正在处理', waiting_comfy: 'ComfyUI 正在生成', waiting_user: '等待你确认生成', reconciling: '正在核对提交状态' };
 
 const detailLabel = 'font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500 mb-1';
 const detailBody = 'whitespace-pre-wrap break-words text-[11.5px] leading-5 text-slate-300 max-h-60 overflow-y-auto rounded-lg bg-black/25 px-2.5 py-2';
@@ -59,7 +59,8 @@ export function AgentTranscript({ events, tasks, caughtUp, renderContent, baseUr
           if (block.kind !== 'tool_call') return null;
           const call = item.toolCalls[block.toolCallId];
           if (!call) return null;
-          const summary = call.status === 'running' ? '执行中' : call.status === 'error' ? '未完成' : call.status === 'cancelled' ? '已停止等待' : call.name === 'submit_preview' ? '已提交，生成结果见下方' : '已完成';
+          const held = call.name === 'submit_preview' && !!call.result && typeof call.result === 'object' && (call.result as { status?: string }).status === 'awaiting_user';
+          const summary = call.status === 'running' ? '执行中' : call.status === 'error' ? '未完成' : call.status === 'cancelled' ? '已停止等待' : held ? '等待你确认' : call.name === 'submit_preview' ? '已提交，生成结果见下方' : '已完成';
           const detail = toolDetail(call);
           return <div key={call.id} data-tool-expandable={!!detail}>
             <ToolCallCard toolCall={call} displayName={at(names[call.name] ?? '执行工作流操作')} displaySummary={at(summary)}

@@ -66,3 +66,10 @@ test('a truncated payload arrives as a string the card can still render', () => 
  assert.equal(typeof t.toolCalls.c.input,'string');
  assert.equal(typeof t.toolCalls.c.result,'string');
 });
+test('held submissions and retries stay inside their turn as custom blocks', () => {
+ const s=buildTranscript([e(1,'tool_started',{callId:'c',name:'submit_preview'}),e(2,'tool_finished',{callId:'c',name:'submit_preview',isError:false,result:{status:'awaiting_user',version:1}}),e(3,'approval',{callId:'c',version:1,status:'pending'}),e(4,'state',{state:'waiting_user'}),e(5,'retry',{attempt:1,maxAttempts:3,delayMs:5000})]);
+ const t=s.items[0];assert(t.kind==='assistant_turn');
+ assert.deepEqual(t.blocks.map(b=>b.kind),['tool_call','custom','custom']);
+ assert.equal(t.status,'streaming');
+ assert.equal(t.toolCalls.c.status,'success');
+});

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Bot, ChevronDown, Film, Image as ImageIcon, Loader2, Network, Settings2, Square } from 'lucide-react';
+import { Bot, ChevronDown, Film, Image as ImageIcon, Loader2, Network, Settings2, ShieldCheck, Square } from 'lucide-react';
 import { toast } from 'sonner';
 import { SimpleConfirmDialog } from '@/components/ui/SimpleConfirmDialog';
 import { loadAllWorkflows, updateWorkflowAgentBinding } from '@/infrastructure/storage/IndexedDBWorkflowService';
@@ -15,7 +15,7 @@ import { useAgentActivityStore } from '@/ui/store/agentActivityStore';
 import type { Workflow } from '@/shared/types/app/IComfyWorkflow';
 import { AgentTranscript } from './transcript/AgentTranscript';
 import { ChatHeader } from './ChatHeader';
-import { ErrorCard, NoticeCard, ResultCard, WorkflowChangeCard } from './ChatCards';
+import { ApprovalCard, ErrorCard, NoticeCard, ResultCard, RetryNotice, WorkflowChangeCard, type ApprovalStatus } from './ChatCards';
 import { WorkflowPickerSheet } from './WorkflowPickerSheet';
 import { VersionHistorySheet } from './VersionHistorySheet';
 import { RenameSheet } from './RenameSheet';
@@ -31,8 +31,8 @@ import { useAgentStatus } from './useAgentStatus';
 import { useAgentText } from './useAgentText';
 import { useSessionSnapshot } from './useSessionSnapshot';
 
-const active = new Set(['queued', 'running', 'waiting_comfy', 'reconciling']);
-const states: Record<string, string> = { queued: '等待助手处理', running: '正在分析和操作工作流', waiting_comfy: 'ComfyUI 正在生成', reconciling: '正在核对提交状态' };
+const active = new Set(['queued', 'running', 'waiting_comfy', 'waiting_user', 'reconciling']);
+const states: Record<string, string> = { queued: '等待助手处理', running: '正在分析和操作工作流', waiting_comfy: 'ComfyUI 正在生成', waiting_user: '等待你确认生成', reconciling: '正在核对提交状态' };
 const BACKGROUND_HINT_KEY = 'comfy_mobile_agent_background_hint';
 
 export default function ChatPage() {
@@ -189,6 +189,15 @@ export default function ChatPage() {
     if (event.kind === 'saved') return <p key={event.seq} className="text-[11px] text-[#4ade80] flex items-center gap-2">✓ {at('版本 {{version}} 已保留', { version: data.version })}<button className="underline text-[#5b8af5]" onClick={() => void openSave(data.version)}>{at('保存到工作流库')}</button></p>;
     if (event.kind === 'execution_error') return <ErrorCard key={event.seq} title="这次生成未成功" detail={data.diagnostic || JSON.stringify(data, null, 2)} />;
     if (event.kind === 'state' && data.state === 'failed') return <NoticeCard key={event.seq} text={data.error || '任务未完成'} />;
+    if (event.kind === 'retry') return <RetryNotice key={event.seq} attempt={data.attempt} max={data.maxAttempts} delayMs={data.delayMs} />;
+    if (event.kind === 'approval') {
+      // One card per held submission: the pending event renders it and later decisions for the same call update its label.
+      if (data.status !== 'pending') return null;
+      const latest = events.filter(e => e.kind === 'approval' && e.taskId === event.taskId && e.data.callId === data.callId).at(-1)?.data.status as ApprovalStatus;
+      const held = latest === 'pending' && task?.id === event.taskId && task.state === 'waiting_user';
+      return <ApprovalCard key={event.seq} version={data.version} status={latest} busy={busy}
+        onDecide={held && session ? approved => void action(async () => { await api.approve(session.id, task.id, data.callId, approved); setSnapshot(await api.snapshot(session.id)); }) : undefined} />;
+    }
     return null;
   };
 
@@ -197,7 +206,14 @@ export default function ChatPage() {
       onOpenCanvas={savedTarget ? () => navigate(`/workflow/${savedTarget.id}`) : undefined}
       onRename={session ? () => setRenameOpen(true) : undefined}
       onHistory={session && snapshot?.versions.length ? () => setHistoryOpen(true) : undefined}
-      onDelete={session ? () => setDeleteOpen(true) : undefined} />
+      onDelete={session ? () => setDeleteOpen(true) : undefined}
+      confirmPreviews={session?.previewPolicy === 'confirm'}
+      onToggleConfirmPreviews={session ? () => void action(async () => {
+        const next = session.previewPolicy === 'confirm' ? 'auto' : 'confirm';
+        const { session: updated } = await api.update(session.id, { previewPolicy: next });
+        setSnapshot(p => p ? { ...p, session: updated } : p);
+        toast.success(at(next === 'confirm' ? '已开启生成前确认，助手提交生成前会先询问你。' : '已关闭生成前确认，助手会直接提交生成。'));
+      }) : undefined} />
     <div className="relative flex-1 min-h-0 flex flex-col">
       <div onScroll={e => trackScroll(e.currentTarget)} className="w-full max-w-4xl mx-auto flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-4 space-y-3">
         {state === 'no-gateway' && <NoticeCard text="请先连接 Gateway，再使用工作流助手。" action="打开连接设置" onAction={() => navigate('/settings/server')} />}
@@ -228,7 +244,7 @@ export default function ChatPage() {
         {attachments.items.some(a => a.kind === 'image') && status?.vision === false && <p className="text-xs text-amber-300">{at('当前模型仅接收图片路径；如需理解图片内容，请选择支持 Vision 的模型。')}</p>}
         {!id && <div className="flex gap-2 overflow-x-auto scrollbar-hide">{chips.map(chip => <button key={chip.label} onClick={chip.onClick} className="h-[34px] px-3 shrink-0 rounded-[9px] border border-white/[0.08] bg-white/[0.035] text-[12px] font-medium text-[#c8ccd4] flex items-center gap-1.5">{chip.icon}{chip.label}</button>)}</div>}
         {task && <div role="status" className="h-10 pl-3 pr-1.5 rounded-[10px] border border-[#3069f0]/30 bg-[#3069f0]/10 flex items-center gap-2 text-[12.5px] font-medium text-[#5b8af5]">
-          <Loader2 size={14} className="animate-spin" /><span className="flex-1">{at(task.state === 'running' && events.filter(e => e.taskId === task.id && e.kind === 'context').at(-1)?.data.status === 'compacting' ? '正在压缩上下文' : states[task.state] ?? '正在处理')}</span>
+          {task.state === 'waiting_user' ? <ShieldCheck size={14} /> : <Loader2 size={14} className="animate-spin" />}<span className="flex-1">{at(task.state === 'running' && events.filter(e => e.taskId === task.id && e.kind === 'context').at(-1)?.data.status === 'compacting' ? '正在压缩上下文' : states[task.state] ?? '正在处理')}</span>
           <button className="h-7 px-2.5 rounded-[7px] border border-white/10 bg-white/5 text-[11.5px] font-semibold text-[#c8ccd4] flex items-center gap-1.5" disabled={busy} onClick={() => void action(async () => { if (session) await api.cancel(session.id, task.id); })}><Square size={10} fill="currentColor" />{at('停止')}</button>
         </div>}
         {session && <DraftStatusLine session={session} saving={saving} canSave={ready && !busy && !saving && !task} onSave={() => void openSave(session.version)} />}

@@ -5,8 +5,9 @@ import { randomUUID } from 'node:crypto';
 import type { ModelMessage } from 'ai';
 import type { Canvas } from '../workflow/canvas.js';
 
-export type State = 'queued' | 'running' | 'waiting_comfy' | 'reconciling' | 'completed' | 'failed' | 'cancelled';
-export const activeStates: State[] = ['queued', 'running', 'waiting_comfy', 'reconciling'];
+export type State = 'queued' | 'running' | 'waiting_comfy' | 'waiting_user' | 'reconciling' | 'completed' | 'failed' | 'cancelled';
+export const activeStates: State[] = ['queued', 'running', 'waiting_comfy', 'waiting_user', 'reconciling'];
+const activeSql = activeStates.map(s => `'${s}'`).join(',');
 export interface SessionWorkflow { id: string; name: string; filename?: string }
 /** Which library workflow a draft started from. A record of origin, not a sync binding: the source may later be renamed or deleted. */
 export interface SourceRef { serverId: string; workflowId: string; filename: string; name: string; etag?: string }
@@ -24,31 +25,46 @@ export interface LibrarySaveOp {
   target: { serverId: string; workflowId: string; filename: string; name: string; expectedEtag?: string };
   state: LibrarySaveState; startedBy: string; startedAt: number; updatedAt: number; result?: { etag?: string; error?: string };
 }
+/** `confirm` pauses the task in `waiting_user` before every GPU submission until the App approves or declines it. */
+export type PreviewPolicy = 'auto' | 'confirm';
 export interface Session {
   id: string; owner: string; name: string; version: number; created: number;
   /** `legacy` sessions predate drafts and still carry the old one-to-one binding in `legacyWorkflow` until a client migrates them. */
   workspaceMode?: 'draft' | 'legacy'; sourceRef?: SourceRef; lastLibrarySave?: LibrarySave; librarySaveOp?: LibrarySaveOp;
-  legacyWorkflow?: SessionWorkflow;
+  legacyWorkflow?: SessionWorkflow; previewPolicy?: PreviewPolicy;
 }
-export interface SessionPatch { name?: string; sourceRef?: SourceRef | null; lastLibrarySave?: LibrarySave; librarySaveOp?: LibrarySaveOp; workspaceMode?: 'draft' }
+export interface SessionPatch {
+  name?: string; sourceRef?: SourceRef | null; lastLibrarySave?: LibrarySave; librarySaveOp?: LibrarySaveOp;
+  workspaceMode?: 'draft'; previewPolicy?: PreviewPolicy;
+}
+/** A submission the model asked for that is held for the user. `decision` is set by the App; the scheduler settles it. */
+export interface Approval { callId: string; version: number; requested: number; decision?: 'approved' | 'declined'; decided?: number }
 export interface MediaRef { filename: string; subfolder: string; type: string }
 /** A file the user uploaded to ComfyUI's input folder before sending a message. */
-export interface Attachment extends MediaRef { kind: 'image' | 'video' | 'audio' | 'file'; name?: string; size?: number }
-export interface SessionSummary extends Session { preview?: string; lastMessage?: string; lastActivity: number; active: boolean; lastState?: State; thumbnail?: MediaRef }
+export interface Attachment extends MediaRef { kind: 'image' | 'video' | 'audio' | 'file'; name?: string; size?: number; width?: number; height?: number }
+export interface SessionThumbnail extends MediaRef { kind?: 'image' | 'video' | 'audio' }
+export interface SessionSummary extends Session { preview?: string; lastMessage?: string; lastActivity: number; active: boolean; lastState?: State; thumbnail?: SessionThumbnail }
 export interface Version { version: number; canvas: Canvas; summary: string; saved: boolean; created: number }
 export interface Task {
   id: string; sessionId: string; requestId: string; message: string; attachments?: Attachment[]; state: State;
   created: number; deadline: number; steps: number; previews: number;
   messages: ModelMessage[]; completionChecked?: boolean; awaitingCompletion?: boolean; execution?: { attempt: string; version: number; promptId?: string; submitted: number };
   result?: unknown; error?: string; modelId?: string; contextScale?: number; contextRetried?: boolean;
+  approval?: Approval; pausedAt?: number; retries?: number; notBefore?: number;
 }
 export interface AgentEvent { seq: number; taskId: string | null; kind: string; data: unknown; created: number }
 /** ComfyUI loader nodes address input files as `subfolder/filename`; keep the text reference in that form. */
 export function attachmentPath(attachment: MediaRef) { return attachment.subfolder ? `${attachment.subfolder}/${attachment.filename}` : attachment.filename; }
+/** Pixel dimensions let the model check orientation and upscale ratios without seeing the image. */
+export function describeDimensions(a: Attachment) {
+  if (!a.width || !a.height) return '';
+  const shape = a.width === a.height ? 'square' : a.width > a.height ? 'landscape' : 'portrait';
+  return ` ${a.width}x${a.height}px ${shape}`;
+}
 /** Uploaded files are untrusted data: describe them with their ComfyUI input path so the model can wire them into loader nodes. */
 export function describeAttachments(text: string, attachments?: Attachment[]) {
   if (!attachments?.length) return text;
-  const lines = attachments.map(a => `- ${a.kind} "${attachmentPath(a)}"${a.name && a.name !== a.filename ? ` (original name: ${a.name})` : ''}`);
+  const lines = attachments.map(a => `- ${a.kind} "${attachmentPath(a)}"${a.name && a.name !== a.filename ? ` (original name: ${a.name})` : ''}${describeDimensions(a)}`);
   return `${text}\n\n[User uploaded ${attachments.length} file(s) to the ComfyUI "${attachments[0].type}" folder. Reference them by path in LoadImage.image, LoadAudio.audio or LoadVideo.file, or as create_model_workflow reference assets:\n${lines.join('\n')}]`;
 }
 export class AgentHttpError extends Error {
@@ -162,13 +178,14 @@ export class AgentStore {
       (SELECT substr(json_extract(e.data,'$.text'),1,100) FROM events e WHERE e.session_id=s.id AND e.kind='user' ORDER BY e.seq LIMIT 1) AS preview,
       (SELECT substr(json_extract(e.data,'$.text'),1,140) FROM events e WHERE e.session_id=s.id AND e.kind IN ('user','assistant') ORDER BY e.seq DESC LIMIT 1) AS last_message,
       (SELECT e.created FROM events e WHERE e.session_id=s.id ORDER BY e.seq DESC LIMIT 1) AS last_activity,
-      (SELECT COUNT(*) FROM tasks t WHERE t.session_id=s.id AND t.state IN ('queued','running','waiting_comfy','reconciling')) AS active,
+      (SELECT COUNT(*) FROM tasks t WHERE t.session_id=s.id AND t.state IN (${activeSql})) AS active,
       (SELECT t.state FROM tasks t WHERE t.session_id=s.id ORDER BY t.rowid DESC LIMIT 1) AS last_state,
-      (SELECT json_extract(e.data,'$.outputs[0]') FROM events e WHERE e.session_id=s.id AND e.kind='result' AND json_extract(e.data,'$.outputs[0]') IS NOT NULL ORDER BY e.seq DESC LIMIT 1) AS thumbnail
+      (SELECT o.value FROM events e, json_each(e.data,'$.outputs') o WHERE e.session_id=s.id AND e.kind='result' AND json_extract(o.value,'$.filename') IS NOT NULL
+        ORDER BY e.seq DESC, CASE json_extract(o.value,'$.kind') WHEN 'image' THEN 0 WHEN 'video' THEN 1 ELSE 2 END, o.key LIMIT 1) AS thumbnail
       FROM sessions s WHERE s.owner=? ORDER BY s.rowid DESC LIMIT 100`).all(owner);
     return rows.map(r => {
       const session = JSON.parse(r.data as string) as Session;
-      let thumbnail: Partial<MediaRef> | undefined;
+      let thumbnail: Partial<SessionThumbnail> | undefined;
       if (r.thumbnail) {
         try { const parsed = JSON.parse(r.thumbnail as string); if (parsed && typeof parsed === 'object' && typeof parsed.filename === 'string') thumbnail = parsed; }
         catch { thumbnail = undefined; }
@@ -180,7 +197,7 @@ export class AgentStore {
         lastActivity: Number(r.last_activity ?? session.created),
         active: Number(r.active) > 0,
         ...(r.last_state ? { lastState: r.last_state as State } : {}),
-        ...(thumbnail ? { thumbnail: { filename: String(thumbnail.filename), subfolder: String(thumbnail.subfolder ?? ''), type: String(thumbnail.type ?? 'output') } } : {}),
+        ...(thumbnail ? { thumbnail: { filename: String(thumbnail.filename), subfolder: String(thumbnail.subfolder ?? ''), type: String(thumbnail.type ?? 'output'), ...(thumbnail.kind === 'image' || thumbnail.kind === 'video' || thumbnail.kind === 'audio' ? { kind: thumbnail.kind } : {}) } } : {}),
       };
     }).sort((a, b) => b.lastActivity - a.lastActivity);
   }
@@ -207,6 +224,8 @@ export class AgentStore {
         if (!legacy && (!op || op.opId !== patch.lastLibrarySave.opId || op.state !== 'succeeded')) throw new AgentHttpError(409, '保存操作尚未成功，不能记录入库结果');
         session.lastLibrarySave = patch.lastLibrarySave;
       }
+      if (patch.previewPolicy === 'auto') delete session.previewPolicy;
+      else if (patch.previewPolicy) session.previewPolicy = patch.previewPolicy;
       this.db.prepare('UPDATE sessions SET data=? WHERE id=?').run(JSON.stringify(session), id);
       return session;
     });
@@ -269,7 +288,7 @@ export class AgentStore {
   }
   tasks(sessionId?: string): Task[] {
     const rows = sessionId ? this.db.prepare('SELECT data FROM tasks WHERE session_id=? ORDER BY rowid DESC LIMIT 100').all(sessionId)
-      : this.db.prepare("SELECT data FROM tasks WHERE state IN ('queued','running','waiting_comfy','reconciling') ORDER BY rowid").all();
+      : this.db.prepare(`SELECT data FROM tasks WHERE state IN (${activeSql}) ORDER BY rowid`).all();
     return rows.map(r => JSON.parse(r.data as string));
   }
   enqueue(sessionId: string, requestId: string, message: string, durationMs: number, attachments: Attachment[] = [], modelId?: string): Task {

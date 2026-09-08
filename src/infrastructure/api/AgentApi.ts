@@ -20,21 +20,29 @@ export interface LibrarySaveOp {
 export interface AgentMediaRef { filename: string; subfolder: string; type: string }
 export type AgentAttachmentKind = 'image' | 'video' | 'audio' | 'file';
 /** A file uploaded to ComfyUI's input folder and referenced by a chat message. */
-export interface AgentAttachment extends AgentMediaRef { type: 'input' | 'temp'; kind: AgentAttachmentKind; name?: string; size?: number }
+export interface AgentAttachment extends AgentMediaRef { type: 'input' | 'temp'; kind: AgentAttachmentKind; name?: string; size?: number; width?: number; height?: number }
+export type PreviewPolicy = 'auto' | 'confirm';
 export interface AgentSession {
   id: string; name: string; version: number; created: number;
-  workspaceMode?: 'draft' | 'legacy'; sourceRef?: SourceRef; lastLibrarySave?: LibrarySave; librarySaveOp?: LibrarySaveOp; legacyWorkflow?: SessionWorkflowRef;
-  preview?: string; lastMessage?: string; lastActivity?: number; active?: boolean; lastState?: string; thumbnail?: AgentMediaRef;
+  workspaceMode?: 'draft' | 'legacy'; sourceRef?: SourceRef; lastLibrarySave?: LibrarySave; librarySaveOp?: LibrarySaveOp;
+  legacyWorkflow?: SessionWorkflowRef; previewPolicy?: PreviewPolicy;
+  preview?: string; lastMessage?: string; lastActivity?: number; active?: boolean; lastState?: string;
+  thumbnail?: AgentMediaRef & { kind?: 'image' | 'video' | 'audio' };
 }
-export interface AgentTask { id: string; state: string; error?: string; message: string }
+/** A submit_preview the model asked for that waits on the user; `decision` appears once answered, before the scheduler settles it. */
+export interface AgentApproval { callId: string; version: number; requested: number; decision?: 'approved' | 'declined' }
+export interface AgentTask { id: string; state: string; error?: string; message: string; approval?: AgentApproval; retries?: number }
 export interface AgentEvent { seq: number; kind: string; taskId: string | null; data: Record<string, any>; created: number }
 export interface AgentVersion { version: number; summary: string; saved: boolean; created: number }
 export interface AgentSnapshot { session: AgentSession; tasks: AgentTask[]; versions: AgentVersion[]; versionsHasMore?: boolean; events: AgentEvent[]; cursor: number; hasMore: boolean }
 export interface AgentStatus { enabled: boolean; providerReady: boolean; model: string | null; modelId?: string | null; vision?: boolean; contextWindow?: number; maxOutputTokens?: number }
-export interface AgentModelInput { name: string; model: string; baseUrl: string; apiKey?: string; contextWindow: number; maxOutputTokens: number; vision: boolean }
+export interface AgentModelInput { name: string; model: string; baseUrl: string; apiKey?: string; contextWindow: number; maxOutputTokens: number; vision: boolean; completionAudit?: boolean; stepTimeoutSeconds?: number }
 export interface AgentModel extends Omit<AgentModelInput, 'apiKey'> { id: string; hasApiKey: boolean }
 export interface AgentModels { models: AgentModel[]; activeId: string | null }
-export type SessionPatch = { name?: string; sourceRef?: SourceRef | null; lastLibrarySave?: LibrarySave; librarySaveOp?: LibrarySaveOp; workspaceMode?: 'draft' };
+export type SessionPatch = {
+  name?: string; sourceRef?: SourceRef | null; lastLibrarySave?: LibrarySave; librarySaveOp?: LibrarySaveOp;
+  workspaceMode?: 'draft'; previewPolicy?: PreviewPolicy;
+};
 
 export class AgentApi {
   readonly baseUrl: string;
@@ -76,6 +84,7 @@ export class AgentApi {
     return this.request<{ taskId: string }>(`/sessions/${encodeURIComponent(id)}/messages`, { body: { message, requestId, ...(attachments.length ? { attachments } : {}) } });
   }
   cancel(id: string, taskId: string) { return this.request(`/sessions/${encodeURIComponent(id)}/cancel`, { body: { taskId } }); }
+  approve(id: string, taskId: string, callId: string, approved: boolean) { return this.request<{ state: string }>(`/sessions/${encodeURIComponent(id)}/approve`, { body: { taskId, callId, approved } }); }
   restore(id: string, version: number, baseVersion: number) { return this.request(`/sessions/${encodeURIComponent(id)}/restore`, { body: { version, baseVersion } }); }
   version(id: string, version: number) { return this.request<AgentVersion & { canvas: IComfyJson }>(`/sessions/${encodeURIComponent(id)}/versions/${version}`); }
 }

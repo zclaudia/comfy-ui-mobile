@@ -7,7 +7,7 @@ import { ChatHeader } from './ChatHeader';
 import { useAgentStatus } from './useAgentStatus';
 import { useAgentText } from './useAgentText';
 
-const empty: AgentModelInput = { name: '', model: '', baseUrl: '', contextWindow: 32768, maxOutputTokens: 2500, vision: false };
+const empty: AgentModelInput = { name: '', model: '', baseUrl: '', contextWindow: 32768, maxOutputTokens: 2500, vision: false, completionAudit: true, stepTimeoutSeconds: 90 };
 const field = 'w-full h-11 px-3 rounded-xl border border-white/10 bg-white/5 text-sm outline-none focus:border-blue-500';
 const button = 'h-10 px-3 rounded-xl border border-white/10 bg-white/5 text-sm disabled:opacity-40';
 
@@ -34,7 +34,7 @@ export default function ModelSettingsPage() {
   }, [api, state, attempt]);
   const edit = (model: AgentModel | 'new') => {
     setEditing(model); setError(''); setKey(''); setClearKey(false);
-    setForm(model === 'new' ? { ...empty } : { name: model.name, model: model.model, baseUrl: model.baseUrl, contextWindow: model.contextWindow, maxOutputTokens: model.maxOutputTokens, vision: model.vision });
+    setForm(model === 'new' ? { ...empty } : { name: model.name, model: model.model, baseUrl: model.baseUrl, contextWindow: model.contextWindow, maxOutputTokens: model.maxOutputTokens, vision: model.vision, completionAudit: model.completionAudit ?? true, stepTimeoutSeconds: model.stepTimeoutSeconds ?? 90 });
   };
   async function action(fn: () => Promise<void>) {
     setBusy(true); setError('');
@@ -49,7 +49,8 @@ export default function ModelSettingsPage() {
   }
   const valid = !!form.name.trim() && !!form.model.trim() && !!form.baseUrl.trim()
     && Number.isInteger(form.contextWindow) && form.contextWindow >= 8192 && form.contextWindow <= 2_000_000
-    && Number.isInteger(form.maxOutputTokens) && form.maxOutputTokens >= 256 && form.maxOutputTokens <= 128_000 && form.maxOutputTokens <= form.contextWindow / 4;
+    && Number.isInteger(form.maxOutputTokens) && form.maxOutputTokens >= 256 && form.maxOutputTokens <= 128_000 && form.maxOutputTokens <= form.contextWindow / 4
+    && Number.isInteger(form.stepTimeoutSeconds) && (form.stepTimeoutSeconds ?? 0) >= 30 && (form.stepTimeoutSeconds ?? 0) <= 1800;
 
   return <main className="h-dvh flex flex-col text-[#e9ebef] bg-[#0b0c0f]">
     <ChatHeader title={at('助手模型')} onBack={() => navigate(-1)} />
@@ -85,6 +86,9 @@ export default function ModelSettingsPage() {
             <label className="block space-y-1.5"><span className="text-sm text-slate-300">{at('输出上限')} <small>tokens</small></span><input className={field} type="number" inputMode="numeric" min={256} max={Math.min(128_000, form.contextWindow / 4)} step={1} required value={form.maxOutputTokens || ''} onChange={e => setForm(previous => ({ ...previous, maxOutputTokens: Number(e.target.value) }))} /></label>
           </div>
           <p className="text-xs leading-5 text-slate-500">{at('按模型实际能力填写。接近上下文预算时自动摘要较早内容，保留近期消息与完整聊天记录。输出上限最多为窗口的四分之一。')}</p>
+          <label className="block space-y-1.5"><span className="text-sm text-slate-300">{at('单步超时')} <small>{at('秒')}</small></span><input className={field} type="number" inputMode="numeric" min={30} max={1800} step={1} required value={form.stepTimeoutSeconds || ''} onChange={e => setForm(previous => ({ ...previous, stepTimeoutSeconds: Number(e.target.value) }))} /></label>
+          <p className="text-xs leading-5 text-slate-500">{at('一次模型调用（含工具执行）的最长等待时间，30–1800 秒。推理模型建议 300 秒以上。')}</p>
+          <label className="flex items-center justify-between gap-3 rounded-xl border border-white/10 p-3"><span><span className="text-sm">{at('完成审计')}</span><span className="block text-xs text-slate-500 mt-1">{at('开启后，纯文本回答会再用一次强制工具调用核对是否真的完成。适合容易口头承诺的模型；工具调用可靠的模型可关闭以省一次调用。')}</span></span><input type="checkbox" role="switch" className="w-5 h-5 accent-blue-500" checked={form.completionAudit ?? true} onChange={e => setForm(previous => ({ ...previous, completionAudit: e.target.checked }))} /></label>
           <label className="flex items-center justify-between gap-3 rounded-xl border border-white/10 p-3"><span><span className="text-sm">{at('支持图片理解')} (Vision)</span><span className="block text-xs text-slate-500 mt-1">{at('关闭后仅发送附件路径，不向语言模型发送图片。')}</span></span><input type="checkbox" role="switch" className="w-5 h-5 accent-blue-500" checked={form.vision} onChange={e => setForm(previous => ({ ...previous, vision: e.target.checked }))} /></label>
           <div className="flex gap-3"><button type="button" className={button} onClick={() => { setEditing(null); setKey(''); setError(''); }}>{at('取消')}</button><button type="submit" disabled={!valid || busy} className="flex-1 h-11 rounded-xl bg-[#3069f0] font-semibold text-sm disabled:opacity-40">{at(busy ? '正在保存' : '保存')}</button></div>
         </fieldset>

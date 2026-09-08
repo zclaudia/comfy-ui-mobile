@@ -37,3 +37,11 @@ export function sessionTitle(session: { name?: string; preview?: string; sourceR
   if (name && !SESSION_NAME_PLACEHOLDERS.has(name)) return name;
   return session.preview?.trim() || fallback;
 }
+
+/** Cover media kind for a session row: trust the gateway's kind, otherwise read the extension of older records. */
+export function thumbnailKind(thumbnail: { filename: string; kind?: 'image' | 'video' | 'audio' }): 'image' | 'video' | 'audio' {
+  if (thumbnail.kind) return thumbnail.kind;
+  if (/\.(mp4|webm|mkv|mov|m4v)$/i.test(thumbnail.filename)) return 'video';
+  if (/\.(wav|mp3|flac|ogg|m4a|aac|opus)$/i.test(thumbnail.filename)) return 'audio';
+  return 'image';
+}

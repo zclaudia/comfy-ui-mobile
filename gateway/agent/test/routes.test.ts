@@ -46,6 +46,9 @@ test('real Gateway agent routes enforce auth, cross-device session sharing, payl
   assert.equal((await request(`/agent/sessions/${session.id}/messages`, { requestId: randomUUID(), message: 'x', attachments: [{ filename: '../etc/passwd', kind: 'image' }] })).status, 400);
   assert.equal((await request(`/agent/sessions/${session.id}/messages`, { requestId: randomUUID(), message: 'x', attachments: [{ filename: 'a.png', subfolder: '../models', kind: 'image' }] })).status, 400);
   assert.equal((await request(`/agent/sessions/${session.id}/messages`, { requestId: randomUUID(), message: 'x', attachments: [{ filename: 'a.png', type: 'output', kind: 'image' }] })).status, 400);
+  assert.equal((await request(`/agent/sessions/${session.id}/messages`, { requestId: randomUUID(), message: 'x', attachments: [{ filename: 'a.png', kind: 'image', width: 0, height: 10 }] })).status, 400);
+  assert.equal((await request(`/agent/sessions/${session.id}/messages`, { requestId: randomUUID(), message: 'x', attachments: [{ filename: 'a.png', kind: 'image', width: 10 }] })).status, 400, 'width without height');
+  assert.equal((await request(`/agent/sessions/${session.id}/messages`, { requestId: randomUUID(), attachments: [{ filename: 'a.png', kind: 'image', width: 1024, height: 768 }] })).status, 503, 'valid dimensions pass validation');
   assert.equal((await request(`/agent/sessions/${session.id}/messages`, { requestId: randomUUID(), message: 'x', attachments: Array.from({ length: 9 }, (_, i) => ({ filename: `${i}.png`, kind: 'image' })) })).status, 400);
   assert.equal((await request('/agent/sessions', { name: 'bad', canvas: { ...canvas, nodes: [{ ...canvas.nodes[0], mode: 4 }] } })).status, 422);
   assert.equal((await request(`/agent/sessions/${session.id}?after=-1`)).status, 400);

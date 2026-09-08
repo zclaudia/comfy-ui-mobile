@@ -22,11 +22,17 @@ const librarySaveOpInput = z.object({
   result: z.object({ etag: z.string().trim().max(200).optional(), error: z.string().trim().max(500).optional() }).strict().optional(),
 }).strict();
 const createInput = z.object({ name: name.default('新对话'), canvas: canvasInput.optional(), sourceRef: sourceRefInput.optional() }).strict();
-const patchInput = z.object({ name: name.optional(), sourceRef: sourceRefInput.nullable().optional(), lastLibrarySave: librarySaveInput.optional(), librarySaveOp: librarySaveOpInput.optional(), workspaceMode: z.literal('draft').optional() }).strict();
+const patchInput = z.object({
+  name: name.optional(), sourceRef: sourceRefInput.nullable().optional(), lastLibrarySave: librarySaveInput.optional(),
+  librarySaveOp: librarySaveOpInput.optional(), workspaceMode: z.literal('draft').optional(),
+  previewPolicy: z.enum(['auto', 'confirm']).optional(),
+}).strict();
+const approveInput = z.object({ taskId: id, callId: z.string().trim().min(1).max(200), approved: z.boolean() }).strict();
 const importInput = z.object({ canvas: canvasInput, baseVersion: z.number().int().nonnegative(), summary: z.string().trim().min(1).max(200).default('画布修改'), requestId: id.optional() }).strict();
 const filename = z.string().trim().min(1).max(300).refine(v => !v.includes('/') && !v.includes('\\') && v !== '.' && v !== '..', '文件名不合法');
 const subfolder = z.string().trim().max(300).refine(v => !v.split(/[\\/]/).some(part => part === '..'), '子目录不合法').default('');
-const attachmentInput = z.object({ filename, subfolder, type: z.enum(['input', 'temp']).default('input'), kind: z.enum(['image', 'video', 'audio', 'file']), name: z.string().trim().max(300).optional(), size: z.number().int().nonnegative().optional() }).strict();
+const attachmentInput = z.object({ filename, subfolder, type: z.enum(['input', 'temp']).default('input'), kind: z.enum(['image', 'video', 'audio', 'file']), name: z.string().trim().max(300).optional(), size: z.number().int().nonnegative().optional(), width: z.number().int().positive().max(65535).optional(), height: z.number().int().positive().max(65535).optional() }).strict()
+  .refine(a => (a.width === undefined) === (a.height === undefined), { message: '宽高需同时提供', path: ['height'] });
 const messageInput = z.object({ requestId: id, message: z.string().trim().max(8000).default(''), attachments: z.array(attachmentInput).max(8).default([]) }).strict()
   .refine(body => body.message.length > 0 || body.attachments.length > 0, { message: '消息不能为空', path: ['message'] });
 
@@ -84,6 +90,10 @@ export async function handleAgentRequest(service: AgentService, owner: string, r
       const body = messageInput.parse(await readBody(request));
       const task = service.enqueue(sessionId, owner, body.requestId, body.message, body.attachments);
       return send(202, { taskId: task.id, state: task.state });
+    }
+    if (parts.length === 3 && parts[2] === 'approve' && method === 'POST') {
+      const body = approveInput.parse(await readBody(request));
+      return send(200, service.approve(sessionId, owner, body.taskId, body.callId, body.approved));
     }
     if (parts.length === 3 && parts[2] === 'cancel' && method === 'POST') {
       const body = z.object({ taskId: id }).strict().parse(await readBody(request));

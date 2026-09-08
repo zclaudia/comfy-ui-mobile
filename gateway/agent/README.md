@@ -36,6 +36,10 @@ AGENT_LLM_MAX_OUTPUT_TOKENS=2500
 AGENT_MAX_STEPS=12
 AGENT_MAX_PREVIEWS=3
 AGENT_TIMEOUT_MS=1200000
+AGENT_STEP_TIMEOUT_MS=90000
+AGENT_CONCURRENCY=1
+AGENT_RETRIES=3
+AGENT_RETRY_DELAY_MS=5000
 ```
 
 The initial provider adapter uses **OpenAI-compatible Chat Completions**, via
@@ -55,9 +59,17 @@ for local providers without authentication.
 The App supports adding, editing, activating and deleting up to 30 models. Each
 profile has a display name, Chat Completions model ID, API base URL, optional key,
 context window (8,192–2,000,000 tokens), output limit (256–128,000, at most one quarter
-of the window), and an explicit vision toggle. Enter limits supported by the actual
-provider; these fields do not increase its capabilities. New profiles default to
-32,768 tokens, 2,500 output tokens and vision off.
+of the window), an explicit vision toggle, a per-call step timeout (30–1800 s,
+default 90; reasoning models usually need 300 s or more) and a completion-audit
+toggle (default on). Enter limits supported by the actual provider; these fields do
+not increase its capabilities. New profiles default to 32,768 tokens, 2,500 output
+tokens and vision off.
+
+The completion audit re-checks a text-only answer with one extra forced tool call
+before exposing it as final, so a model that answers "I will submit it" cannot end
+a task without acting. It costs one model call per final answer. Turn it off for
+models with reliable tool calling; profiles saved before the toggle existed keep
+auditing.
 
 Existing `AGENT_LLM_*` environment settings are imported **once**, when managed
 settings are initialized. Thereafter App settings take precedence and survive
@@ -74,11 +86,14 @@ existing chats; editing/deleting a profile used by an active task returns HTTP 4
 No Gateway restart is required. Vision-off profiles receive attachment paths only;
 vision-on profiles can also receive up to four supported images for the current task.
 
-Every model step reserves system text, actual tool JSON schemas, output tokens,
-image headroom (4,096 tokens per image) and a safety margin. Text accounting is a
-conservative UTF-8 estimate, **not an exact provider tokenizer**. At 85% of the
-configured window minus these reservations, older history is summarized by the same
-model. Recent complete exchanges and the exact current request are retained; tool
+Every model step reserves system text, actual tool JSON schemas, the session-state
+message, output tokens, image headroom (4,096 tokens per image) and a safety margin.
+Text accounting starts from a conservative UTF-8 estimate, **not an exact provider
+tokenizer**; after each real call the ratio between the provider's reported input
+tokens and that estimate is blended into a per-profile multiplier (clamped to
+0.4–2.5, persisted in the database, skipped for small or image calls), so compaction
+triggers closer to the real limit as a profile is used. At 85% of the configured
+window minus these reservations, older history is summarized by the same model. Recent complete exchanges and the exact current request are retained; tool
 calls/results are never split in the retained conversation. Oversized tool exchanges
 are summarized in bounded text chunks. The memory prompt preserves goals,
 constraints, asset paths, verified actions, results and remaining work, while marking
@@ -97,6 +112,44 @@ oversized summaries and inputs that cannot fit fail explicitly without silently
 throwing history away. Work per compaction pass is bounded to 48 calls and the
 existing step timeout. A recognized provider context rejection retries once with a
 smaller budget; authentication/network errors do not trigger compaction retries.
+
+## Prompt layout and caching
+
+The system prompt (`gateway/agent/prompts.ts`) and the tool schemas are a stable
+prefix: they depend only on the profile's vision flag, never on the session or the
+step. Everything that changes per step — session version, current workflow, last
+execution result, remaining call/preview budget and the preview policy — is sent as
+a trailing `[Session state]` user message that is rebuilt every call and never
+persisted into the task history. Provider prefix caches therefore cover the system
+text, tool definitions and the conversation so far instead of being invalidated
+each step. Keep it that way: add volatile facts to `stepState`, not to the system
+prompt, and keep the tool object's key order deterministic.
+
+## Preview confirmation
+
+Each session has a preview policy. `auto` (default) lets `submit_preview` run as
+soon as the model calls it. `confirm` (**⋯ → 生成前确认** in the chat header) validates
+the submission, then parks the task in `waiting_user` with a card in the chat; the
+model is told to wait and is not called again. **Run** or **Skip** records the
+decision and re-queues the task; the scheduler performs the submission itself (so a
+crash between the decision and the ComfyUI POST is recovered like any queued step)
+or tells the model the user declined. Time spent waiting is credited back to the task
+deadline. Stopping the task while it waits cancels it as usual. A held task still
+blocks new messages in that session until it is answered or stopped.
+
+## Scheduling, retries and timeouts
+
+- `AGENT_CONCURRENCY` (1–8, default 1) bounds model calls in flight across sessions;
+  a session is always serial, and a step in flight owns its task so ComfyUI polling
+  never races it.
+- Transient provider failures — HTTP 408/409/429/5xx, network errors, and the step
+  timeout — re-queue the step with delays of `AGENT_RETRY_DELAY_MS × 3^n` up to
+  `AGENT_RETRIES` times (default 3) and a `retry` event the App shows inline. A call
+  the provider rejected outright does not count against `AGENT_MAX_STEPS`.
+  Authentication and validation errors (4xx other than the above) never retry, and
+  a task that already handed work to ComfyUI is never re-run.
+- `AGENT_STEP_TIMEOUT_MS` (default 90 s) bounds one model call including its tool
+  execution; a profile's step timeout overrides it.
 
 ## Scope
 
@@ -154,10 +207,10 @@ ComfyUI execution. Image,
 video and audio quality still requires user evaluation.
 
 Use **one Gateway process per database**. The MVP uses short synchronous SQLite
-transactions and one active model request at a time across sessions. GPU waits
-are polled between model steps; a model request can delay polling by up to its
-90-second timeout. API graphs and event pages are bounded, but automatic retention
-and multi-process workers are not implemented. Back up the SQLite database using
+transactions and at most `AGENT_CONCURRENCY` model requests at a time across
+sessions. GPU waits are polled on the scheduler interval independently of model
+steps. API graphs and event pages are bounded, but automatic retention and
+multi-process workers are not implemented. Back up the SQLite database using
 a SQLite-aware backup or after stopping the Gateway (include WAL if copying live).
 
 The existing Gateway is not an account system. Setup-token logins, browser logins
@@ -174,19 +227,20 @@ All paths start with `/api/gateway/agent`; use existing cookie/device authentica
 | --- | --- |
 | GET `/status` | Enabled/provider status, active `modelId`, model, vision, context/output budgets; no secrets |
 | GET `/models` | `{models, activeId}` with redacted profiles and `hasApiKey` |
-| POST `/models` | Create `{name, model, baseUrl, apiKey?, contextWindow, maxOutputTokens, vision}`; first model becomes active |
+| POST `/models` | Create `{name, model, baseUrl, apiKey?, contextWindow, maxOutputTokens, vision, completionAudit?, stepTimeoutSeconds?}`; first model becomes active |
 | PUT `/models/:id` | Replace profile fields; omitted key retains, empty key clears; 409 while used by active tasks |
 | POST `/models/:id/activate` | Select the default for subsequent messages; returns model list |
 | DELETE `/models/:id` | Remove unused profile/key; if active, select the first remaining model or none |
 | GET/POST `/sessions` | List own sessions with `preview`, `lastMessage`, `lastActivity`, `active`, `lastState`, `sourceRef`, `lastLibrarySave`, `librarySaveOp`, `thumbnail` / create with optional canvas copy and `sourceRef` `{serverId, workflowId, filename, name, etag?}` (a record of origin; the session name is never taken from it) |
 | GET `/sessions/:id?after=N` | Snapshot plus up to 200 events after cursor N |
-| POST `/sessions/:id/messages` | `{requestId: UUID, message?, attachments?: [{filename, subfolder?, type?: 'input'\|'temp', kind: 'image'\|'video'\|'audio'\|'file', name?, size?}]}` (max 8; message or attachments required); files are uploaded to ComfyUI's input folder by the App beforehand and described to the model as loader-node paths; with vision enabled on the task’s model profile up to 4 PNG/JPEG/WebP/GIF attachments (≤20MB each) are also sent to the model as image input for that task's own message, fetched from ComfyUI once per task and never persisted in task messages; idempotent request ID, one active task per session |
+| POST `/sessions/:id/messages` | `{requestId: UUID, message?, attachments?: [{filename, subfolder?, type?: 'input'\|'temp', kind: 'image'\|'video'\|'audio'\|'file', name?, size?, width?, height?}]}` (max 8; message or attachments required; `width`/`height` come together, read locally by the App for images and videos, and are described to the model with the orientation so it can check fit before wiring a reference); files are uploaded to ComfyUI's input folder by the App beforehand and described to the model as loader-node paths; with vision enabled on the task’s model profile up to 4 PNG/JPEG/WebP/GIF attachments (≤5MB each, ≤16MB together; larger files stay path-only) are also sent to the model as image input for that task's own message, fetched from ComfyUI once per task and never persisted in task messages; idempotent request ID, one active task per session |
 | POST `/sessions/:id/cancel` | `{taskId}` |
+| POST `/sessions/:id/approve` | `{taskId, callId, approved}`; answer a held `submit_preview` (409 unless the task is `waiting_user` for that call) |
 | GET `/sessions/:id/versions?before=N&limit=50` | Version metadata newest first, `hasMore` when older versions exist (the snapshot carries the latest 50 plus `versionsHasMore`) |
 | GET `/sessions/:id/versions/:version` | Read immutable canvas/version |
 | POST `/sessions/:id/save` | `{version}` |
 | POST `/sessions/:id/restore` | `{version, baseVersion}`; create a new version when no task is active |
-| PATCH `/sessions/:id` | `{name?, sourceRef? \| null, workspaceMode?: 'draft', librarySaveOp?, lastLibrarySave?}`; a library save operation must start as `pending`, only moves forward (`pending → applying → reconciling → succeeded/conflict/failed`), and a second operation is refused with 409 while one is in flight; `lastLibrarySave` is accepted only with a `succeeded` operation of the same `opId` (or `opId: 'legacy'` together with `workspaceMode: 'draft'` when migrating a pre-draft session) |
+| PATCH `/sessions/:id` | `{name?, sourceRef? \| null, workspaceMode?: 'draft', librarySaveOp?, lastLibrarySave?, previewPolicy?: 'auto' \| 'confirm'}`; a library save operation must start as `pending`, only moves forward (`pending → applying → reconciling → succeeded/conflict/failed`), and a second operation is refused with 409 while one is in flight; `lastLibrarySave` is accepted only with a `succeeded` operation of the same `opId` (or `opId: 'legacy'` together with `workspaceMode: 'draft'` when migrating a pre-draft session) |
 | DELETE `/sessions/:id` | Cancel active tasks, then delete the session with its tasks, versions and events |
 | POST `/sessions/:id/versions` | `{canvas, baseVersion, summary?, requestId?}`; commit the App canvas as a new version (422 when unsupported, 409 on stale base or active task); a repeated `requestId` returns the version it already created |
 

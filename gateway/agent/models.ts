@@ -14,16 +14,22 @@ export const modelInput = z.object({
   contextWindow: z.number().int().min(8192).max(2_000_000),
   maxOutputTokens: z.number().int().min(256).max(128_000),
   vision: z.boolean(),
+  /** Review text-only answers with a forced tool call before exposing them. Worth its extra model call only for models that tend to promise instead of act. */
+  completionAudit: z.boolean().default(true),
+  /** Upper bound for one model call including tool execution. Reasoning models need more than the 90 s default. */
+  stepTimeoutSeconds: z.number().int().min(30).max(1800).default(90),
 }).strict().refine(v => v.maxOutputTokens <= v.contextWindow / 4, { path: ['maxOutputTokens'], message: '输出上限不能超过上下文窗口的四分之一' });
 export type ModelInput = z.infer<typeof modelInput>;
-export interface ModelProfile extends Omit<ModelInput, 'apiKey'> { id: string; apiKey: string }
+export type ModelInputData = z.input<typeof modelInput>;
+/** Profiles saved before a field existed lack it; readers fall back to the schema default. */
+export interface ModelProfile extends Omit<ModelInput, 'apiKey' | 'completionAudit' | 'stepTimeoutSeconds'> { id: string; apiKey: string; completionAudit?: boolean; stepTimeoutSeconds?: number }
 export interface ModelSettings { models: ModelProfile[]; activeId: string | null }
 export const publicModel = ({ apiKey, ...profile }: ModelProfile) => ({ ...profile, hasApiKey: !!apiKey });
 
 /** Credentials stay on the Gateway and are never included in status, snapshots or list responses. */
 export class AgentModels {
   private settings: ModelSettings;
-  constructor(private store: AgentStore, initial?: ModelInput) {
+  constructor(private store: AgentStore, initial?: ModelInputData) {
     const saved = store.setting<ModelSettings>('models');
     this.settings = saved ?? { models: [], activeId: null };
     if (!saved) {
@@ -40,7 +46,7 @@ export class AgentModels {
   private editable(id: string) {
     if (this.store.tasks().some(t => t.modelId === id)) throw new AgentHttpError(409, '该模型有运行中的任务，请先等待或停止任务');
   }
-  save(input: ModelInput, id?: string) {
+  save(input: ModelInputData, id?: string) {
     const parsed = modelInput.parse(input);
     const previous = id ? this.get(id) : undefined;
     if (id && !previous) throw new AgentHttpError(404, '模型不存在');
