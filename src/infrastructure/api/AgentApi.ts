@@ -9,7 +9,7 @@ export interface SessionWorkflowRef { id: string; name: string; filename?: strin
 export interface AgentMediaRef { filename: string; subfolder: string; type: string }
 export type AgentAttachmentKind = 'image' | 'video' | 'audio' | 'file';
 /** A file uploaded to ComfyUI's input folder and referenced by a chat message. */
-export interface AgentAttachment extends AgentMediaRef { type: 'input' | 'temp'; kind: AgentAttachmentKind; name?: string; size?: number }
+export interface AgentAttachment extends AgentMediaRef { type: 'input' | 'temp'; kind: AgentAttachmentKind; name?: string; size?: number; width?: number; height?: number }
 export interface AgentSession {
   id: string; name: string; version: number; created: number; workflow?: SessionWorkflowRef;
   preview?: string; lastMessage?: string; lastActivity?: number; active?: boolean; lastState?: string; thumbnail?: AgentMediaRef;

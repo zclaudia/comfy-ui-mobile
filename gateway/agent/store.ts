@@ -11,7 +11,7 @@ export interface SessionWorkflow { id: string; name: string; filename?: string }
 export interface Session { id: string; owner: string; name: string; version: number; created: number; workflow?: SessionWorkflow }
 export interface MediaRef { filename: string; subfolder: string; type: string }
 /** A file the user uploaded to ComfyUI's input folder before sending a message. */
-export interface Attachment extends MediaRef { kind: 'image' | 'video' | 'audio' | 'file'; name?: string; size?: number }
+export interface Attachment extends MediaRef { kind: 'image' | 'video' | 'audio' | 'file'; name?: string; size?: number; width?: number; height?: number }
 export interface SessionSummary extends Session { preview?: string; lastMessage?: string; lastActivity: number; active: boolean; lastState?: State; thumbnail?: MediaRef }
 export interface Version { version: number; canvas: Canvas; summary: string; saved: boolean; created: number }
 export interface Task {
@@ -23,10 +23,16 @@ export interface Task {
 export interface AgentEvent { seq: number; taskId: string | null; kind: string; data: unknown; created: number }
 /** ComfyUI loader nodes address input files as `subfolder/filename`; keep the text reference in that form. */
 export function attachmentPath(attachment: MediaRef) { return attachment.subfolder ? `${attachment.subfolder}/${attachment.filename}` : attachment.filename; }
+/** Pixel dimensions let the model check orientation and upscale ratios without seeing the image. */
+export function describeDimensions(a: Attachment) {
+  if (!a.width || !a.height) return '';
+  const shape = a.width === a.height ? 'square' : a.width > a.height ? 'landscape' : 'portrait';
+  return ` ${a.width}x${a.height}px ${shape}`;
+}
 /** Uploaded files are untrusted data: describe them with their ComfyUI input path so the model can wire them into loader nodes. */
 export function describeAttachments(text: string, attachments?: Attachment[]) {
   if (!attachments?.length) return text;
-  const lines = attachments.map(a => `- ${a.kind} "${attachmentPath(a)}"${a.name && a.name !== a.filename ? ` (original name: ${a.name})` : ''}`);
+  const lines = attachments.map(a => `- ${a.kind} "${attachmentPath(a)}"${a.name && a.name !== a.filename ? ` (original name: ${a.name})` : ''}${describeDimensions(a)}`);
   return `${text}\n\n[User uploaded ${attachments.length} file(s) to the ComfyUI "${attachments[0].type}" folder. Reference them by path in LoadImage.image, LoadAudio.audio or LoadVideo.file, or as create_model_workflow reference assets:\n${lines.join('\n')}]`;
 }
 export class AgentHttpError extends Error {

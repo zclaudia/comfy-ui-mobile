@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { randomUUID } from 'node:crypto';
 import { MockLanguageModelV3 } from 'ai/test';
-import { AgentStore } from '../store.js';
+import { AgentStore, describeAttachments } from '../store.js';
 import { AgentService } from '../service.js';
 import { WorkflowError } from '../../workflow/engine.js';
 import { textToImage } from '../templates.js';
@@ -108,7 +108,7 @@ test('deleteSession', () => {
 test('attachments ride along with the user message and are described to the model', () => {
   const store = new AgentStore(':memory:');
   const session = store.create('me', '参考图');
-  const attachments = [{ filename: 'ref.png', subfolder: 'agent', type: 'input', kind: 'image' as const, name: 'IMG_0001.png', size: 1234 }];
+  const attachments = [{ filename: 'ref.png', subfolder: 'agent', type: 'input', kind: 'image' as const, name: 'IMG_0001.png', size: 1234, width: 768, height: 1024 }];
   const task = store.enqueue(session.id, 'r-1', '按这张图的风格再画一张', 60_000, attachments);
   assert.deepEqual(task.attachments, attachments);
   assert.equal(store.enqueue(session.id, 'r-1', '按这张图的风格再画一张', 60_000, attachments).id, task.id, 'same request id with same payload is idempotent');
@@ -119,6 +119,9 @@ test('attachments ride along with the user message and are described to the mode
   assert.match(message.content, /^按这张图的风格再画一张/);
   assert.match(message.content, /image "agent\/ref\.png" \(original name: IMG_0001\.png\)/);
   assert.match(message.content, /LoadImage\.image/);
+  assert.match(message.content, /768x1024px portrait/, 'dimensions and orientation are spelled out for the model');
+  assert.equal(describeAttachments('x', [{ filename: 'a.png', subfolder: '', type: 'input', kind: 'image' }]).includes('px'), false, 'no dimensions, no claim');
+  assert.match(describeAttachments('x', [{ filename: 'a.png', subfolder: '', type: 'input', kind: 'image', width: 512, height: 512 }]), /512x512px square/);
   assert.equal(store.list('me')[0].preview, '按这张图的风格再画一张');
   assert.equal(store.enqueue(store.create('me', '无附件').id, 'r-2', '纯文字', 60_000).attachments, undefined, 'text-only tasks carry no attachment key');
 });

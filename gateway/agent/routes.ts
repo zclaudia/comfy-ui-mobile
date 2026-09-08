@@ -15,7 +15,8 @@ const patchInput = z.object({ name: z.string().trim().min(1).max(100).optional()
 const importInput = z.object({ canvas: canvasInput, baseVersion: z.number().int().nonnegative(), summary: z.string().trim().min(1).max(200).default('画布修改') }).strict();
 const filename = z.string().trim().min(1).max(300).refine(v => !v.includes('/') && !v.includes('\\') && v !== '.' && v !== '..', '文件名不合法');
 const subfolder = z.string().trim().max(300).refine(v => !v.split(/[\\/]/).some(part => part === '..'), '子目录不合法').default('');
-const attachmentInput = z.object({ filename, subfolder, type: z.enum(['input', 'temp']).default('input'), kind: z.enum(['image', 'video', 'audio', 'file']), name: z.string().trim().max(300).optional(), size: z.number().int().nonnegative().optional() }).strict();
+const attachmentInput = z.object({ filename, subfolder, type: z.enum(['input', 'temp']).default('input'), kind: z.enum(['image', 'video', 'audio', 'file']), name: z.string().trim().max(300).optional(), size: z.number().int().nonnegative().optional(), width: z.number().int().positive().max(65535).optional(), height: z.number().int().positive().max(65535).optional() }).strict()
+  .refine(a => (a.width === undefined) === (a.height === undefined), { message: '宽高需同时提供', path: ['height'] });
 const messageInput = z.object({ requestId: id, message: z.string().trim().max(8000).default(''), attachments: z.array(attachmentInput).max(8).default([]) }).strict()
   .refine(body => body.message.length > 0 || body.attachments.length > 0, { message: '消息不能为空', path: ['message'] });
 
