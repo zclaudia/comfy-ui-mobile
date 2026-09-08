@@ -13,6 +13,8 @@ import {
   removeCloudWorkflowDelete,
 } from '@/infrastructure/sync/CloudWorkflowOutbox';
 import { emitCloudWorkflowsUpdated } from '@/infrastructure/sync/WorkflowSyncEvents';
+import { cloudFileContent, readCloudWorkflowId, resolveCloudWorkflowId, sanitizeCloudWorkflowFilename } from '@/infrastructure/sync/cloudIdentity';
+export { sanitizeCloudWorkflowFilename };
 import type { Workflow } from '@/shared/types/app/IComfyWorkflow';
 
 export interface CloudWorkflowSyncResult {
@@ -28,29 +30,6 @@ const ensureJsonExtension = (filename: string) => (
 );
 
 const workflowBasename = (filename: string) => filename.split('/').pop() || filename;
-
-export const sanitizeCloudWorkflowFilename = (name: string): string => {
-  const safeName = name
-    .normalize('NFC')
-    .replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_')
-    .replace(/^\.+/, '')
-    .replace(/[. ]+$/, '')
-    .trim()
-    .slice(0, 180);
-  return ensureJsonExtension(safeName || 'Untitled Workflow');
-};
-
-const stableCloudId = (filename: string): string => {
-  // Two independent 32-bit hashes keep IDs compact and route-safe while
-  // making a collision across a personal workflow library vanishingly small.
-  let first = 0x811c9dc5;
-  let second = 0x9e3779b9;
-  for (const byte of new TextEncoder().encode(filename.normalize('NFC'))) {
-    first = Math.imul(first ^ byte, 0x01000193) >>> 0;
-    second = Math.imul(second ^ byte, 0x85ebca6b) >>> 0;
-  }
-  return `cloud_${first.toString(16).padStart(8, '0')}${second.toString(16).padStart(8, '0')}`;
-};
 
 const uniqueFilename = (preferred: string, occupied: Set<string>, suffix = ''): string => {
   const normalized = ensureJsonExtension(preferred);
@@ -68,20 +47,9 @@ const remoteDisplayName = (remote: ServerWorkflowInfo): string => (
   extractWorkflowName(workflowBasename(remote.filename))
 );
 
-const workflowContentForCloud = (workflow: Workflow): any => {
-  const content = JSON.parse(JSON.stringify(workflow.workflow_json || {}));
-  content.extra = {
-    ...(content.extra || {}),
-    name: workflow.name,
-    description: workflow.description,
-    tags: workflow.tags,
-    comfy_mobile_cloud: {
-      schema: 1,
-      workflow_id: workflow.id,
-    },
-  };
-  return content;
-};
+const workflowContentForCloud = (workflow: Workflow) => cloudFileContent(workflow.workflow_json, {
+  name: workflow.name, description: workflow.description, tags: workflow.tags, workflowId: workflow.id, saveOpId: workflow.cloud?.saveOpId,
+});
 
 const cacheSyncError = async (workflow: Workflow, filename: string, error: string) => {
   await cacheWorkflowFromCloud({
@@ -154,7 +122,8 @@ const uploadWorkflow = async (
 const parseRemoteWorkflow = async (
   service: ComfyFileService,
   remote: ServerWorkflowInfo,
-  cached?: Workflow,
+  cached: Workflow | undefined,
+  existing: Array<{ id: string; filename?: string }>,
 ): Promise<Workflow> => {
   const download = await service.downloadWorkflow(remote.filename);
   if (!download.success || !download.content) {
@@ -173,9 +142,11 @@ const parseRemoteWorkflow = async (
 
   const modified = download.modified || remote.modified;
   const modifiedDate = modified ? new Date(modified * 1000) : new Date();
+  // The id inside the file wins so every device names this workflow the same way; see cloudIdentity.ts.
+  const identity = resolveCloudWorkflowId({ cachedId: cached?.id, fileWorkflowId: readCloudWorkflowId(download.content), filename: remote.filename, existing });
   return {
     ...processed.workflow,
-    id: cached?.id || stableCloudId(remote.filename),
+    id: identity.id,
     createdAt: cached?.createdAt || modifiedDate,
     modifiedAt: modifiedDate,
     sortOrder: cached?.sortOrder,
@@ -189,6 +160,7 @@ const parseRemoteWorkflow = async (
       remoteModified: modified,
       lastSyncedAt: new Date().toISOString(),
       dirty: false,
+      ...(identity.identityConflict ? { identityConflict: true } : {}),
     },
   };
 };
@@ -284,7 +256,11 @@ const syncImpl = async (serverUrl: string): Promise<CloudWorkflowSyncResult> => 
     if (cached?.cloud?.dirty) continue;
     if (cached?.cloud?.etag && remote.etag && cached.cloud.etag === remote.etag) continue;
     try {
-      await cacheWorkflowFromCloud(await parseRemoteWorkflow(service, remote, cached));
+      const existing = localWorkflows.map((w) => ({ id: w.id, filename: w.cloud?.filename }));
+      const parsed = await parseRemoteWorkflow(service, remote, cached, existing);
+      // Adopting the file's id re-keys the cache entry; drop the row under the old id so the library shows one copy.
+      if (cached && cached.id !== parsed.id) await removeWorkflowFromCache(cached.id);
+      await cacheWorkflowFromCloud(parsed);
       result.downloaded += 1;
     } catch (error) {
       result.errors.push(`${remote.filename}: ${error instanceof Error ? error.message : String(error)}`);

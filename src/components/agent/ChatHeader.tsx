@@ -15,7 +15,7 @@ export function ChatHeader({ title, subtitle, onBack, onOpenCanvas, onRename, on
       <button className={tile} style={tileStyle} onClick={onBack} aria-label={at('返回')}><ArrowLeft className="w-[17px] h-[17px]" strokeWidth={1.8} /></button>
       <div className="min-w-0 flex-1">
         <h1 className="text-[14px] font-semibold text-[#e9ebef] leading-[1.25] truncate">{title}</h1>
-        {subtitle && <div className="font-mono text-[9px] font-medium text-[#565d6b] tracking-[0.12em] uppercase mt-[3px] truncate">{subtitle}</div>}
+        {subtitle && <div className="font-mono text-[9px] font-medium text-[#565d6b] tracking-[0.12em] mt-[3px] truncate">{subtitle}</div>}
       </div>
       {onOpenCanvas && <button data-agent-open-canvas className="h-9 px-3 shrink-0 flex items-center gap-1.5 rounded-[10px] border border-white/[0.08] text-[12px] font-semibold text-[#c8ccd4]" style={tileStyle} onClick={onOpenCanvas}><Network size={15} strokeWidth={1.8} />{at('画布')}</button>}
       {(onRename || onHistory || onDelete) && <Dropdown.Root>

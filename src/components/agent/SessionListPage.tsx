@@ -4,14 +4,12 @@ import { Bot, Film, Image as ImageIcon, Menu, Network, Plus, Search, Settings2, 
 import { toast } from 'sonner';
 import AppSideMenu from '@/components/controls/AppSideMenu';
 import { SimpleConfirmDialog } from '@/components/ui/SimpleConfirmDialog';
-import { loadAllWorkflows, updateWorkflowAgentBinding } from '@/infrastructure/storage/IndexedDBWorkflowService';
 import type { AgentSession } from '@/infrastructure/api/AgentApi';
 import { useConnectionStore } from '@/ui/store/connectionStore';
 import { useAgentActivityStore } from '@/ui/store/agentActivityStore';
-import type { Workflow } from '@/shared/types/app/IComfyWorkflow';
 import { AgentGuide } from './AgentGuide';
 import { SessionRow } from './SessionRow';
-import { NEW_CHAT_PRESETS, resolveBoundWorkflow, sessionTitle } from './binding';
+import { NEW_CHAT_PRESETS, sessionTitle } from './binding';
 import { useAgentStatus } from './useAgentStatus';
 import { useAgentText } from './useAgentText';
 
@@ -25,7 +23,6 @@ export default function SessionListPage() {
   const setActive = useAgentActivityStore(s => s.setActive);
   const [menuOpen, setMenuOpen] = useState(false);
   const [sessions, setSessions] = useState<AgentSession[]>([]);
-  const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [search, setSearch] = useState('');
   const [error, setError] = useState('');
   const [loaded, setLoaded] = useState(false);
@@ -33,9 +30,9 @@ export default function SessionListPage() {
 
   const load = useCallback(async (signal?: AbortSignal) => {
     try {
-      const [list, local] = await Promise.all([api.sessions(signal), loadAllWorkflows().catch(() => [] as Workflow[])]);
+      const list = await api.sessions(signal);
       if (signal?.aborted) return;
-      setSessions(list.sessions); setWorkflows(local); setError('');
+      setSessions(list.sessions); setError('');
       setActive(list.sessions.some(s => s.active));
     } catch (e) { if (!signal?.aborted) setError(e instanceof Error ? e.message : '加载会话失败'); }
     finally { if (!signal?.aborted) setLoaded(true); }
@@ -65,8 +62,6 @@ export default function SessionListPage() {
   async function remove(session: AgentSession) {
     try {
       await api.remove(session.id);
-      const bound = resolveBoundWorkflow(session.workflow, workflows);
-      if (bound?.agent?.sessionId === session.id) await updateWorkflowAgentBinding(bound.id, undefined);
       setSessions(previous => previous.filter(s => s.id !== session.id));
       toast.success(at('会话已删除'));
     } catch (e) { toast.error(at(e instanceof Error ? e.message : '删除失败')); }
@@ -108,14 +103,11 @@ export default function SessionListPage() {
         {loaded && !sessions.length && !error && <div className="py-16 flex flex-col items-center text-center gap-3">
           <Bot size={34} strokeWidth={1.4} className="text-[#5b8af5]" />
           <p className="text-[14px] font-semibold text-[#c8ccd4]">{at('你想创作什么？')}</p>
-          <p className="text-[12px] text-[#66758a] max-w-xs">{at('直接描述目标。助手会根据已安装的模型选择合适的工作流，生成预览并写入你的工作流库。')}</p>
+          <p className="text-[12px] text-[#66758a] max-w-xs">{at('直接描述目标。助手会根据已安装的模型选择合适的工作流并生成预览；满意后再保存到工作流库。')}</p>
           <div className="flex flex-wrap justify-center gap-2 mt-2">{chips.map(chip => <button key={chip.to} onClick={() => navigate(chip.to)} className="h-[34px] px-3 rounded-[9px] border border-white/[0.08] bg-white/[0.035] text-[12px] font-medium text-[#c8ccd4] flex items-center gap-1.5">{chip.icon}{chip.label}</button>)}</div>
         </div>}
         {loaded && sessions.length > 0 && !filtered.length && <p className="py-10 text-center text-[12px] text-[#66758a]">{at('没有匹配的会话')}</p>}
-        {filtered.map(session => {
-          const bound = resolveBoundWorkflow(session.workflow, workflows);
-          return <SessionRow key={session.id} session={session} baseUrl={api.baseUrl} thumbnail={bound?.thumbnail} onOpen={() => navigate(`/chat/${session.id}`)} onLongPress={() => setPendingDelete(session)} />;
-        })}
+        {filtered.map(session => <SessionRow key={session.id} session={session} baseUrl={api.baseUrl} onOpen={() => navigate(`/chat/${session.id}`)} onLongPress={() => setPendingDelete(session)} />)}
       </main>
     </>}
     <AppSideMenu isOpen={menuOpen} onClose={() => setMenuOpen(false)} />

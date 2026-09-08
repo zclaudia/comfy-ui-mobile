@@ -14,7 +14,6 @@ import { toast } from 'sonner';
 import { generateUUID } from '@/utils/uuid';
 import { AuthenticatedImage } from '@/components/media/AuthenticatedImage';
 import { useConnectionStore } from '@/ui/store/connectionStore';
-import { AgentApi } from '@/infrastructure/api/AgentApi';
 
 interface WorkflowDetailModalProps {
   isOpen: boolean;
@@ -40,7 +39,6 @@ const WorkflowDetailModal: React.FC<WorkflowDetailModalProps> = ({
   const { t } = useTranslation();
   const navigate = useNavigate();
   const authMode = useConnectionStore(s => s.authMode);
-  const serverUrl = useConnectionStore(s => s.url);
   const [thumbnailUrl, setThumbnailUrl] = useState<string | undefined>(workflow?.thumbnail);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -105,14 +103,6 @@ const WorkflowDetailModal: React.FC<WorkflowDetailModalProps> = ({
 
       await updateWorkflow(updatedWorkflow);
 
-      // The chat session names itself after the bound workflow; keep the two in step after a rename.
-      const sessionId = workflow.agent?.sessionId;
-      if (updates.name && sessionId && authMode === 'gateway' && serverUrl) {
-        new AgentApi(serverUrl)
-          .update(sessionId, { workflow: { id: updatedWorkflow.id, name: updatedWorkflow.name, filename: updatedWorkflow.cloud?.filename } })
-          .catch(() => { /* best effort; the chat keeps its previous title */ });
-      }
-
       if (onWorkflowUpdated) {
         onWorkflowUpdated(updatedWorkflow);
       }
@@ -120,7 +110,7 @@ const WorkflowDetailModal: React.FC<WorkflowDetailModalProps> = ({
       console.error('Failed to update workflow:', error);
       toast.error(t('workflow.updateError'));
     }
-  }, [workflow, onWorkflowUpdated, authMode, serverUrl]);
+  }, [workflow, onWorkflowUpdated]);
 
   const handleNameBlur = () => {
     if (workflow && name.trim() !== workflow.name) {
@@ -212,12 +202,6 @@ const WorkflowDetailModal: React.FC<WorkflowDetailModalProps> = ({
     setIsLoading(true);
     try {
       await removeWorkflow(workflow.id);
-
-      // Leave the chat session in place but unbound: it would otherwise keep pointing at a workflow that no longer exists.
-      const sessionId = workflow.agent?.sessionId;
-      if (sessionId && authMode === 'gateway' && serverUrl) {
-        new AgentApi(serverUrl).update(sessionId, { workflow: null }).catch(() => { /* best effort */ });
-      }
 
       if (onWorkflowDeleted) {
         onWorkflowDeleted(workflow.id);
@@ -463,7 +447,7 @@ const WorkflowDetailModal: React.FC<WorkflowDetailModalProps> = ({
                 </Button>
                 {authMode === 'gateway' && workflow && (
                   <Button
-                    onClick={() => { onClose(); navigate(workflow.agent?.sessionId ? `/chat/${workflow.agent.sessionId}` : `/chat/new?workflow=${encodeURIComponent(workflow.id)}`); }}
+                    onClick={() => { onClose(); navigate(`/chat/new?workflow=${encodeURIComponent(workflow.id)}`); }}
                     variant="outline"
                     className="flex-1 h-10 py-0 rounded-[10px] bg-[#3069f0]/12 border border-[#3069f0]/35 text-[#5b8af5] hover:bg-[#3069f0]/20 transition-all duration-200 flex items-center justify-center gap-2"
                     title={t('workflow.openChat', '对话')}

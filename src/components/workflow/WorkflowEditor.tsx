@@ -3725,10 +3725,7 @@ const WorkflowEditor: React.FC = () => {
           }
         }}
         onSaveChanges={handleSaveChanges}
-        onOpenChat={authMode === 'gateway' ? () => {
-          if (workflow?.agent?.sessionId) navigate(`/chat/${workflow.agent.sessionId}`);
-          else if (workflow) navigate(`/chat/new?workflow=${encodeURIComponent(workflow.id)}`);
-        } : undefined}
+        onOpenChat={authMode === 'gateway' && workflow ? () => navigate(`/chat/new?workflow=${encodeURIComponent(workflow.id)}`) : undefined}
         chatActive={chatActive}
       />
 

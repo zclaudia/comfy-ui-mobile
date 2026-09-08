@@ -9,10 +9,21 @@ import type { Canvas } from '../workflow/canvas.js';
 const id = z.string().uuid();
 const version = z.number().int().positive();
 const canvasInput = z.object({ version: z.literal(0.4), nodes: z.array(z.object({ id: z.number().int().nonnegative(), type: z.string(), widgets_values: z.array(z.unknown()).optional(), inputs: z.array(z.object({ name: z.string(), link: z.number().nullable().optional() }).passthrough()).optional(), outputs: z.array(z.object({ links: z.array(z.number()).nullable().optional() }).passthrough()).optional() }).passthrough()).max(100), links: z.array(z.array(z.unknown())).max(500) }).passthrough();
-const workflowInput = z.object({ id: z.string().trim().min(1).max(200), name: z.string().trim().min(1).max(100), filename: z.string().trim().min(1).max(300).optional() }).strict();
-const createInput = z.object({ name: z.string().trim().min(1).max(100).default('新工作流'), canvas: canvasInput.optional(), workflow: workflowInput.optional() }).strict();
-const patchInput = z.object({ name: z.string().trim().min(1).max(100).optional(), workflow: workflowInput.nullable().optional() }).strict();
-const importInput = z.object({ canvas: canvasInput, baseVersion: z.number().int().nonnegative(), summary: z.string().trim().min(1).max(200).default('画布修改') }).strict();
+const name = z.string().trim().min(1).max(100);
+const text = (max: number) => z.string().trim().min(1).max(max);
+const graphHash = z.string().regex(/^[0-9a-f]{64}$/, '图内容哈希格式不正确');
+const sourceRefInput = z.object({ serverId: text(300), workflowId: text(200), filename: text(300), name, etag: z.string().trim().max(200).optional() }).strict();
+const librarySaveInput = z.object({ serverId: text(300), workflowId: text(200), filename: text(300), name, draftVersion: version, graphHash, etag: z.string().trim().max(200), opId: text(100), at: z.number().int().nonnegative() }).strict();
+const librarySaveOpInput = z.object({
+  opId: text(100), mode: z.enum(['create', 'update']), draftVersion: version, graphHash,
+  target: z.object({ serverId: text(300), workflowId: text(200), filename: text(300), name, expectedEtag: z.string().trim().max(200).optional() }).strict(),
+  state: z.enum(['pending', 'applying', 'reconciling', 'succeeded', 'conflict', 'failed']), startedBy: text(100),
+  startedAt: z.number().int().nonnegative(), updatedAt: z.number().int().nonnegative(),
+  result: z.object({ etag: z.string().trim().max(200).optional(), error: z.string().trim().max(500).optional() }).strict().optional(),
+}).strict();
+const createInput = z.object({ name: name.default('新对话'), canvas: canvasInput.optional(), sourceRef: sourceRefInput.optional() }).strict();
+const patchInput = z.object({ name: name.optional(), sourceRef: sourceRefInput.nullable().optional(), lastLibrarySave: librarySaveInput.optional(), librarySaveOp: librarySaveOpInput.optional(), workspaceMode: z.literal('draft').optional() }).strict();
+const importInput = z.object({ canvas: canvasInput, baseVersion: z.number().int().nonnegative(), summary: z.string().trim().min(1).max(200).default('画布修改'), requestId: id.optional() }).strict();
 const filename = z.string().trim().min(1).max(300).refine(v => !v.includes('/') && !v.includes('\\') && v !== '.' && v !== '..', '文件名不合法');
 const subfolder = z.string().trim().max(300).refine(v => !v.split(/[\\/]/).some(part => part === '..'), '子目录不合法').default('');
 const attachmentInput = z.object({ filename, subfolder, type: z.enum(['input', 'temp']).default('input'), kind: z.enum(['image', 'video', 'audio', 'file']), name: z.string().trim().max(300).optional(), size: z.number().int().nonnegative().optional() }).strict();
@@ -46,7 +57,7 @@ export async function handleAgentRequest(service: AgentService, owner: string, r
     if (path === '/sessions' && method === 'GET') return send(200, { sessions: service.store.list(owner) });
     if (path === '/sessions' && method === 'POST') {
       const body = createInput.parse(await readBody(request));
-      return send(201, { session: await service.createSession(owner, body.name, body.canvas as Canvas | undefined, body.workflow) });
+      return send(201, { session: await service.createSession(owner, body.name, body.canvas as Canvas | undefined, body.sourceRef) });
     }
     const parts = path.split('/').filter(Boolean);
     if (parts[0] !== 'sessions' || !id.safeParse(parts[1]).success) throw new AgentHttpError(404, '接口不存在');
@@ -63,7 +74,11 @@ export async function handleAgentRequest(service: AgentService, owner: string, r
     if (parts.length === 2 && method === 'DELETE') return send(200, service.deleteSession(sessionId, owner));
     if (parts.length === 3 && parts[2] === 'versions' && method === 'POST') {
       const body = importInput.parse(await readBody(request));
-      return send(200, service.importVersion(sessionId, owner, body.canvas as Canvas, body.baseVersion, body.summary));
+      return send(200, service.importVersion(sessionId, owner, body.canvas as Canvas, body.baseVersion, body.summary, body.requestId));
+    }
+    if (parts.length === 3 && parts[2] === 'versions' && method === 'GET') {
+      const before = url.searchParams.get('before'); const limit = url.searchParams.get('limit');
+      return send(200, service.store.versionsPage(sessionId, before === null ? undefined : version.parse(Number(before)), limit === null ? 50 : z.number().int().min(1).max(200).parse(Number(limit))));
     }
     if (parts.length === 3 && parts[2] === 'messages' && method === 'POST') {
       const body = messageInput.parse(await readBody(request));

@@ -10,6 +10,7 @@ so the tests assert they stay usable, and that a link cycle cannot hang the walk
 Run with:  python tests/test_workflow_paths.py
 """
 
+import ast
 import importlib.util
 import json
 import os
@@ -90,6 +91,32 @@ def _walk_listing(workflows_dir):
                 continue
             found.append(relative)
     return found
+
+
+def _awaits_between_etag_check_and_write():
+    """
+    The etag compare-and-write in save_workflow relies on aiohttp's single event
+    loop for atomicity: as long as nothing awaits between reading the current
+    etag and os.replace, two saves of one path cannot interleave. Count the
+    awaits inside that window so a refactor cannot silently break it.
+    """
+    with open(os.path.join(_EXT_DIR, "handlers", "workflow_handler.py"), "r", encoding="utf-8") as source:
+        tree = ast.parse(source.read())
+    function = next(node for node in ast.walk(tree)
+                    if isinstance(node, ast.AsyncFunctionDef) and node.name == "save_workflow")
+    # The handler body is one big try/except after the docstring; look inside it.
+    outer = next((node for node in function.body if isinstance(node, ast.Try)), None)
+    body = outer.body if outer is not None else function.body
+    start = end = None
+    for index, statement in enumerate(body):
+        text = ast.dump(statement)
+        if start is None and "expected_etag" in text and isinstance(statement, ast.If):
+            start = index
+        if "atomic_write_workflow" in text:
+            end = index
+    if start is None or end is None or end < start:
+        return -1
+    return sum(1 for statement in body[start:end + 1] for node in ast.walk(statement) if isinstance(node, ast.Await))
 
 
 def check(condition, label):
@@ -207,6 +234,10 @@ def main():
         check(json.load(workflow_file)["version"] == 0.4, "atomic output is valid JSON")
     leftovers = [name for name in os.listdir(workflows_dir) if name.startswith(".comfy-mobile-")]
     check(not leftovers, "atomic write leaves no temporary file")
+
+    print("conditional save is not interleavable:")
+    check(_awaits_between_etag_check_and_write() == 0,
+          "save_workflow has no await between the etag check and atomic_write_workflow")
 
     print()
     if FAILURES:

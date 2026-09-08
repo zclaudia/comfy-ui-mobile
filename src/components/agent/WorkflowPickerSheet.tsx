@@ -24,7 +24,7 @@ export function WorkflowPickerSheet({ open, onOpenChange, onPick }: { open: bool
     {!workflows.length && <p className="py-8 text-center text-[12px] text-[#66758a]">{at('工作流库是空的')}</p>}
     <div className="space-y-2">{workflows.map(w => <button key={w.id} data-agent-pick={w.name} onClick={() => { onPick(w); onOpenChange(false); }} className="w-full flex items-center gap-3 p-3 rounded-[10px] border border-white/[0.07] text-left" style={{ background: '#101217' }}>
       <FileText size={18} strokeWidth={1.6} className="shrink-0 text-white/30" />
-      <span className="flex-1 min-w-0"><span className="block text-[13px] font-semibold truncate">{w.name}</span><span className="block font-mono text-[10px] text-[#565d6b] mt-0.5">{w.nodeCount}N{w.agent ? ` · ${at('已有会话')}` : ''}</span></span>
+      <span className="flex-1 min-w-0"><span className="block text-[13px] font-semibold truncate">{w.name}</span><span className="block font-mono text-[10px] text-[#565d6b] mt-0.5">{w.nodeCount}N</span></span>
     </button>)}</div>
   </SheetFrame>;
 }

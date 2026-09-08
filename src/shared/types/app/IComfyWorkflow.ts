@@ -13,6 +13,10 @@ export interface CloudWorkflowMetadata {
   dirty?: boolean;
   syncError?: string;
   conflictedFrom?: string;
+  /** The server file claims a workflow id another file already owns (copied on the server); it needs re-linking. */
+  identityConflict?: boolean;
+  /** Id of the explicit library-save operation that last wrote this file; lets a lost response be reconciled. */
+  saveOpId?: string;
 }
 
 /** Which agent session mirrors into this workflow, and which version the library copy currently holds. */

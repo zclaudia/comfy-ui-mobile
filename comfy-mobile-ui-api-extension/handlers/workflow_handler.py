@@ -360,6 +360,9 @@ async def save_workflow(request):
                 "message": "Invalid filename"
             }, status=400)
 
+        # Conditional write. From this check to atomic_write_workflow there is no `await`, so under aiohttp's single
+        # event loop two saves of the same path cannot interleave: the second one sees the first one's bytes and gets
+        # a 409. tests/test_workflow_paths.py guards this invariant; do not add awaits inside this window.
         file_exists = os.path.isfile(workflow_path)
         if expected_etag is not None:
             if not file_exists or get_workflow_etag(workflow_path) != expected_etag:

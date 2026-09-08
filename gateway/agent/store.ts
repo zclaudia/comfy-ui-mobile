@@ -8,7 +8,29 @@ import type { Canvas } from '../workflow/canvas.js';
 export type State = 'queued' | 'running' | 'waiting_comfy' | 'reconciling' | 'completed' | 'failed' | 'cancelled';
 export const activeStates: State[] = ['queued', 'running', 'waiting_comfy', 'reconciling'];
 export interface SessionWorkflow { id: string; name: string; filename?: string }
-export interface Session { id: string; owner: string; name: string; version: number; created: number; workflow?: SessionWorkflow }
+/** Which library workflow a draft started from. A record of origin, not a sync binding: the source may later be renamed or deleted. */
+export interface SourceRef { serverId: string; workflowId: string; filename: string; name: string; etag?: string }
+/** The last draft version the user explicitly saved into the library, and what the server returned for it. */
+export interface LibrarySave { serverId: string; workflowId: string; filename: string; name: string; draftVersion: number; graphHash: string; etag: string; opId: string; at: number }
+export type LibrarySaveState = 'pending' | 'applying' | 'reconciling' | 'succeeded' | 'conflict' | 'failed';
+export const activeLibrarySaveStates: LibrarySaveState[] = ['pending', 'applying', 'reconciling'];
+/**
+ * One explicit "save to library" operation. The Gateway keeps the intent and outcome; the App performs the conditional
+ * file write against the ComfyUI extension. A client that dies mid-write leaves `applying`, which the next client to open
+ * the session reconciles by reading the target file back.
+ */
+export interface LibrarySaveOp {
+  opId: string; mode: 'create' | 'update'; draftVersion: number; graphHash: string;
+  target: { serverId: string; workflowId: string; filename: string; name: string; expectedEtag?: string };
+  state: LibrarySaveState; startedBy: string; startedAt: number; updatedAt: number; result?: { etag?: string; error?: string };
+}
+export interface Session {
+  id: string; owner: string; name: string; version: number; created: number;
+  /** `legacy` sessions predate drafts and still carry the old one-to-one binding in `legacyWorkflow` until a client migrates them. */
+  workspaceMode?: 'draft' | 'legacy'; sourceRef?: SourceRef; lastLibrarySave?: LibrarySave; librarySaveOp?: LibrarySaveOp;
+  legacyWorkflow?: SessionWorkflow;
+}
+export interface SessionPatch { name?: string; sourceRef?: SourceRef | null; lastLibrarySave?: LibrarySave; librarySaveOp?: LibrarySaveOp; workspaceMode?: 'draft' }
 export interface MediaRef { filename: string; subfolder: string; type: string }
 /** A file the user uploaded to ComfyUI's input folder before sending a message. */
 export interface Attachment extends MediaRef { kind: 'image' | 'video' | 'audio' | 'file'; name?: string; size?: number }
@@ -33,6 +55,28 @@ export class AgentHttpError extends Error {
   constructor(public readonly status: number, message: string) { super(message); }
 }
 
+const librarySaveTransitions: Record<LibrarySaveState, LibrarySaveState[]> = {
+  pending: ['applying', 'failed'], applying: ['reconciling', 'succeeded', 'conflict', 'failed'], reconciling: ['succeeded', 'conflict', 'failed'],
+  succeeded: [], conflict: [], failed: [],
+};
+/**
+ * A save operation is a small state machine shared by every device that can open the session. A new operation may only
+ * start once the previous one has finished; the same operation may only move forward, and its identity fields never change.
+ * Re-sending an identical patch is a retry and returns the stored operation unchanged.
+ */
+function nextLibrarySaveOp(current: LibrarySaveOp | undefined, incoming: LibrarySaveOp): LibrarySaveOp {
+  if (!current || current.opId !== incoming.opId) {
+    if (current && activeLibrarySaveStates.includes(current.state)) throw new AgentHttpError(409, '另一设备正在保存，请稍后再试');
+    if (incoming.state !== 'pending') throw new AgentHttpError(409, '保存操作必须从 pending 开始');
+    return incoming;
+  }
+  if (JSON.stringify(current) === JSON.stringify(incoming)) return current;
+  const identity = (op: LibrarySaveOp) => JSON.stringify([op.mode, op.draftVersion, op.graphHash, op.target, op.startedBy, op.startedAt]);
+  if (identity(current) !== identity(incoming)) throw new AgentHttpError(409, '保存操作内容与已记录的不一致');
+  if (!librarySaveTransitions[current.state].includes(incoming.state)) throw new AgentHttpError(409, `保存操作不能从 ${current.state} 变为 ${incoming.state}`);
+  return incoming;
+}
+
 /** Single Gateway process. Transactions are short and bounded; GPU/model work never runs inside them. */
 export class AgentStore {
   readonly db: DatabaseSync;
@@ -48,7 +92,8 @@ export class AgentStore {
       CREATE INDEX IF NOT EXISTS event_session ON events(session_id, seq);
       CREATE TABLE IF NOT EXISTS receipts(task_id TEXT NOT NULL, call_id TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(task_id,call_id));
       CREATE TABLE IF NOT EXISTS agent_settings(key TEXT PRIMARY KEY, data TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS session_context(session_id TEXT PRIMARY KEY REFERENCES sessions(id), data TEXT NOT NULL);`);
+      CREATE TABLE IF NOT EXISTS session_context(session_id TEXT PRIMARY KEY REFERENCES sessions(id), data TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS version_requests(session_id TEXT NOT NULL REFERENCES sessions(id), request_id TEXT NOT NULL, version INTEGER NOT NULL, PRIMARY KEY(session_id, request_id));`);
     if (path !== ':memory:') for (const file of [path, `${path}-wal`, `${path}-shm`]) if (existsSync(file)) chmodSync(file, 0o600);
   }
   setting<T>(key: string): T | undefined {
@@ -80,6 +125,23 @@ export class AgentStore {
         update.run(owner, JSON.stringify(session), row.id);
       }
       return rows.length;
+    });
+  }
+  // Sessions created before drafts existed bound one library workflow and mirrored every version into it. Mark them so
+  // clients stop mirroring and migrate the binding into a source reference; the old field stays as evidence.
+  markLegacySessions(): number {
+    const rows = this.db.prepare('SELECT id, data FROM sessions').all() as { id: string; data: string }[];
+    const update = this.db.prepare('UPDATE sessions SET data=? WHERE id=?');
+    return this.transaction(() => {
+      let marked = 0;
+      for (const row of rows) {
+        const session = JSON.parse(row.data) as Session & { workflow?: SessionWorkflow };
+        if (session.workspaceMode) continue;
+        const { workflow, ...rest } = session;
+        update.run(JSON.stringify({ ...rest, workspaceMode: 'legacy', ...(workflow ? { legacyWorkflow: workflow } : {}) }), row.id);
+        marked++;
+      }
+      return marked;
     });
   }
   close() { this.db.close(); }
@@ -122,20 +184,29 @@ export class AgentStore {
       };
     }).sort((a, b) => b.lastActivity - a.lastActivity);
   }
-  create(owner: string, name: string, canvas?: Canvas, workflow?: SessionWorkflow): Session {
+  create(owner: string, name: string, canvas?: Canvas, sourceRef?: SourceRef): Session {
     return this.transaction(() => {
-      const session: Session = { id: randomUUID(), owner, name, version: canvas ? 1 : 0, created: Date.now(), ...(workflow ? { workflow } : {}) };
+      const session: Session = { id: randomUUID(), owner, name, version: canvas ? 1 : 0, created: Date.now(), workspaceMode: 'draft', ...(sourceRef ? { sourceRef } : {}) };
       this.db.prepare('INSERT INTO sessions VALUES(?,?,?)').run(session.id, owner, JSON.stringify(session));
       if (canvas) this.db.prepare('INSERT INTO versions VALUES(?,?,?)').run(session.id, 1, JSON.stringify({ version: 1, canvas, summary: '导入工作流副本', saved: false, created: Date.now() }));
       return session;
     });
   }
-  updateSession(id: string, patch: { name?: string; workflow?: SessionWorkflow | null }): Session {
+  updateSession(id: string, patch: SessionPatch): Session {
     return this.transaction(() => {
       const session = this.session(id);
-      if (patch.workflow === null) delete session.workflow;
-      else if (patch.workflow) { session.workflow = patch.workflow; session.name = patch.workflow.name; }
       if (patch.name !== undefined) session.name = patch.name;
+      if (patch.sourceRef === null) delete session.sourceRef;
+      else if (patch.sourceRef) session.sourceRef = patch.sourceRef;
+      if (patch.workspaceMode) session.workspaceMode = patch.workspaceMode;
+      if (patch.librarySaveOp) session.librarySaveOp = nextLibrarySaveOp(session.librarySaveOp, patch.librarySaveOp);
+      if (patch.lastLibrarySave) {
+        const op = session.librarySaveOp;
+        // Only a finished operation may claim a library save; `legacy` is the migration path for pre-draft bindings.
+        const legacy = patch.lastLibrarySave.opId === 'legacy' && patch.workspaceMode === 'draft';
+        if (!legacy && (!op || op.opId !== patch.lastLibrarySave.opId || op.state !== 'succeeded')) throw new AgentHttpError(409, '保存操作尚未成功，不能记录入库结果');
+        session.lastLibrarySave = patch.lastLibrarySave;
+      }
       this.db.prepare('UPDATE sessions SET data=? WHERE id=?').run(JSON.stringify(session), id);
       return session;
     });
@@ -146,6 +217,7 @@ export class AgentStore {
       this.session(id);
       this.db.prepare('DELETE FROM receipts WHERE task_id IN (SELECT id FROM tasks WHERE session_id=?)').run(id);
       this.db.prepare('DELETE FROM session_context WHERE session_id=?').run(id);
+      this.db.prepare('DELETE FROM version_requests WHERE session_id=?').run(id);
       this.db.prepare('DELETE FROM events WHERE session_id=?').run(id);
       this.db.prepare('DELETE FROM versions WHERE session_id=?').run(id);
       this.db.prepare('DELETE FROM tasks WHERE session_id=?').run(id);
@@ -157,8 +229,22 @@ export class AgentStore {
     const row = this.db.prepare('SELECT data FROM versions WHERE session_id=? AND version=?').get(id, current);
     return row ? JSON.parse(row.data as string) : undefined;
   }
-  versions(id: string): Omit<Version, 'canvas'>[] {
-    return this.db.prepare('SELECT data FROM versions WHERE session_id=? ORDER BY version DESC LIMIT 100').all(id).map(r => { const { canvas: _, ...metadata } = JSON.parse(r.data as string); return metadata; });
+  versions(id: string): Omit<Version, 'canvas'>[] { return this.versionsPage(id).versions; }
+  /** Newest first. `before` excludes that version and everything newer, so a client walks back with the last version it holds. */
+  versionsPage(id: string, before?: number, limit = 100): { versions: Omit<Version, 'canvas'>[]; hasMore: boolean } {
+    const rows = before === undefined
+      ? this.db.prepare('SELECT data FROM versions WHERE session_id=? ORDER BY version DESC LIMIT ?').all(id, limit + 1)
+      : this.db.prepare('SELECT data FROM versions WHERE session_id=? AND version<? ORDER BY version DESC LIMIT ?').all(id, before, limit + 1);
+    const versions = rows.slice(0, limit).map(r => { const { canvas: _, ...metadata } = JSON.parse(r.data as string); return metadata as Omit<Version, 'canvas'>; });
+    return { versions, hasMore: rows.length > limit };
+  }
+  /** Idempotency for manual version commits: a retry after a lost response must not create a second version. */
+  versionRequest(id: string, requestId: string): number | undefined {
+    const row = this.db.prepare('SELECT version FROM version_requests WHERE session_id=? AND request_id=?').get(id, requestId);
+    return row ? Number(row.version) : undefined;
+  }
+  recordVersionRequest(id: string, requestId: string, version: number) {
+    this.db.prepare('INSERT INTO version_requests VALUES(?,?,?)').run(id, requestId, version);
   }
   // Called inside a transaction together with the tool receipt and event.
   commitVersion(id: string, baseVersion: number, canvas: Canvas, summary: string): Version {

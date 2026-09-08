@@ -28,8 +28,9 @@ export async function agentAndroidScenario({ app, waitFor, assert, admin, adb, c
   await waitFor(`location.pathname.startsWith('/chat/') && location.pathname !== '/chat/new'`, 15000);
   const sessionId = await app.evaluate(`location.pathname.split('/').pop()`);
   assert(sessionId, 'agent session missing');
+  const librarySizeAtStart = (await (await admin('/comfymobile/api/workflows/list')).json()).workflows.length;
   console.log('    Agent: real MiniMax task submitted from Android UI');
-  await waitFor(`!!document.querySelector('[data-agent-card="result"]') && !!document.querySelector('[data-agent-card="workflow"]') && document.body.innerText.includes('已保存') && !document.querySelector('footer [role=status]')`, 240000);
+  await waitFor(`!!document.querySelector('[data-agent-card="result"]') && !!document.querySelector('[data-agent-card="workflow"]') && document.body.innerText.includes('已保留') && !document.querySelector('footer [role=status]')`, 240000);
   await waitFor(`[...document.images].some(i => i.alt.startsWith('生成结果') && i.complete && i.naturalWidth > 0)`, 20000);
   assert(await app.evaluate('document.documentElement.scrollWidth <= innerWidth'), 'agent UI overflows horizontally');
   const text = await app.evaluate('document.body.innerText');
@@ -40,14 +41,39 @@ export async function agentAndroidScenario({ app, waitFor, assert, admin, adb, c
   const history = await (await admin('/history?max_items=100')).json();
   const runs = Object.values(history).filter(run => Object.values(run.outputs || {}).some(out => out.images?.some(image => `${image.subfolder}/${image.filename}`.includes(prefix))));
   assert(runs.length === 1, `expected exactly one real agent run, got ${runs.length}`);
-  // Administrator cannot read a device-owned agent session.
-  assert((await admin(`/api/gateway/agent/sessions/${sessionId}`)).status === 404, 'agent session owner isolation failed');
-  // The bound workflow now exists in the library; the chat header opens it and the editor links back.
+  // Every authenticated client shares one session namespace, so the administrator reads the device's session.
+  assert((await admin(`/api/gateway/agent/sessions/${sessionId}`)).status === 200, 'agent session not shared with the administrator');
+  // Generating never touches the library: the server workflow count is unchanged until the user saves explicitly.
+  const serverWorkflows = async () => (await (await admin('/comfymobile/api/workflows/list')).json()).workflows.length;
+  const librarySizeBefore = await serverWorkflows();
+  assert(librarySizeBefore === librarySizeAtStart, `generation changed the library size (${librarySizeAtStart} -> ${librarySizeBefore})`);
+  assert(!(await app.evaluate(`!!document.querySelector('[data-agent-open-canvas]')`)), 'canvas button offered before anything was saved to the library');
+  await app.evaluate(`document.querySelector('[data-agent-save-library]').click(); true`);
+  // The session started from a library workflow, so the panel offers "update the source" first; take the save-as-new
+  // path so the source file is left untouched and exactly one new entry appears.
+  await waitFor(`!!document.querySelector('[data-agent-save-update]') || !!document.querySelector('[data-agent-save-create]')`, 15000);
+  assert(await app.evaluate(`!!document.querySelector('[data-agent-save-update]')`), 'a session started from a library workflow should offer to update its source');
+  await app.evaluate(`document.querySelector('[data-agent-save-as-new]').click(); true`);
+  await waitFor(`!!document.querySelector('[data-agent-save-create]')`, 15000);
+  // A unique name keeps repeated runs from colliding with the file a previous run created.
+  const libraryName = `ComfyMobileE2E-Library-${Date.now()}`;
+  await app.evaluate(`(() => {
+    const input = document.querySelector('input[aria-label="工作流名称"]');
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, ${JSON.stringify(libraryName)});
+    input.dispatchEvent(new Event('input', {bubbles:true})); return true;
+  })()`);
+  await waitFor(`!document.querySelector('[data-agent-save-create]').disabled`, 5000);
+  await app.evaluate(`document.querySelector('[data-agent-save-create]').click(); true`);
+  await waitFor(`document.querySelector('[data-agent-draft-status]')?.innerText.includes('已保存到「' + ${JSON.stringify('ComfyMobileE2E-Library-')})`, 30000);
+  assert(await serverWorkflows() === librarySizeBefore + 1, 'explicit save did not add exactly one library workflow');
+  console.log('    Agent: explicit library save verified');
+  // The saved workflow now exists in the library; the chat header opens it and the editor links back to a new chat.
+  await waitFor(`!!document.querySelector('[data-agent-open-canvas]')`, 15000);
   await app.evaluate(`document.querySelector('[data-agent-open-canvas]').click(); true`);
   await waitFor(`location.pathname.startsWith('/workflow/') && !!document.querySelector('[data-e2e-action="open-chat"]')`, 15000);
   await app.evaluate(`document.querySelector('[data-e2e-action="open-chat"]').click(); true`);
-  await waitFor(`location.pathname === "/chat/" + ${JSON.stringify(sessionId)}`, 15000);
-  console.log('    Agent: canvas <-> chat round trip verified');
+  await waitFor(`location.pathname === '/chat/new' && document.body.innerText.includes('使用：')`, 15000);
+  console.log('    Agent: canvas -> "use" round trip verified');
   await adb('shell', 'am', 'force-stop', pkg);
   await adb('shell', 'am', 'start', '-n', activity);
   await sleep(8000);
@@ -76,7 +102,7 @@ export async function agentAndroidScenario({ app, waitFor, assert, admin, adb, c
   await app.evaluate('localStorage.setItem("i18nextLng","zh");location.href = "/chats"; "nav"').catch(() => {});
   await sleep(1500);
   await app.evaluate(`localStorage.setItem("i18nextLng","zh");location.href = "/chat/" + ${JSON.stringify(sessionId)}; "nav"`).catch(() => {});
-  await waitFor(`document.body.innerText.includes('版本 3 已保存') && !document.querySelector('footer [role=status]')`, 180000);
+  await waitFor(`document.body.innerText.includes('版本 3 已保留') && !document.querySelector('footer [role=status]')`, 180000);
   assert(await app.evaluate(`document.body.innerText.includes(${JSON.stringify(prefix2)})`), 'follow-up edit not visible');
   applicationCases.push('followup-edit-without-preview', 'background-navigation-recovery', 'active-task-send-disabled');
   console.log('    Agent UI: multi-turn edits and leaving/reopening page passed');
@@ -209,8 +235,11 @@ export async function agentAndroidScenario({ app, waitFor, assert, admin, adb, c
   assert(allRuns.length === 1, 'read-only, edit or cancelled tasks unexpectedly ran ComfyUI');
   await writeFile(new URL('expanded-conversation.txt', outputDir), await app.evaluate('document.body.innerText'));
   console.log('    Agent UI: restore, cancel, continue, and session switching passed');
-  await app.evaluate(`[...document.querySelectorAll('button')].filter(b => b.textContent.includes('在画布查看')).at(-1).click(); true`);
+  // Further chat edits after the save leave the library alone and the status line says so.
+  assert(await app.evaluate(`document.querySelector('[data-agent-draft-status]')?.innerText.includes('草稿有新修改')`), 'draft status does not report unsaved changes after the library save');
+  assert(await serverWorkflows() === librarySizeBefore + 1, 'chat edits after the save changed the library');
+  await app.evaluate(`document.querySelector('[data-agent-open-canvas]').click(); true`);
   await waitFor(`location.pathname.startsWith('/workflow/') && !!document.querySelector('[data-e2e-action=execute]')`, 20000);
-  await writeFile(new URL('report.json', outputDir), JSON.stringify({ sessionId, prefix, realRuns:runs.length, imageLoaded:true, restoredAfterColdStart:true, openedInEditor:true, ownerIsolation:true, applicationCases, menuTouch }, null, 2));
+  await writeFile(new URL('report.json', outputDir), JSON.stringify({ sessionId, prefix, libraryName, realRuns:runs.length, imageLoaded:true, restoredAfterColdStart:true, openedInEditor:true, ownerIsolation:true, applicationCases, menuTouch }, null, 2));
   assert(centerOpened, 'chat header menu cannot be opened by tapping its center; see menuTouch in report.json');
 }

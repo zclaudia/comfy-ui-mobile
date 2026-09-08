@@ -9,7 +9,7 @@ import type { ImagePart, LanguageModel, ModelMessage, ToolSet } from 'ai';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { z } from 'zod';
 import { AgentStore, AgentHttpError, activeStates, describeAttachments } from './store.js';
-import type { Attachment, Task, State, SessionWorkflow } from './store.js';
+import type { Attachment, Task, State, SourceRef, SessionPatch } from './store.js';
 import { canvasToPrompt, applyCanvasPatch } from '../workflow/canvas.js';
 import type { Canvas } from '../workflow/canvas.js';
 import { WorkflowError, validatePrompt } from '../workflow/engine.js';
@@ -60,6 +60,8 @@ export class AgentService {
     this.store = new AgentStore(config.agentStorePath);
     const adopted = this.store.adoptLegacyDeviceSessions();
     if (adopted) console.log(`[agent] adopted ${adopted} per-device session(s) into the shared namespace`);
+    const legacy = this.store.markLegacySessions();
+    if (legacy) console.log(`[agent] marked ${legacy} pre-draft session(s) as legacy`);
     this.adapter = dependencies.adapter ?? new ComfyAdapter(config);
     this.model = dependencies.model;
     this.models = new AgentModels(this.store, config.agentBaseUrl && config.agentModel ? {
@@ -122,14 +124,15 @@ export class AgentService {
     if (terminal(current) || this.stopping || Date.now() > current.deadline) throw new AgentHttpError(409, '任务已停止或超时');
     return current;
   }
-  async createSession(owner: string, name: string, canvas?: Canvas, workflow?: SessionWorkflow) {
+  async createSession(owner: string, name: string, canvas?: Canvas, sourceRef?: SourceRef) {
     if (canvas) canvasToPrompt(canvas, {}, false); // Structure only: missing model values must be repairable.
-    return this.store.create(owner, workflow?.name ?? name, canvas, workflow);
+    return this.store.create(owner, name, canvas, sourceRef);
   }
   snapshot(id: string, owner: string, after: number) {
     const session = this.store.session(id, owner);
     const events = this.store.events(id, after);
-    return { session, versions: this.store.versions(id), tasks: this.store.tasks(id).map(({ messages: _, ...task }) => task), events, cursor: events.at(-1)?.seq ?? after, hasMore: events.length === 200 };
+    const { versions, hasMore: versionsHasMore } = this.store.versionsPage(id, undefined, 50);
+    return { session, versions, versionsHasMore, tasks: this.store.tasks(id).map(({ messages: _, ...task }) => task), events, cursor: events.at(-1)?.seq ?? after, hasMore: events.length === 200 };
   }
   enqueue(id: string, owner: string, requestId: string, message: string, attachments: Attachment[] = []) {
     this.store.session(id, owner);
@@ -158,7 +161,7 @@ export class AgentService {
       return { version: next.version };
     });
   }
-  updateSession(id: string, owner: string, patch: { name?: string; workflow?: SessionWorkflow | null }) {
+  updateSession(id: string, owner: string, patch: SessionPatch) {
     this.store.session(id, owner);
     return this.store.updateSession(id, patch);
   }
@@ -173,12 +176,16 @@ export class AgentService {
     return { deleted: true };
   }
   /** The App pushes canvas edits as a new version before the next message so the agent never works on a stale graph. */
-  importVersion(id: string, owner: string, canvas: Canvas, baseVersion: number, summary: string) {
+  importVersion(id: string, owner: string, canvas: Canvas, baseVersion: number, summary: string, requestId?: string) {
     this.store.session(id, owner);
+    // A retry after a lost response returns the version it already created instead of tripping the baseVersion check.
+    const replay = requestId ? this.store.versionRequest(id, requestId) : undefined;
+    if (replay !== undefined) return { version: replay };
     if (this.store.tasks(id).some(t => activeStates.includes(t.state))) throw new AgentHttpError(409, '请先停止当前任务');
     canvasToPrompt(canvas, {}, false);
     return this.store.transaction(() => {
       const next = this.store.commitVersion(id, baseVersion, canvas, summary);
+      if (requestId) this.store.recordVersionRequest(id, requestId, next.version);
       this.store.event(id, null, 'workflow', { version: next.version, summary: next.summary, source: 'canvas' });
       return { version: next.version };
     });

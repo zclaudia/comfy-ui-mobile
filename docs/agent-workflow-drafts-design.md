@@ -8,6 +8,8 @@
 
 用户可以围绕同一个文生图流程开启很多对话，每个对话保留自己的提示词、参考图和调整过程，而工作流库只保留值得复用的流程。保存过程不要求用户理解 JSON、数据库或云同步。
 
+本项目为单人使用，所有设备由同一人升级；方案不为旧版客户端并存做兼容设计。
+
 三个主要入口保持不变：**对话 / 工作流 / 作品**。不增加一个与工作流库并列的“草稿库”；草稿从所属对话进入。
 
 | 对象 | 用途 | 何时创建 | 展示位置 |
@@ -58,7 +60,7 @@
 | 执行归属 | `task.execution = { attempt, version, promptId }` | 版本不可变，执行快照已经稳定 |
 | 事件游标 | `GET /sessions/:id?after=` | 事件已经分页，其他列表照此处理 |
 
-当前工作区另有共享会话 owner 的改动：已认证设备属于同一用户空间。新方案沿用该身份策略，不重新引入“每设备一份草稿”；手机和浏览器同时编辑时靠版本冲突检测。该身份改动仍需独立验收，本方案不把它视为已经上线的事实。
+当前工作区另有共享会话 owner 的改动：已认证设备属于同一用户空间。新方案沿用该身份策略，不重新引入“每设备一份草稿”；手机和浏览器同时编辑时靠版本冲突检测。该改动仍未提交，需要先合入。
 
 只隐藏列表中的自动生成项不够：后台同步仍会上传它们。也不建议仅在现有 `Workflow` 上增加 `hidden` 字段，因为漏改一个同步或导出入口，就可能重新把草稿当成正式工作流。
 
@@ -239,7 +241,6 @@ Chat 的一次任务可能包含多次执行，`task.execution` 和 `task.result
 | 生成历史 | `GET /sessions/:id/runs` | 新增，事件派生 | 分页 |
 | 归档 | `PATCH /sessions/:id` 设置 `archivedAt` | 字段新增 | 不删除版本或输出文件 |
 | 列表分页 | `GET /sessions`、`GET /sessions/:id/versions` 增加游标 | 目前截断 100 | 事件接口已有 `after`，照此处理 |
-| 能力声明 | `GET /status` 返回 `draftWorkspace: 1` | `transcriptProtocol` 已有 | 不复用 transcript 协议号 |
 
 `save_workflow_version` 工具和 `POST /sessions/:id/save` 兼容期保留，仅表示“标记一个草稿版本”。
 
@@ -306,22 +307,17 @@ Agent 可以构建、修改、校验和按用户授权执行草稿，但默认�
 4. `PATCH` 把 `workspaceMode` 置为 `draft`，并清除本地条目上的 `agent` 绑定。原 `legacyWorkflow` 保留作为证据。
 5. 条目不存在（已删除或在别的设备）时只保留 `legacyWorkflow`，会话按无来源的草稿处理；不重建库条目。
 
-### 8.3 旧客户端写入的双向约束
+### 8.3 不做旧客户端隔离
 
-只更新新 App 不够：旧 APK/浏览器仍可能读取共享会话后执行自动镜像和云上传。约束要覆盖两个方向：
+本项目为单人使用，所有设备由同一人升级。因此不引入协议声明、升级提示或“禁止旧模式会话创建”的开关；升级顺序是先部署 Gateway，再更新 Web 与 APK。在两端都更新完成之前，旧版 App 仍会对 `legacy` 会话执行自动镜像，这是可接受的过渡。
 
-- **旧客户端读新会话。** 新客户端请求携带 `X-Agent-Protocol: draft`。没有该声明的请求访问 `draft` 会话时，快照、版本读取一律返回 426 与升级提示，旧客户端拿不到可镜像的数据。
-- **旧客户端创建 legacy 会话。** Gateway 增加配置 `agentLegacySessions: allow | deny`。发布初期为 `allow`，此时旧客户端仍会自动入库；确认新版覆盖后切到 `deny`，无声明的创建请求返回 426。在切到 `deny` 之前，不把“不会自动增加工作流”作为已完成的验收结论。
-
-发布顺序：后端能力与迁移 → 新 Web/APK → 观察 → `agentLegacySessions=deny`。
-
-回滚保留数据库和新草稿，不降级转换为库条目。首期应有服务端开关停止创建新模式会话；旧版客户端访问已有新模式会话时给出升级提示，不能靠回退 UI 把草稿重新镜像进库。
+回滚保留数据库和新草稿，不降级转换为库条目。
 
 ## 9. 分阶段实施
 
 | 阶段 | 交付范围 | 完成标准 |
 |---|---|---|
-| A1：保存边界（首个可发布版本） | 5.2 身份采纳；取消镜像、导入与单会话绑定；会话字段与名称独立；“使用”入口；保存面板与 6.1 入库链路；版本列表分页；能力声明与 8.3 双向约束；8.2 迁移 | 多开生成类对话不会增加库文件；保存一次只产生一个目标；旧客户端被约束后库数量可验收 |
+| A1：保存边界（首个可发布版本） | 5.2 身份采纳；取消镜像、导入与单会话绑定；会话字段与名称独立；“使用”入口；保存面板与 6.1 入库链路；版本列表分页；8.2 迁移 | 多开生成类对话不会增加库文件；保存一次只产生一个目标 |
 | A2：草稿画布 | `WorkflowDocumentStore` 接口、`/chat/:id/canvas`、草稿本地缓存与冲突恢复 | 编辑只写会话版本；不新增 IndexedDB 正式工作流 |
 | B：历史与关系 | 事件派生的执行记录、“相关对话”、结果继续创作、归档、会话列表分页 | 多会话隔离，多设备可继续；历史引用不随当前草稿变化 |
 | C：清理与整理 | 旧条目人工整理工具、`legacyWorkflow` 与 `save` 兼容路径下线、Web/APK 联合回归 | 原有资产无损；兼容代码可删除 |
@@ -336,7 +332,7 @@ A1 单独发布是可接受的：它已经解决“库被自动填满”这个�
 - `src/infrastructure/sync/CloudWorkflowSyncService.ts`、`CloudWorkflowOutbox.ts`、`IndexedDBWorkflowService.ts`：下载采纳 id、`schema: 2`、入库写缓存不走 outbox、墓碑清理；草稿缓存不进入扫描。
 - 新增 `src/infrastructure/library/LibrarySaveService.ts`：6.1 的状态机、条件写入与核对。
 - `src/App.tsx`、`WorkflowEditor.tsx`、`useWorkflowStorage.ts`：`WorkflowDocumentStore` 接口与草稿画布路由（A2）。
-- `gateway/agent/store.ts`、`service.ts`、`routes.ts`、`AgentApi.ts`：会话字段、`librarySaveOp` 状态校验、`requestId` 幂等、分页、事件 `attempt`、runs 派生、协议声明与 `agentLegacySessions`。
+- `gateway/agent/store.ts`、`service.ts`、`routes.ts`、`AgentApi.ts`：会话字段、`librarySaveOp` 状态校验、`requestId` 幂等、分页、事件 `attempt`、runs 派生。
 - `gateway/auth.js`、`server.js`：共享 owner 改动独立验收。
 - `comfy-mobile-ui-api-extension/handlers/workflow_handler.py`：并发注释与测试；不改接口。
 - 四种语言文案、绑定/同步回归和真实 Android/API 用例同步调整。
@@ -363,8 +359,6 @@ A1 单独发布是可接受的：它已经解决“库被自动填满”这个�
 | 恢复历史或重复生成 | 不新增库条目；真正使用选中版本 |
 | 来源更新、重命名或删除 | 已有草稿仍可读取；没有错误关联、覆盖或自动复活 |
 | 迁移旧会话，存在本地未同步修改 | 所有版本与旧库条目保留，冲突有明确恢复路径 |
-| 旧 APK 打开新协议会话 | 提示升级，不能触发旧版自动镜像写入 |
-| `agentLegacySessions=deny` 后旧 APK 新建会话 | 返回升级提示，不创建会话 |
 | 归档会话、删除库条目 | 不级联删除另一方或共享附件 |
 | 超过 100 个会话/版本/记录 | 分页可访问完整历史，无静默截断 |
 
@@ -397,6 +391,6 @@ ComfyUI 官方界面区分生成队列/历史与已保存工作流；本方案�
 - **区分已有与新增。** `importVersion` 的 `baseVersion` 与活动任务检查、`restore`、`POST /sessions` 携带画布、扩展的 ETag 与原子写入都已存在。2.2 与第 6 节表格加了“现状”列。
 - **执行快照简化。** seed 固定在不可变版本里，Gateway 不做运行时随机化；删去“提交前解析种子”的要求。runs 改为从事件派生，首期不建表。
 - **哈希与 ETag 分工明确。** 文件 ETag 含 `extra` 元数据，不能用于内容一致性判断；`graphHash` 只算 nodes/links。
-- **旧客户端约束补齐反方向。** 增加 `agentLegacySessions` 开关，说明在切到 `deny` 前不能宣称验收通过。
+- **不做旧客户端隔离。** 单人使用，所有设备由同一人升级；删去协议声明、升级提示和旧模式创建开关，只保留“先部署 Gateway 再更新 App”的顺序。
 - **首期范围收缩。** A 拆成 A1（可发布）与 A2（草稿画布），并给出 A1 的过渡形态；永久删除语义推到 D。
 - **实现位置补齐。** 会话名独立需要改 `binding.ts` 与 `service.ts`；新增 `LibrarySaveService`；扩展端并发保护改为注释加测试。

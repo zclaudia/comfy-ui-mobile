@@ -25,7 +25,7 @@ export function SessionRow({ session, baseUrl, thumbnail, onOpen, onLongPress }:
   const failed = !session.active && session.lastState === 'failed';
   return <div role="button" tabIndex={0} data-agent-session={session.id} {...press} style={{ ...press.style, background: '#101217' }} className="w-full flex items-center gap-3 p-[10px_11px] rounded-[10px] border border-white/[0.07] active:border-white/[0.14] transition-colors text-left cursor-pointer" onKeyDown={e => { if (e.key === 'Enter') onOpen(); }}>
     <div className="w-14 h-14 shrink-0 rounded-lg border border-white/[0.06] overflow-hidden flex items-center justify-center" style={{ background: '#0c0e12' }}>
-      {image ? <AuthenticatedImage source={image} alt="" className="w-full h-full object-cover" /> : session.workflow ? <Network size={22} strokeWidth={1.6} className="text-white/15" /> : <Bot size={22} strokeWidth={1.6} className="text-white/15" />}
+      {image ? <AuthenticatedImage source={image} alt="" className="w-full h-full object-cover" /> : session.sourceRef ? <Network size={22} strokeWidth={1.6} className="text-white/15" /> : <Bot size={22} strokeWidth={1.6} className="text-white/15" />}
     </div>
     <div className="flex-1 min-w-0 flex flex-col gap-1">
       <div className="text-[13px] font-semibold text-[#e9ebef] truncate">{sessionTitle(session, at('新对话'))}</div>

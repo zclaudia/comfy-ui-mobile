@@ -2,7 +2,7 @@
 
 The Gateway now hosts a Vercel AI SDK agent, SQLite task/version/event storage,
 ComfyUI execution polling, and authenticated APIs. The App entry is the **对话**
-tab (`/chats`); each session binds to one workflow in the App library.
+tab (`/chats`); each session owns a draft (its version history) and may record which library workflow it started from and where the user last saved it. Nothing reaches the library without an explicit save.
 
 ## Run locally
 
@@ -178,16 +178,17 @@ All paths start with `/api/gateway/agent`; use existing cookie/device authentica
 | PUT `/models/:id` | Replace profile fields; omitted key retains, empty key clears; 409 while used by active tasks |
 | POST `/models/:id/activate` | Select the default for subsequent messages; returns model list |
 | DELETE `/models/:id` | Remove unused profile/key; if active, select the first remaining model or none |
-| GET/POST `/sessions` | List own sessions with `preview`, `lastMessage`, `lastActivity`, `active`, `lastState`, `workflow`, `thumbnail` / create with optional canvas copy and `workflow` binding `{id, name, filename?}` (the binding name becomes the session name) |
+| GET/POST `/sessions` | List own sessions with `preview`, `lastMessage`, `lastActivity`, `active`, `lastState`, `sourceRef`, `lastLibrarySave`, `librarySaveOp`, `thumbnail` / create with optional canvas copy and `sourceRef` `{serverId, workflowId, filename, name, etag?}` (a record of origin; the session name is never taken from it) |
 | GET `/sessions/:id?after=N` | Snapshot plus up to 200 events after cursor N |
 | POST `/sessions/:id/messages` | `{requestId: UUID, message?, attachments?: [{filename, subfolder?, type?: 'input'\|'temp', kind: 'image'\|'video'\|'audio'\|'file', name?, size?}]}` (max 8; message or attachments required); files are uploaded to ComfyUI's input folder by the App beforehand and described to the model as loader-node paths; with vision enabled on the task’s model profile up to 4 PNG/JPEG/WebP/GIF attachments (≤20MB each) are also sent to the model as image input for that task's own message, fetched from ComfyUI once per task and never persisted in task messages; idempotent request ID, one active task per session |
 | POST `/sessions/:id/cancel` | `{taskId}` |
+| GET `/sessions/:id/versions?before=N&limit=50` | Version metadata newest first, `hasMore` when older versions exist (the snapshot carries the latest 50 plus `versionsHasMore`) |
 | GET `/sessions/:id/versions/:version` | Read immutable canvas/version |
 | POST `/sessions/:id/save` | `{version}` |
 | POST `/sessions/:id/restore` | `{version, baseVersion}`; create a new version when no task is active |
-| PATCH `/sessions/:id` | `{name?, workflow?: {id,name,filename?} \| null}`; binding a workflow also renames the session unless `name` is given |
+| PATCH `/sessions/:id` | `{name?, sourceRef? \| null, workspaceMode?: 'draft', librarySaveOp?, lastLibrarySave?}`; a library save operation must start as `pending`, only moves forward (`pending → applying → reconciling → succeeded/conflict/failed`), and a second operation is refused with 409 while one is in flight; `lastLibrarySave` is accepted only with a `succeeded` operation of the same `opId` (or `opId: 'legacy'` together with `workspaceMode: 'draft'` when migrating a pre-draft session) |
 | DELETE `/sessions/:id` | Cancel active tasks, then delete the session with its tasks, versions and events |
-| POST `/sessions/:id/versions` | `{canvas, baseVersion, summary?}`; commit the App canvas as a new version (422 when unsupported, 409 on stale base or active task) |
+| POST `/sessions/:id/versions` | `{canvas, baseVersion, summary?, requestId?}`; commit the App canvas as a new version (422 when unsupported, 409 on stale base or active task); a repeated `requestId` returns the version it already created |
 
 ## Verification
 

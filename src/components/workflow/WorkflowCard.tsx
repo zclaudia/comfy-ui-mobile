@@ -173,6 +173,16 @@ const WorkflowCard: React.FC<WorkflowCardProps> = ({
                 >
                   {workflow.nodeCount} {workflow.nodeCount === 1 ? t('workflow.node') : t('workflow.nodes')}
                 </Badge>
+                {workflow.cloud?.identityConflict && (
+                  <Badge
+                    variant="outline"
+                    data-e2e-identity-conflict
+                    title={t('workflow.identityConflictHint', '这个文件与另一个工作流共用同一个身份 ID，可能是在服务器上复制的副本。')}
+                    className="ml-2 text-xs px-3 py-1 font-medium backdrop-blur-md bg-amber-500/10 border-amber-400/40 text-amber-300"
+                  >
+                    {t('workflow.identityConflict', '需要重新关联')}
+                  </Badge>
+                )}
               </div>
 
               {/* description - hidden in compact mode */}
