@@ -1,4 +1,4 @@
-import { Check, Download, Network } from 'lucide-react';
+import { Check, Download, Network, Play, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { downloadMedia } from '@/platform/mediaDownload';
 import { withComfyAuth } from '@/infrastructure/auth/ComfyAuthService';
@@ -50,4 +50,24 @@ export function NoticeCard({ text, action, onAction }: { text: string; action?: 
     <span className="flex-1">{at(text)}</span>
     {action && onAction && <button className="font-semibold shrink-0" onClick={onAction}>{at(action)}</button>}
   </div>;
+}
+
+export type ApprovalStatus = 'pending' | 'approved' | 'declined' | 'submitted';
+const approvalLabels: Record<ApprovalStatus, string | null> = { pending: null, approved: '已确认运行', declined: '已跳过这次生成', submitted: '已提交生成' };
+/** The model asked to run a preview in a confirm-policy session. Buttons show only while the task is actually held. */
+export function ApprovalCard({ version, status, busy, onDecide }: { version: number; status: ApprovalStatus; busy: boolean; onDecide?: (approved: boolean) => void }) {
+  const at = useAgentText();
+  const label = approvalLabels[status];
+  return <article data-agent-card="approval" className="rounded-[10px] border border-[#f0a35b]/30 p-3 space-y-2.5" style={{ background: '#101217' }}>
+    <div className="flex items-center gap-2"><ShieldCheck size={15} strokeWidth={1.8} className="text-[#f0a35b]" /><span className="text-[12.5px] font-semibold">{at('助手请求运行生成')}</span><span className="font-mono text-[10px] text-[#5b8af5]">V{version}</span></div>
+    <p className="text-[12px] leading-relaxed text-[#9aa3b2]">{at('将把版本 V{{version}} 提交到 ComfyUI，这会占用 GPU。', { version })}</p>
+    {status === 'pending' && onDecide
+      ? <div className="flex gap-2"><button data-agent-approve className={accentChip} disabled={busy} onClick={() => onDecide(true)}><Play size={13} />{at('运行')}</button><button data-agent-decline className={chipButton} disabled={busy} onClick={() => onDecide(false)}>{at('不运行')}</button></div>
+      : label && <p className="text-[11px] text-[#9aa3b2]">{at(label)}</p>}
+  </article>;
+}
+
+export function RetryNotice({ attempt, max, delayMs }: { attempt: number; max: number; delayMs: number }) {
+  const at = useAgentText();
+  return <p data-agent-card="retry" className="text-[11px] text-[#f0a35b]/90">{at('模型请求失败，{{seconds}} 秒后重试（第 {{attempt}}/{{max}} 次）', { seconds: Math.max(1, Math.round(delayMs / 1000)), attempt, max })}</p>;
 }

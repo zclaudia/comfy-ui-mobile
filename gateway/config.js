@@ -118,5 +118,9 @@ export const loadGatewayConfig = (env = process.env, cwd = process.cwd()) => {
     agentMaxPreviews: Math.min(5, parseInteger(env.AGENT_MAX_PREVIEWS, 3)),
     agentTimeoutMs: Math.min(60 * 60_000, parseInteger(env.AGENT_TIMEOUT_MS, 20 * 60_000)),
     agentPollMs: Math.max(1000, parseInteger(env.AGENT_POLL_MS, 1500)),
+    agentStepTimeoutMs: Math.min(30 * 60_000, parseInteger(env.AGENT_STEP_TIMEOUT_MS, 90_000, 10_000)),
+    agentConcurrency: Math.min(8, parseInteger(env.AGENT_CONCURRENCY, 1)),
+    agentRetries: Math.min(10, parseInteger(env.AGENT_RETRIES, 3, 0)),
+    agentRetryDelayMs: Math.min(5 * 60_000, parseInteger(env.AGENT_RETRY_DELAY_MS, 5000, 0)),
   };
 };

@@ -1,9 +1,10 @@
-import { Bot, ChevronRight, Loader2, Network } from 'lucide-react';
+import { Bot, ChevronRight, Film, Loader2, Music, Network } from 'lucide-react';
 import { useLongPress } from '@/hooks/useLongPress';
 import { AuthenticatedImage } from '@/components/media/AuthenticatedImage';
+import { useAuthenticatedMediaUrl } from '@/hooks/useAuthenticatedMediaUrl';
 import type { AgentSession } from '@/infrastructure/api/AgentApi';
 import { useAgentText } from './useAgentText';
-import { sessionTitle } from './binding';
+import { sessionTitle, thumbnailKind } from './binding';
 
 // eslint-disable-next-line react-refresh/only-export-components -- pure helper shared with tests, no component state involved
 export function relativeTime(timestamp: number, now: number, at: (text: string, values?: Record<string, string | number>) => string): string {
@@ -17,15 +18,31 @@ export function relativeTime(timestamp: number, now: number, at: (text: string, 
   return new Date(timestamp).toLocaleDateString();
 }
 
+/** Video covers show their first frame; the browser only fetches metadata plus that frame. Audio has nothing to show, so it gets an icon. */
+function VideoCover({ source }: { source: string }) {
+  const media = useAuthenticatedMediaUrl(source);
+  return <div className="relative w-full h-full">
+    {media.url && <video muted playsInline preload="metadata" src={`${media.url}#t=0.1`} className="w-full h-full object-cover pointer-events-none" aria-hidden />}
+    <Film size={12} strokeWidth={2} className="absolute bottom-1 right-1 text-white/85 drop-shadow" />
+  </div>;
+}
+
 export function SessionRow({ session, baseUrl, thumbnail, onOpen, onLongPress }: { session: AgentSession; baseUrl: string; thumbnail?: string; onOpen: () => void; onLongPress: () => void }) {
   const at = useAgentText();
   const press = useLongPress(onLongPress, onOpen, { threshold: 500 });
+  const kind = session.thumbnail ? thumbnailKind(session.thumbnail) : undefined;
   const media = session.thumbnail ? `${baseUrl}/view?${new URLSearchParams({ filename: session.thumbnail.filename, subfolder: session.thumbnail.subfolder, type: session.thumbnail.type })}` : undefined;
-  const image = thumbnail ?? media;
+  // A bound workflow's own thumbnail (always an image) wins; otherwise the latest generated media by kind.
+  const image = thumbnail ?? (kind === 'image' ? media : undefined);
+  const video = !thumbnail && kind === 'video' ? media : undefined;
+  const audio = !thumbnail && kind === 'audio';
   const failed = !session.active && session.lastState === 'failed';
   return <div role="button" tabIndex={0} data-agent-session={session.id} {...press} style={{ ...press.style, background: '#101217' }} className="w-full flex items-center gap-3 p-[10px_11px] rounded-[10px] border border-white/[0.07] active:border-white/[0.14] transition-colors text-left cursor-pointer" onKeyDown={e => { if (e.key === 'Enter') onOpen(); }}>
     <div className="w-14 h-14 shrink-0 rounded-lg border border-white/[0.06] overflow-hidden flex items-center justify-center" style={{ background: '#0c0e12' }}>
-      {image ? <AuthenticatedImage source={image} alt="" className="w-full h-full object-cover" /> : session.workflow ? <Network size={22} strokeWidth={1.6} className="text-white/15" /> : <Bot size={22} strokeWidth={1.6} className="text-white/15" />}
+      {image ? <AuthenticatedImage source={image} alt="" className="w-full h-full object-cover" />
+        : video ? <VideoCover source={video} />
+        : audio ? <Music size={22} strokeWidth={1.6} className="text-white/25" />
+        : session.workflow ? <Network size={22} strokeWidth={1.6} className="text-white/15" /> : <Bot size={22} strokeWidth={1.6} className="text-white/15" />}
     </div>
     <div className="flex-1 min-w-0 flex flex-col gap-1">
       <div className="text-[13px] font-semibold text-[#e9ebef] truncate">{sessionTitle(session, at('新对话'))}</div>

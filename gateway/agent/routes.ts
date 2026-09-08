@@ -11,7 +11,8 @@ const version = z.number().int().positive();
 const canvasInput = z.object({ version: z.literal(0.4), nodes: z.array(z.object({ id: z.number().int().nonnegative(), type: z.string(), widgets_values: z.array(z.unknown()).optional(), inputs: z.array(z.object({ name: z.string(), link: z.number().nullable().optional() }).passthrough()).optional(), outputs: z.array(z.object({ links: z.array(z.number()).nullable().optional() }).passthrough()).optional() }).passthrough()).max(100), links: z.array(z.array(z.unknown())).max(500) }).passthrough();
 const workflowInput = z.object({ id: z.string().trim().min(1).max(200), name: z.string().trim().min(1).max(100), filename: z.string().trim().min(1).max(300).optional() }).strict();
 const createInput = z.object({ name: z.string().trim().min(1).max(100).default('新工作流'), canvas: canvasInput.optional(), workflow: workflowInput.optional() }).strict();
-const patchInput = z.object({ name: z.string().trim().min(1).max(100).optional(), workflow: workflowInput.nullable().optional() }).strict();
+const patchInput = z.object({ name: z.string().trim().min(1).max(100).optional(), workflow: workflowInput.nullable().optional(), previewPolicy: z.enum(['auto', 'confirm']).optional() }).strict();
+const approveInput = z.object({ taskId: id, callId: z.string().trim().min(1).max(200), approved: z.boolean() }).strict();
 const importInput = z.object({ canvas: canvasInput, baseVersion: z.number().int().nonnegative(), summary: z.string().trim().min(1).max(200).default('画布修改') }).strict();
 const filename = z.string().trim().min(1).max(300).refine(v => !v.includes('/') && !v.includes('\\') && v !== '.' && v !== '..', '文件名不合法');
 const subfolder = z.string().trim().max(300).refine(v => !v.split(/[\\/]/).some(part => part === '..'), '子目录不合法').default('');
@@ -70,6 +71,10 @@ export async function handleAgentRequest(service: AgentService, owner: string, r
       const body = messageInput.parse(await readBody(request));
       const task = service.enqueue(sessionId, owner, body.requestId, body.message, body.attachments);
       return send(202, { taskId: task.id, state: task.state });
+    }
+    if (parts.length === 3 && parts[2] === 'approve' && method === 'POST') {
+      const body = approveInput.parse(await readBody(request));
+      return send(200, service.approve(sessionId, owner, body.taskId, body.callId, body.approved));
     }
     if (parts.length === 3 && parts[2] === 'cancel' && method === 'POST') {
       const body = z.object({ taskId: id }).strict().parse(await readBody(request));

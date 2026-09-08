@@ -31,7 +31,7 @@ test('list summaries', async () => {
   const [first, second, third] = list;
   assert.equal(first.active, false);
   assert.equal(second.active, false);
-  assert.deepEqual(second.thumbnail, { filename: 'a.png', subfolder: 'Agent', type: 'output' }, 'a later result event with no media does not wipe the thumbnail');
+  assert.deepEqual(second.thumbnail, { filename: 'a.png', subfolder: 'Agent', type: 'output', kind: 'image' }, 'a later result event with no media does not wipe the thumbnail');
   assert.equal(second.lastMessage, undefined);
   assert.equal(third.active, true);
   assert.equal(third.lastState, 'queued');
@@ -124,4 +124,19 @@ test('attachments ride along with the user message and are described to the mode
   assert.match(describeAttachments('x', [{ filename: 'a.png', subfolder: '', type: 'input', kind: 'image', width: 512, height: 512 }]), /512x512px square/);
   assert.equal(store.list('me')[0].preview, '按这张图的风格再画一张');
   assert.equal(store.enqueue(store.create('me', '无附件').id, 'r-2', '纯文字', 60_000).attachments, undefined, 'text-only tasks carry no attachment key');
+});
+
+test('session thumbnails follow the latest result and prefer a still frame over video and audio within it', async () => {
+  const store = new AgentStore(':memory:');
+  const session = store.create('me', '视频');
+  store.event(session.id, null, 'result', { version: 1, outputs: [{ filename: 'old.png', subfolder: '', type: 'output', kind: 'image' }] });
+  await tick();
+  store.event(session.id, null, 'result', { version: 2, outputs: [{ filename: 'clip.mp4', subfolder: 'video', type: 'output', kind: 'video' }, { filename: 'clip.wav', subfolder: 'video', type: 'output', kind: 'audio' }] });
+  assert.deepEqual(store.list('me')[0].thumbnail, { filename: 'clip.mp4', subfolder: 'video', type: 'output', kind: 'video' }, 'a video-only result shows its video, not an older image');
+  await tick();
+  store.event(session.id, null, 'result', { version: 3, outputs: [{ filename: 'audio.wav', subfolder: '', type: 'output', kind: 'audio' }, { filename: 'take2.mp4', subfolder: '', type: 'output', kind: 'video' }, { filename: 'frame.png', subfolder: '', type: 'output', kind: 'image' }] });
+  assert.deepEqual(store.list('me')[0].thumbnail, { filename: 'frame.png', subfolder: '', type: 'output', kind: 'image' }, 'a still frame in the same result wins regardless of order');
+  store.event(session.id, null, 'result', { version: 4, outputs: [{ filename: 'legacy.mp4', subfolder: '', type: 'output' }] });
+  assert.deepEqual(store.list('me')[0].thumbnail, { filename: 'legacy.mp4', subfolder: '', type: 'output' }, 'outputs recorded without kind still surface; the App derives the kind');
+  store.close();
 });
