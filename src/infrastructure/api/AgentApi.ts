@@ -47,19 +47,34 @@ export type SessionPatch = {
 export class AgentApi {
   readonly baseUrl: string;
   constructor(baseUrl: string) { this.baseUrl = baseUrl.replace(/\/$/, ''); }
-  private async request<T>(path: string, init: { method?: string; body?: unknown } = {}, signal?: AbortSignal): Promise<T> {
+  /**
+   * Every request carries a deadline. Without one a wedged native HTTP
+   * request (flaky mobile network, stalled keep-alive connection) would hang
+   * the promise forever, silently stopping the chat's snapshot polling loop.
+   * Composed manually so older WebViews without AbortSignal.any still work.
+   */
+  private async request<T>(path: string, init: { method?: string; body?: unknown } = {}, signal?: AbortSignal, timeoutMs = 60_000): Promise<T> {
     const url = `${this.baseUrl}/api/gateway/agent${path}`;
     const authorization = getNativeGatewayAuthorization(url);
     const method = init.method ?? (init.body === undefined ? 'GET' : 'POST');
-    const response = await platformFetch(url, {
-      method,
-      credentials: isTauriRuntime() ? 'omit' : 'include',
-      headers: { ...(authorization ? { Authorization: authorization } : {}), ...(init.body === undefined ? {} : { 'Content-Type': 'application/json' }) },
-      body: init.body === undefined ? undefined : JSON.stringify(init.body), signal,
-    });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok) throw new AgentRequestError(response.status, result.error || `请求失败 (${response.status})`, result);
-    return result as T;
+    const deadline = new AbortController();
+    const forwardAbort = () => deadline.abort();
+    signal?.addEventListener('abort', forwardAbort, { once: true });
+    const timer = setTimeout(() => deadline.abort(), timeoutMs);
+    try {
+      const response = await platformFetch(url, {
+        method,
+        credentials: isTauriRuntime() ? 'omit' : 'include',
+        headers: { ...(authorization ? { Authorization: authorization } : {}), ...(init.body === undefined ? {} : { 'Content-Type': 'application/json' }) },
+        body: init.body === undefined ? undefined : JSON.stringify(init.body), signal: deadline.signal,
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new AgentRequestError(response.status, result.error || `请求失败 (${response.status})`, result);
+      return result as T;
+    } finally {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', forwardAbort);
+    }
   }
   status(signal?: AbortSignal) { return this.request<AgentStatus>('/status', {}, signal); }
   models(signal?: AbortSignal) { return this.request<AgentModels>('/models', {}, signal); }
@@ -79,7 +94,7 @@ export class AgentApi {
     const query = new URLSearchParams({ limit: String(limit), ...(before === undefined ? {} : { before: String(before) }) });
     return this.request<{ versions: AgentVersion[]; hasMore: boolean }>(`/sessions/${encodeURIComponent(id)}/versions?${query}`);
   }
-  snapshot(id: string, after = 0, signal?: AbortSignal) { return this.request<AgentSnapshot>(`/sessions/${encodeURIComponent(id)}?after=${after}`, {}, signal); }
+  snapshot(id: string, after = 0, signal?: AbortSignal) { return this.request<AgentSnapshot>(`/sessions/${encodeURIComponent(id)}?after=${after}`, {}, signal, 15_000); }
   message(id: string, message: string, requestId: string, attachments: AgentAttachment[] = []) {
     return this.request<{ taskId: string }>(`/sessions/${encodeURIComponent(id)}/messages`, { body: { message, requestId, ...(attachments.length ? { attachments } : {}) } });
   }

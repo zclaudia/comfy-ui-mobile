@@ -128,3 +128,35 @@ Agent/工作流/隔离故障回归 27/27 通过。服务器容器健康，`.env`
 
 后续模型适配已覆盖真实 Z-Image 和 H3 生成；此前的 checkpoint 模板限制属于历史
 测试范围。最新计划、适配范围和验收结果见 [模型适配计划](agent-model-adaptation-plan.md)。
+
+
+## 2026-09-09 全量回归记录（合并 drafts 与附件更新后）
+
+环境：网关重新部署到最新 main（含草稿/库保存），Android debug APK 重新构建；
+活跃模型为本地 new-api 的 qwen3.8，GPU 与 LLM 同机竞争。运行全开关套件
+（基础 + agent + models + transcript + i18n）共 24 项。
+
+本轮发现并处理：
+
+1. Android WebView 永远不解析 `env(safe-area-inset-top)`（值恒为 0），edge-to-edge
+   绘制时聊天头部整个落在状态栏之下，且状态栏窗口吞掉该区域的触摸——"更多"菜单
+   只能用键盘激活打开（menuTouch.centerOpened=false）。修复：MainActivity 在
+   `onWebViewCreate` 里把 WindowInsets 的状态栏高度（物理像素换算为 CSS 像素）
+   写入 `--status-bar-inset`，document-start 注入保证首载生效；CSS 的
+   `.pwa-header/.pt-safe/.pwa-modal` 优先取该变量，回退 `env()`。修复后
+   centerOpened=true，页面头部不再被时钟/电量遮挡。顺带修复：
+   `CookieManager.setAcceptThirdPartyCookies` 依赖同一钩子。
+2. `AgentApi.request` 没有超时：原生 HTTP 插件的请求一旦挂起，聊天页的
+   snapshot 轮询循环会静默停更（无错误提示、任务完成也不渲染）。修复：所有
+   Agent API 请求默认 60s 截止，snapshot 轮询 15s，超时走 4s 退避重试自愈。
+3. `addDocumentStartJavaScript` 的 allowedOriginRules 不接受 `http://*/*` 形式
+   （直接崩溃），通用匹配必须用单个 `*`。
+4. 恢复历史版本后的重渲染可能吞掉 sendMessage 的填入与点击（消息未发出、
+   无任何反馈）。场景改为校验"运行指示或用户消息已渲染"，未落地则重填重发，
+   最多三次。
+5. 服务器 GPU 与 LLM 同机竞争时，单张 1024px Z-Image 生成了约 8 分钟，整个
+   模型任务约 10 分钟。models 场景等待放宽到 900s、transcript 300s；仍低于
+   网关 `AGENT_TIMEOUT_MS=1200000` 的单任务上限。
+
+修复后全套件 24/24 通过（见 `tests/output/agent-android/report.json` 的
+menuTouch 与 applicationCases 字段）。

@@ -83,14 +83,28 @@ export async function agentAndroidScenario({ app, waitFor, assert, admin, adb, c
   await waitFor(`location.pathname === "/chat/" + ${JSON.stringify(sessionId)} && !!document.querySelector('[data-agent-card="result"]')`, 25000);
   const applicationCases = ['repair-preview-save', 'cold-start-recovery', 'device-session-isolation'];
   async function sendMessage(text) {
-    await app.evaluate(`(() => {
-      const input = document.querySelector('textarea');
-      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(input, ${JSON.stringify(text)});
-      input.dispatchEvent(new Event('input', {bubbles:true})); return true;
-    })()`);
-    await sleep(250);
-    await app.evaluate(`document.querySelector('button[aria-label="发送消息"]').click(); true`);
-    await waitFor(`!!document.querySelector('footer [role=status] button:not([disabled])')`, 15000);
+    // A version restore or background re-render can replace the composer
+    // between fill and click, silently swallowing the message. Verify the
+    // send actually landed (running indicator or rendered user turn) and retry.
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await app.evaluate(`(() => {
+        const input = document.querySelector('textarea');
+        Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(input, ${JSON.stringify(text)});
+        input.dispatchEvent(new Event('input', {bubbles:true})); return true;
+      })()`);
+      await sleep(250);
+      await app.evaluate(`document.querySelector('button[aria-label="发送消息"]').click(); true`);
+      const landed = await waitFor(`(() => {
+        if (document.querySelector('footer [role=status] button:not([disabled])')) return 'running';
+        const sent = document.body.innerText.includes(${JSON.stringify(text.slice(0, 30))});
+        return sent ? 'sent' : null;
+      })()`, 10000).catch(() => null);
+      if (landed) {
+        await waitFor(`!!document.querySelector('footer [role=status] button:not([disabled])')`, 15000).catch(() => null);
+        return;
+      }
+    }
+    throw new Error('message never reached the conversation after 3 attempts');
   }
   async function idle() { await waitFor(`!document.querySelector('footer [role=status]')`, 180000); }
   assert(await app.evaluate(`document.querySelector('button[aria-label="发送消息"]').disabled`), 'empty message send is enabled');

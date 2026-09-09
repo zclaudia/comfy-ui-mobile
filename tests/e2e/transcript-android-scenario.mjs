@@ -10,7 +10,7 @@ export async function transcriptAndroidScenario({ app, waitFor, assert, adb, sle
   await app.evaluate(`(()=>{const e=document.querySelector('textarea');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,${JSON.stringify(message)});e.dispatchEvent(new Event('input',{bubbles:true}));return true})()`);
   await sleep(200);
   await app.evaluate(`document.querySelector('button[aria-label="发送消息"]').click();true`);
-  await waitFor(`document.querySelectorAll('[data-agent-turn]').length>${before} && !document.querySelector('footer [role=status]') && !!document.querySelector('.ztk-code-block')`,180000);
+  await waitFor(`document.querySelectorAll('[data-agent-turn]').length>${before} && !document.querySelector('footer [role=status]') && !!document.querySelector('.ztk-code-block')`,300000);
   const result=await app.evaluate(`(()=>{const turn=[...document.querySelectorAll('[data-agent-turn]')].at(-1);const code=turn.querySelector('.ztk-code-block');code?.scrollIntoView({block:'center'});return {complete:turn.querySelector('[data-turn-status]')?.dataset.turnStatus==='complete',tables:turn.querySelectorAll('table').length,code:code?.querySelector('code').textContent,overflow:document.documentElement.scrollWidth>innerWidth}})()`);
   assert(result.complete && result.tables>0 && typeof result.code==='string' && !result.overflow);
   await sleep(500);

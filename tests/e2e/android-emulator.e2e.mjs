@@ -52,6 +52,12 @@ const test = async (name, fn) => {
 const assert = (condition, message) => {
   if (!condition) throw new Error(message);
 };
+// Scenario modules written against node:assert also call assert.equal.
+assert.equal = (actual, expected, message) => {
+  if (actual !== expected) {
+    throw new Error(message || `expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+  }
+};
 
 const adb = (...args) => exec('adb', ['-s', serial, ...args]);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -102,7 +108,10 @@ const connect = async () => {
   const evaluate = async (expression) => {
     const result = await call('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true });
     if (result.exceptionDetails) {
-      throw new Error(`page error: ${result.exceptionDetails.text}`);
+      const detail = result.exceptionDetails.exception?.description
+        || result.exceptionDetails.text
+        || 'unknown page error';
+      throw new Error(`page error: ${detail.split('\n').slice(0, 3).join(' | ')}`);
     }
     return result.result.value;
   };
