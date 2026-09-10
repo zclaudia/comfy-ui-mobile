@@ -60,6 +60,8 @@ interface LazyImageProps {
   isSelectionMode?: boolean;
   isSelected?: boolean;
   onSelectionChange?: (file: IComfyFileInfo, selected: boolean) => void;
+  /** Press-and-hold gesture: jump into multi-select with this item selected. */
+  onLongPress?: (file: IComfyFileInfo) => void;
   fileService: ComfyFileService;
   videoLookupMap: Map<string, IComfyFileInfo>;
   imageLookupMap: Map<string, IComfyFileInfo>;
@@ -72,6 +74,7 @@ const LazyImage: React.FC<LazyImageProps> = ({
   isSelectionMode = false,
   isSelected = false,
   onSelectionChange,
+  onLongPress,
   fileService,
   videoLookupMap,
   imageLookupMap
@@ -135,7 +138,38 @@ const LazyImage: React.FC<LazyImageProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [file, imageLookupMap, posterFailed]);
 
+  // Press-and-hold to multi-select: any movement (scroll/drag) or early lift
+  // cancels the timer, and the click synthesized after a fired hold is
+  // swallowed so it neither opens the preview nor double-toggles selection.
+  const longPressTimer = useRef<number | null>(null);
+  const longPressFired = useRef(false);
+
+  const clearLongPressTimer = useCallback(() => {
+    if (longPressTimer.current !== null) {
+      window.clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  }, []);
+
+  useEffect(() => clearLongPressTimer, [clearLongPressTimer]);
+
+  const handleTouchStart = () => {
+    if (!onLongPress) return;
+    longPressFired.current = false;
+    clearLongPressTimer();
+    longPressTimer.current = window.setTimeout(() => {
+      longPressTimer.current = null;
+      longPressFired.current = true;
+      try { navigator.vibrate?.(15); } catch { /* haptics unavailable */ }
+      onLongPress(file);
+    }, 450);
+  };
+
   const handleClick = () => {
+    if (longPressFired.current) {
+      longPressFired.current = false;
+      return;
+    }
     if (isSelectionMode && onSelectionChange) {
       onSelectionChange(file, !isSelected);
     } else {
@@ -150,6 +184,10 @@ const LazyImage: React.FC<LazyImageProps> = ({
       className={`relative aspect-square overflow-hidden cursor-pointer group transition-transform duration-150 hover:scale-[1.02] active:scale-[0.98] ${isSelected ? 'z-10' : ''}`}
       style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 256px', background: '#0d1016' }}
       onClick={handleClick}
+      onTouchStart={handleTouchStart}
+      onTouchMove={clearLongPressTimer}
+      onTouchEnd={clearLongPressTimer}
+      onTouchCancel={clearLongPressTimer}
     >
       {/* Loading Placeholder */}
       {!isLoaded && !hasError && (
@@ -561,6 +599,15 @@ export const OutputsGallery: React.FC<OutputsGalleryProps> = ({
       setSelectedFiles(new Set());
     }
   };
+
+  // Long-press a tile: enter multi-select straight from the grid with it
+  // pre-selected (or keep adding when already selecting).
+  const handleFileLongPress = useCallback((file: IComfyFileInfo) => {
+    if (isFileSelectionMode) return;
+    setIsSelectionMode(true);
+    const key = `${file.filename}-${file.subfolder}-${file.type}`;
+    setSelectedFiles(prev => new Set(prev).add(key));
+  }, [isFileSelectionMode]);
 
   // File operations
   const handleDeleteClick = () => {
@@ -1067,6 +1114,7 @@ export const OutputsGallery: React.FC<OutputsGalleryProps> = ({
                           isSelectionMode={isSelectionMode}
                           isSelected={selectedFiles.has(`${file.filename}-${file.subfolder}-${file.type}`)}
                           onSelectionChange={handleSelectionChange}
+                          onLongPress={handleFileLongPress}
                           fileService={comfyFileService}
                           videoLookupMap={videoLookupMap}
                           imageLookupMap={imageLookupMap}
@@ -1097,6 +1145,7 @@ export const OutputsGallery: React.FC<OutputsGalleryProps> = ({
                       isSelectionMode={isSelectionMode}
                       isSelected={selectedFiles.has(`${file.filename}-${file.subfolder}-${file.type}`)}
                       onSelectionChange={handleSelectionChange}
+                      onLongPress={handleFileLongPress}
                       fileService={comfyFileService}
                       videoLookupMap={videoLookupMap}
                       imageLookupMap={imageLookupMap}
