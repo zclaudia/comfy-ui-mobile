@@ -9,7 +9,7 @@ export function SheetFrame({ open, onOpenChange, title, children }: { open: bool
   const at = useAgentText();
   return <Dialog.Root open={open} onOpenChange={onOpenChange}><Dialog.Portal>
     <Dialog.Overlay className="fixed inset-0 z-[100] bg-black/60" />
-    <Dialog.Content className="fixed z-[101] inset-x-0 bottom-0 max-h-[80dvh] rounded-t-2xl border-t border-white/10 text-[#e9ebef] flex flex-col" style={{ background: '#0f1116', paddingBottom: 'env(safe-area-inset-bottom)' }}>
+    <Dialog.Content className="fixed z-[101] inset-x-0 bottom-0 max-h-[80dvh] rounded-t-2xl border-t border-white/10 text-[#e9ebef] flex flex-col" style={{ background: '#0f1116', paddingBottom: 'var(--nav-bar-inset, env(safe-area-inset-bottom, 0px))' }}>
       <div className="flex items-center gap-2 px-4 pt-3 pb-2"><Dialog.Title className="font-semibold text-[14px] flex-1">{title}</Dialog.Title><Dialog.Close className="p-2" aria-label={at('关闭')}><X size={18} /></Dialog.Close></div>
       <div className="min-h-0 overflow-y-auto px-4 pb-4">{children}</div>
     </Dialog.Content>

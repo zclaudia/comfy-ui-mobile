@@ -280,7 +280,7 @@ const CanvasLabPage: React.FC = () => {
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
               transition={{ type: 'tween', duration: 0.22 }}
-              className="absolute inset-x-0 bottom-0 z-30 max-h-[62%] flex flex-col rounded-t-2xl border border-slate-700 bg-slate-900/95 backdrop-blur shadow-2xl"
+              className="absolute inset-x-0 bottom-0 z-30 max-h-[62%] flex flex-col rounded-t-2xl border border-slate-700 bg-slate-900/95 backdrop-blur shadow-2xl pb-safe"
             >
               <div className="flex items-start gap-3 px-4 pt-3 pb-2 border-b border-slate-800">
                 <div className="flex-1 min-w-0">

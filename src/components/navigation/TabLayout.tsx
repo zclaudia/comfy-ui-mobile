@@ -8,7 +8,7 @@ export function TabLayout() {
   const { pathname, state } = useLocation();
   // Fixed bars inside the tabbed pages ignore the wrapper padding, so they read this variable instead.
   useEffect(() => {
-    document.documentElement.style.setProperty('--tab-bar-height', 'calc(56px + env(safe-area-inset-bottom))');
+    document.documentElement.style.setProperty('--tab-bar-height', 'calc(56px + var(--nav-bar-inset, env(safe-area-inset-bottom, 0px)))');
     return () => { document.documentElement.style.removeProperty('--tab-bar-height'); };
   }, []);
   useEffect(() => {
@@ -17,7 +17,7 @@ export function TabLayout() {
     if ((TAB_PATHS as string[]).includes(pathname)) { try { localStorage.setItem(LAST_TAB_KEY, pathname); } catch { /* storage unavailable */ } }
   }, [pathname, state]);
   return <>
-    <div className="h-dvh overflow-y-auto" style={{ paddingBottom: 'var(--tab-bar-height, calc(56px + env(safe-area-inset-bottom)))' }}><Outlet /></div>
+    <div className="h-dvh overflow-y-auto" style={{ paddingBottom: 'var(--tab-bar-height, calc(56px + var(--nav-bar-inset, env(safe-area-inset-bottom, 0px))))' }}><Outlet /></div>
     <TabBar />
   </>;
 }

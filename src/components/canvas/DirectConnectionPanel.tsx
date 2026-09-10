@@ -438,7 +438,7 @@ export const DirectConnectionPanel: React.FC<DirectConnectionPanelProps> = ({
                     {/* Footer Actions - Fixed Bottom */}
                     <div
                         className="px-8 pt-4 pb-12 flex-shrink-0 flex flex-col items-center space-y-4"
-                        style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom, 0px))' }}
+                        style={{ paddingBottom: 'calc(1.5rem + var(--nav-bar-inset, env(safe-area-inset-bottom, 0px)))' }}
                     >
                         <div className="flex items-center justify-center space-x-6">
                             <Button

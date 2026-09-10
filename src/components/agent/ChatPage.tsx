@@ -238,7 +238,7 @@ export default function ChatPage() {
         </button>
       </div>}
     </div>
-    <footer className="shrink-0 border-t border-white/[0.08]" style={{ background: 'rgba(11,12,15,0.95)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
+    <footer className="shrink-0 border-t border-white/[0.08]" style={{ background: 'rgba(11,12,15,0.95)', paddingBottom: 'var(--nav-bar-inset, env(safe-area-inset-bottom, 0px))' }}>
       <div className="max-w-4xl mx-auto px-3 pt-2.5 pb-3 space-y-2.5">
         {status && <button className="max-w-full flex items-center gap-1.5 text-[11px] text-slate-400" onClick={() => navigate('/settings/agent')} aria-label={at('助手模型')}><Settings2 size={13} className="shrink-0" /><span className="truncate">{status.model ?? at('添加模型')}{status.contextWindow ? ` · ${status.contextWindow.toLocaleString()} tokens` : ''} · {at(status.vision ? '支持图片理解' : '仅文本')}</span></button>}
         {attachments.items.some(a => a.kind === 'image') && status?.vision === false && <p className="text-xs text-amber-300">{at('当前模型仅接收图片路径；如需理解图片内容，请选择支持 Vision 的模型。')}</p>}

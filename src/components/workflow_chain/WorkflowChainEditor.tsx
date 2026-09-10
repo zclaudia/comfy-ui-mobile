@@ -1553,7 +1553,7 @@ const WorkflowSelectionPanel: React.FC<WorkflowSelectionPanelProps> = ({
           >
             <div className="flex flex-col h-full">
               {/* Panel Header */}
-              <div className="p-4 border-b border-slate-200 dark:border-slate-700 space-y-3">
+              <div className="p-4 pt-safe-4 border-b border-slate-200 dark:border-slate-700 space-y-3">
                 <div className="flex items-center justify-between">
                   <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
                     {t('workflowChain.editor.selectWorkflow')}

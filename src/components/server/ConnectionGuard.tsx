@@ -22,7 +22,7 @@ export const ServerConnectionRequired: React.FC<ServerConnectionRequiredProps> =
   const { t } = useTranslation();
 
   return (
-    <div className="absolute bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-t border-orange-200/60 shadow-2xl dark:bg-slate-900/95 dark:border-orange-700/60 max-h-[60vh] flex flex-col">
+    <div className="absolute bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-t border-orange-200/60 shadow-2xl dark:bg-slate-900/95 dark:border-orange-700/60 max-h-[60vh] flex flex-col pb-safe">
       {/* Fixed Header */}
       <div className="p-4 border-b border-orange-200/50 dark:border-orange-700/50">
         <div className="max-w-4xl mx-auto">

@@ -30,7 +30,7 @@ export const LatentPreviewFullScreen: React.FC<LatentPreviewFullScreenProps> = (
                     <motion.div
                         initial={{ y: -20, opacity: 0 }}
                         animate={{ y: 0, opacity: 1 }}
-                        className="absolute top-0 left-0 right-0 p-6 flex items-center justify-between pointer-events-none"
+                        className="absolute top-0 left-0 right-0 p-6 pt-safe-6 flex items-center justify-between pointer-events-none"
                     >
                         <div className="flex flex-col">
                             <span className="text-white/40 text-xs font-medium uppercase tracking-widest">{t('latentPreview.fullScreen.title')}</span>

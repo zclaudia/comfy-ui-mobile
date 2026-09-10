@@ -198,7 +198,7 @@ export function WorkspaceChatPage({ baseUrl, status }: { baseUrl: string; status
       </div>
       {!nearBottom && <button aria-label={at('回到最新消息')} className="absolute right-4 bottom-3 rounded-full p-2 bg-[#1b2130] border border-white/10 shadow-lg" onClick={() => { follow.current = true; setNearBottom(true); scroll.current?.scrollTo({ top: scroll.current.scrollHeight, behavior: 'smooth' }); }}><ChevronDown size={20} /></button>}
     </div>
-    <footer className="shrink-0 border-t border-white/10 bg-[#0b0c0f]" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}><div className="max-w-4xl mx-auto px-3 py-3 space-y-2">
+    <footer className="shrink-0 border-t border-white/10 bg-[#0b0c0f]" style={{ paddingBottom: 'var(--nav-bar-inset, env(safe-area-inset-bottom, 0px))' }}><div className="max-w-4xl mx-auto px-3 py-3 space-y-2">
       <button className="flex items-center gap-1.5 text-[11px] text-slate-400" onClick={() => navigate('/settings/agent')}><Settings2 size={12} />{status.model ?? at('添加模型')} · {at(status.vision ? '支持图片理解' : '仅文本')}</button>
       {localResume && <div className="rounded-lg p-2 border border-amber-400/30 text-xs space-y-2"><p>{at('此设备保留了画布工作副本，聊天生成使用服务器已保存的版本。')}</p><button className={chipButton} onClick={() => navigate(localResume)}>{at('打开本机草稿')}</button><button className={`${chipButton} ml-2`} onClick={() => navigate(`/chat/${sessionId}`, { replace: true })}>{at('关闭提示')}</button></div>}
       {pendingWorkflow && <div className="flex items-center text-xs gap-2 p-2 rounded-lg bg-white/5"><Network size={14} />{pendingWorkflow.name}<button disabled={busy} className="ml-auto" aria-label={at('移除')} onClick={() => setPendingWorkflow(null)}><X size={14} /></button></div>}

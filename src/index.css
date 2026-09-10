@@ -208,8 +208,21 @@ canvas {
   padding-top: var(--status-bar-inset, env(safe-area-inset-top, 0));
 }
 
+/* Overlay headers/buttons drawn at the viewport top edge: status-bar inset plus one spacing step */
+.pt-safe-4 {
+  padding-top: calc(var(--status-bar-inset, env(safe-area-inset-top, 0)) + 1rem);
+}
+
+.pt-safe-6 {
+  padding-top: calc(var(--status-bar-inset, env(safe-area-inset-top, 0)) + 1.5rem);
+}
+
+.top-safe-4 {
+  top: calc(var(--status-bar-inset, env(safe-area-inset-top, 0)) + 1rem);
+}
+
 .pb-safe {
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-bottom: var(--nav-bar-inset, env(safe-area-inset-bottom, 0px));
 }
 
 /* PWA content area - height excluding safe areas */

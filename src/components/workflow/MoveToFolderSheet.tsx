@@ -276,7 +276,7 @@ const MoveToFolderSheet: React.FC<MoveToFolderSheetProps> = ({
             )}
 
             {/* Footer actions */}
-            <div className="flex items-center gap-2 px-4 py-3 border-t border-white/[0.08] bg-[#0f1116]/90">
+            <div className="flex items-center gap-2 px-4 py-3 border-t border-white/[0.08] bg-[#0f1116]/90" style={{ paddingBottom: 'calc(var(--nav-bar-inset, env(safe-area-inset-bottom, 0px)) + 0.75rem)' }}>
               <Button
                 variant="outline"
                 onClick={() => setIsCreating((v) => !v)}

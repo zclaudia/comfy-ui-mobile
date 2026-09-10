@@ -10,7 +10,7 @@ export function TabBar() {
   const { t } = useTranslation();
   const active = useAgentActivityStore(s => s.active);
   const labels: Record<TabPath, string> = { '/chats': t('tabs.chats', '对话'), '/workflows': t('tabs.workflows', '工作流'), '/outputs': t('tabs.gallery', '画廊') };
-  return <nav data-tab-bar className="fixed inset-x-0 bottom-0 z-40 border-t border-white/[0.08]" style={{ background: 'rgba(15,17,22,0.96)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
+  return <nav data-tab-bar className="fixed inset-x-0 bottom-0 z-40 border-t border-white/[0.08]" style={{ background: 'rgba(15,17,22,0.96)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', paddingBottom: 'var(--nav-bar-inset, env(safe-area-inset-bottom, 0px))' }}>
     <div className="h-14 px-3 flex items-stretch">
       {TAB_PATHS.map(path => { const Icon = icons[path]; return <NavLink key={path} to={path} className={({ isActive }) => `flex-1 flex flex-col items-center justify-center gap-[3px] relative text-[10.5px] ${isActive ? 'text-[#5b8af5] font-semibold' : 'text-[#71798a] font-medium'}`}>
         <Icon size={22} strokeWidth={1.8} />

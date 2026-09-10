@@ -351,7 +351,7 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
         >
           {/* Header (Always Visible unless Compact) */}
           {!isCompact && (
-            <div className="flex items-center justify-between gap-3 flex-shrink-0 bg-white/80 dark:bg-[#0b0c0f]/80 backdrop-blur-xl p-4 md:px-8 md:py-5 border-b border-white/[0.08] z-[100003] shadow-sm">
+            <div className="flex items-center justify-between gap-3 flex-shrink-0 bg-white/80 dark:bg-[#0b0c0f]/80 backdrop-blur-xl p-4 pt-safe-4 md:px-8 md:pb-5 border-b border-white/[0.08] z-[100003] shadow-sm">
               <div className="flex items-center space-x-3 md:space-x-4 min-w-0 flex-1">
                 <div className={`p-2.5 rounded-xl flex-shrink-0 shadow-sm ${isImage ? 'bg-[#3069f0]/15 text-[#5b8af5]' : 'bg-[#9a8af0]/15 text-purple-500'}`}>
                   {isImage ? (
@@ -437,7 +437,7 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
 
           {/* Compact Mode Close Overlay Button */}
           {isCompact && (
-            <div className="absolute top-4 right-4 z-[100001]">
+            <div className="absolute top-safe-4 right-4 z-[100001]">
               <Button
                 onClick={onClose}
                 variant="ghost"
@@ -577,7 +577,7 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
                     onClick={handleOpenWorkflow}
                     disabled={!embeddedWorkflow || isOpeningWorkflow}
                     size="sm"
-                    className="absolute right-4 top-4 z-[100006] h-10 gap-2 rounded-xl border border-white/15 bg-[#3069f0] px-3.5 text-[11px] font-bold text-white shadow-[0_10px_30px_rgba(0,0,0,0.45)] backdrop-blur-md hover:bg-[#3f78f5] disabled:opacity-70 md:right-6 md:top-6 md:px-4 md:text-[12px]"
+                    className="absolute right-4 top-safe-4 z-[100006] h-10 gap-2 rounded-xl border border-white/15 bg-[#3069f0] px-3.5 text-[11px] font-bold text-white shadow-[0_10px_30px_rgba(0,0,0,0.45)] backdrop-blur-md hover:bg-[#3f78f5] disabled:opacity-70 md:right-6 md:px-4 md:text-[12px]"
                     aria-label={t('promptHistory.workflowRecovery.open')}
                     title={isCheckingWorkflow ? t('promptHistory.workflowRecovery.checking') : t('promptHistory.workflowRecovery.open')}
                   >
