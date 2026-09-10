@@ -21,6 +21,7 @@ import { VersionHistorySheet } from './VersionHistorySheet';
 import { RenameSheet } from './RenameSheet';
 import { ChatComposer } from './ChatComposer';
 import { useAttachments } from './useAttachments';
+import { GalleryAttachPicker } from './GalleryAttachPicker';
 import { MAX_ATTACHMENTS } from './attachments';
 import { NEW_CHAT_PRESETS, resolveSavedTarget, serverIdOf, sessionTitle } from './binding';
 import { graphHash } from './graphHash';
@@ -47,10 +48,11 @@ export default function ChatPage() {
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [pending, setPending] = useState<Workflow | null>(null); // workflow chosen for a not-yet-created session
   const [draft, setDraft] = useState(() => params.get('draft') ?? '');
-  const onRejectFile = useCallback((reason: string, file: File) => toast.error(`${file.name}: ${at(reason, { count: MAX_ATTACHMENTS })}`), [at]);
+  const onRejectFile = useCallback((reason: string, file?: File) => toast.error(`${file ? `${file.name}: ` : ''}${at(reason, { count: MAX_ATTACHMENTS })}`), [at]);
   const attachments = useAttachments(api.baseUrl, onRejectFile);
   const [busy, setBusy] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(params.get('pick') === '1');
+  const [libraryPicker, setLibraryPicker] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -249,7 +251,7 @@ export default function ChatPage() {
         </div>}
         {session && <DraftStatusLine session={session} saving={saving} canSave={ready && !busy && !saving && !task} onSave={() => void openSave(session.version)} />}
         <ChatComposer value={draft} onChange={setDraft} disabled={!ready} placeholder={ready ? at('描述你想要的效果，或告诉助手如何调整…') : at('等待模型连接')}
-          attachments={attachments.items} onAddFiles={attachments.add} onRemoveAttachment={attachments.remove} onRetryAttachment={attachments.retry}
+          attachments={attachments.items} onAddFiles={attachments.add} onPickFromLibrary={ready ? () => setLibraryPicker(true) : undefined} onRemoveAttachment={attachments.remove} onRetryAttachment={attachments.retry}
           canSend={canSend} onSend={() => void action(send)} />
       </div>
     </footer>
@@ -259,6 +261,7 @@ export default function ChatPage() {
       setSnapshot(p => p ? { ...p, session: next } : p);
     })} />
     <WorkflowPickerSheet open={pickerOpen} onOpenChange={setPickerOpen} onPick={setPending} />
+    {libraryPicker && <GalleryAttachPicker title={at('从相册选择')} onClose={() => setLibraryPicker(false)} onPick={path => { if (attachments.addServerFile(path)) toast.success(at('已添加到附件')); }} />}
     {session && <LibrarySaveSheet open={saveOpen} onOpenChange={setSaveOpen} session={session} draft={saveDraft} service={library} defaultName={title} onViewTarget={workflowId => { const local = workflows.find(w => w.id === workflowId); if (local) navigate(`/workflow/${local.id}`); }} onSave={runSave} />}
     {snapshot && <VersionHistorySheet open={historyOpen} onOpenChange={setHistoryOpen} versions={snapshot.versions} current={snapshot.session.version} busy={busy || !!task} onSave={version => void openSave(version)} onRestore={version => void action(async () => { await api.restore(snapshot.session.id, version, snapshot.session.version); setSnapshot(await api.snapshot(snapshot.session.id)); })} />}
     <SimpleConfirmDialog isOpen={deleteOpen} onClose={() => setDeleteOpen(false)} onConfirm={() => { setDeleteOpen(false); void action(async () => { if (!session) return; await api.remove(session.id); navigate('/chats', { replace: true }); }); }} title={at('删除会话')} message={at('只删除对话记录和版本历史，工作流库里的工作流会保留。')} confirmText={at('删除')} cancelText={at('取消')} />

@@ -17,6 +17,7 @@ import { SheetFrame, WorkflowPickerSheet } from '../WorkflowPickerSheet';
 import { AgentTranscript } from '../transcript/AgentTranscript';
 import { useAgentText } from '../useAgentText';
 import { useAttachments } from '../useAttachments';
+import { GalleryAttachPicker } from '../GalleryAttachPicker';
 import { MAX_ATTACHMENTS } from '../attachments';
 import { NEW_CHAT_PRESETS, sessionTitle } from '../binding';
 import { accentChip, chipButton } from '../chatStyles';
@@ -59,7 +60,8 @@ export function WorkspaceChatPage({ baseUrl, status }: { baseUrl: string; status
   const registered = useRef(new Map<string, Asset>());
   const messageRequest = useRef<{ key: string; id: string } | null>(null);
   const commands = useRef(new WorkspaceCommands());
-  const attachments = useAttachments(baseUrl, useCallback((reason: string, file: File) => toast.error(`${file.name}: ${at(reason, { count: MAX_ATTACHMENTS })}`), [at]));
+  const attachments = useAttachments(baseUrl, useCallback((reason: string, file?: File) => toast.error(`${file ? `${file.name}: ` : ''}${at(reason, { count: MAX_ATTACHMENTS })}`), [at]));
+  const [libraryPicker, setLibraryPicker] = useState(false);
   const scroll = useRef<HTMLDivElement>(null); const [nearBottom, setNearBottom] = useState(true); const follow = useRef(true);
   const setActive = useAgentActivityStore(state => state.setActive);
   const task = view.snapshot?.tasks.find(task => activeStates.has(task.state));
@@ -206,7 +208,8 @@ export function WorkspaceChatPage({ baseUrl, status }: { baseUrl: string; status
       {target?.archivedAt != null && <div className="text-xs text-amber-300 flex flex-wrap items-center gap-2"><span>{at('此创作已归档，请恢复或清除调整对象后继续。')}</span><button className={chipButton} onClick={() => setManagedDraft(target)}>{at('管理创作')}</button></div>}
       {!!context.selectedAssetIds?.length && <div data-workspace-references><p className="text-[11px] text-slate-400 mb-1">{at('参考素材')}</p><div className="flex gap-2 overflow-x-auto">{context.selectedAssetIds.map(assetId => <div key={assetId} className="w-20 shrink-0 relative"><WorkspaceMedia assetId={assetId} compact /><button disabled={busy} className="absolute top-0 right-0 rounded-full bg-black/70 p-1" aria-label={at('移除参考素材')} onClick={() => setContext(previous => ({ ...previous, selectedAssetIds: previous.selectedAssetIds?.filter(id => id !== assetId) }))}><X size={12} /></button></div>)}</div></div>}
       {task && <div className="flex items-center gap-2 p-2 rounded-xl bg-blue-500/10 text-blue-400 text-xs" role="status"><Loader2 size={14} className="animate-spin" /><span className="flex-1">{at(task.workspace?.waitingReason?.type === 'selection' ? '等待选择' : task.state === 'waiting_user' ? '等待你确认生成' : task.state === 'waiting_comfy' ? 'ComfyUI 正在生成' : '正在处理')}</span><button className={chipButton} disabled={busy} onClick={() => void action(async () => { await api.cancel(sessionId, task.id); view.refresh(); })}><Square size={10} />{at('停止')}</button></div>}
-      <ChatComposer value={text} onChange={setText} disabled={!status.providerReady || busy || !!session?.archivedAt} placeholder={at('描述你想要的效果，或告诉助手如何调整…')} attachments={attachments.items} onAddFiles={attachments.add} onRemoveAttachment={attachments.remove} onRetryAttachment={attachments.retry} canSend={canSend} onSend={() => void action(() => send())} />
+      <ChatComposer value={text} onChange={setText} disabled={!status.providerReady || busy || !!session?.archivedAt} placeholder={at('描述你想要的效果，或告诉助手如何调整…')} attachments={attachments.items} onAddFiles={attachments.add} onPickFromLibrary={!status.providerReady || busy || !!session?.archivedAt ? undefined : () => setLibraryPicker(true)} onRemoveAttachment={attachments.remove} onRetryAttachment={attachments.retry} canSend={canSend} onSend={() => void action(() => send())} />
+      {libraryPicker && <GalleryAttachPicker title={at('从相册选择')} onClose={() => setLibraryPicker(false)} onPick={path => { if (attachments.addServerFile(path)) toast.success(at('已添加到附件')); }} />}
     </div></footer>
     <DraftPicker open={draftsOpen} onOpenChange={setDraftsOpen} onPick={draft => adjust({ draftId: draft.id, revision: draft.headRevision })} onHistory={setHistory} onImport={() => { setDraftsOpen(false); setPicker(true); }} onManage={setManagedDraft} onImportRecovery={() => { setDraftsOpen(false); setImportRecovery(true); }} />
     {importRecovery && <DraftRecoveryImportSheet serverId={status.serverId ?? ''} onClose={() => setImportRecovery(false)} onImported={identity => navigate(workspaceCanvasPath(sessionId, { draftId: identity.draftId, revision: identity.openedRevision }, identity.copyId))} />}

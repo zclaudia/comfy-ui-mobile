@@ -44,7 +44,8 @@ export async function uploadAttachment(baseUrl: string, file: File, signal?: Abo
 }
 
 export interface LocalAttachment {
-  id: string; file: File; kind: AgentAttachment['kind']; previewUrl?: string;
+  /** Picked local files upload before send; library references are already on the server and carry no File. */
+  id: string; file?: File; kind: AgentAttachment['kind']; previewUrl?: string;
   status: 'uploading' | 'done' | 'error'; uploaded?: AgentAttachment; error?: string;
 }
 
@@ -52,7 +53,7 @@ export interface LocalAttachment {
  * Uploads start as soon as a file is picked so sending only waits on stragglers. Object URLs are revoked on removal and
  * unmount. Side effects (uploads, toasts, object URLs) run outside state updaters so StrictMode's double invocation is harmless.
  */
-export function useAttachments(baseUrl: string, onReject: (reason: string, file: File) => void) {
+export function useAttachments(baseUrl: string, onReject: (reason: string, file?: File) => void) {
   const [items, setItems] = useState<LocalAttachment[]>([]);
   const latest = useRef(items); // mirrors state for callbacks that need the current list synchronously
   latest.current = items;
@@ -61,6 +62,7 @@ export function useAttachments(baseUrl: string, onReject: (reason: string, file:
   const patch = useCallback((id: string, update: Partial<LocalAttachment>) => commit(latest.current.map(item => item.id === id ? { ...item, ...update } : item)), [commit]);
 
   const upload = useCallback((item: LocalAttachment) => {
+    if (!item.file) return;
     const controller = new AbortController();
     controllers.current.set(item.id, controller);
     uploadAttachment(baseUrl, item.file, controller.signal)
@@ -84,7 +86,26 @@ export function useAttachments(baseUrl: string, onReject: (reason: string, file:
     for (const item of added) upload(item);
   }, [commit, onReject, upload]);
 
-  const release = useCallback((item: LocalAttachment) => { controllers.current.get(item.id)?.abort(); if (item.previewUrl) URL.revokeObjectURL(item.previewUrl); }, []);
+  /** Attach a file that already lives on the ComfyUI server — e.g. picked from the outputs gallery, whose
+   * selection mode auto-copies non-input files into the input folder first. `path` is `subfolder/filename`
+   * inside the input folder; no upload happens. Returns false when the attachment was rejected. */
+  const addServerFile = useCallback((path: string) => {
+    const filename = path.split('/').pop() ?? path;
+    const subfolder = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
+    const kind = attachmentKind({ name: filename });
+    const reason = rejectReason({ name: filename, size: 0 }, latest.current.length);
+    if (reason) { onReject(reason); return false; }
+    const view = new URL(`${baseUrl.replace(/\/$/, '')}/view`);
+    view.search = new URLSearchParams({ filename, subfolder, type: 'input' }).toString();
+    const uploaded: AgentAttachment = { filename, subfolder, type: 'input', kind, name: filename };
+    commit([...latest.current, { id: crypto.randomUUID(), kind, status: 'done', uploaded, previewUrl: kind === 'image' ? view.toString() : undefined }]);
+    return true;
+  }, [baseUrl, commit, onReject]);
+
+  const release = useCallback((item: LocalAttachment) => {
+    controllers.current.get(item.id)?.abort();
+    if (item.previewUrl?.startsWith('blob:')) URL.revokeObjectURL(item.previewUrl);
+  }, []);
   const remove = useCallback((id: string) => {
     const gone = latest.current.find(item => item.id === id);
     if (!gone) return;
@@ -103,5 +124,5 @@ export function useAttachments(baseUrl: string, onReject: (reason: string, file:
   const uploaded = useMemo(() => items.flatMap(item => item.uploaded ? [item.uploaded] : []), [items]);
   const uploading = items.some(item => item.status === 'uploading');
   const failed = items.some(item => item.status === 'error');
-  return { items, add, remove, retry, clear, uploaded, uploading, failed };
+  return { items, add, addServerFile, remove, retry, clear, uploaded, uploading, failed };
 }
