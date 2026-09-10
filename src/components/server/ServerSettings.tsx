@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
 import { useTranslation } from 'react-i18next';
 import { Input } from '@/components/ui/input';
-import { ArrowLeft, WifiOff, Loader2, CheckCircle, XCircle, Info, Power, Eye, EyeOff, ShieldCheck, Check, ExternalLink, ChevronDown } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { WifiOff, Loader2, CheckCircle, XCircle, Info, Power, Eye, EyeOff, ShieldCheck, Check, ExternalLink, ChevronDown } from 'lucide-react';
+import { PageHeader } from '@/components/navigation/PageHeader';
 import { useConnectionStore } from '@/ui/store/connectionStore';
 import { Label } from '@/components/ui/label';
 import { getDefaultGatewayUrl } from '@/config/runtime';
@@ -16,7 +15,6 @@ interface ServerSettingsProps {
 
 const ServerSettings: React.FC<ServerSettingsProps> = ({ onBack }) => {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const {
     url,
     isConnected,
@@ -135,15 +133,6 @@ const ServerSettings: React.FC<ServerSettingsProps> = ({ onBack }) => {
     'http://localhost:8080',
   ].filter(Boolean)));
 
-  const handleBackNavigation = () => {
-    if (onBack) {
-      onBack();
-    } else {
-      sessionStorage.setItem('app-navigation', 'true');
-      navigate('/', { replace: true });
-    }
-  };
-
   return (
     <div
       className="bg-black transition-colors duration-300 pwa-container"
@@ -173,28 +162,7 @@ const ServerSettings: React.FC<ServerSettingsProps> = ({ onBack }) => {
         }}
       >
         {/* Header */}
-        <header className="sticky top-0 z-50 pwa-header bg-[#0b0c0f]/95 backdrop-blur-xl border-b border-white/[0.08] relative overflow-hidden">
-          <div className="relative z-10 flex items-center justify-between p-4">
-            <div className="flex items-center space-x-3">
-              <Button
-                onClick={handleBackNavigation}
-                variant="ghost"
-                size="sm"
-                className="bg-white/[0.045] border border-white/[0.08] hover:bg-white/[0.08] transition-all h-9 w-9 p-0 flex-shrink-0 rounded-[10px] text-[#c8ccd4]"
-              >
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
-              <div>
-                <h1 className="text-[15px] font-bold text-[#e9ebef] leading-none">
-                  {t('serverSettings.title')}
-                </h1>
-                <p className="font-mono text-[9px] font-medium text-[#565d6b] tracking-[0.12em] uppercase mt-1">
-                  {t('serverSettings.subtitle')}
-                </p>
-              </div>
-            </div>
-          </div>
-        </header>
+        <PageHeader title={t('serverSettings.title')} subtitle={t('serverSettings.subtitle')} onBack={onBack} />
 
         {/* Content */}
         <div className="container mx-auto px-4 py-4 max-w-xl space-y-3">

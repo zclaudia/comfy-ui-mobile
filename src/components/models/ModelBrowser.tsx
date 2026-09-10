@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { PageHeader } from '@/components/navigation/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -22,7 +22,6 @@ import {
   X,
   Plus,
   CheckCircle,
-  ArrowLeft,
   FileImage,
   FileCode,
   FileArchive,
@@ -76,7 +75,6 @@ interface ModelBrowserProps {
 
 const ModelBrowser: React.FC<ModelBrowserProps> = ({ serverUrl: propServerUrl }) => {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const { url: storeServerUrl } = useConnectionStore();
   const serverUrl = resolveGatewayUrl(propServerUrl || storeServerUrl);
 
@@ -465,11 +463,6 @@ const ModelBrowser: React.FC<ModelBrowserProps> = ({ serverUrl: propServerUrl })
     .filter(model => model.size >= MIN_FILE_SIZE);
   const isLoRAFolder = selectedFolder === 'loras' || displayModels.some(m => m.folder_type === 'loras');
 
-  const handleBack = () => {
-    sessionStorage.setItem('app-navigation', 'true');
-    navigate('/', { replace: true });
-  };
-
   // Get file type icon based on extension
   const getFileIcon = (extension: string) => {
     switch (extension.toLowerCase()) {
@@ -522,29 +515,7 @@ const ModelBrowser: React.FC<ModelBrowserProps> = ({ serverUrl: propServerUrl })
         }}
       >
         {/* Header */}
-        <div className="sticky top-0 z-50 pwa-header bg-[#0b0c0f]/95 backdrop-blur-xl border-b border-white/[0.08] relative overflow-hidden">
-          <div className="relative z-10 p-4 space-y-2">
-            {/* First Row - Back Button, Title, and Upload */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                <Button
-                  onClick={handleBack}
-                  variant="ghost"
-                  size="sm"
-                  className="bg-white/[0.045] border border-white/[0.08] hover:bg-white/[0.08] transition-all h-9 w-9 p-0 flex-shrink-0 rounded-[10px] text-[#c8ccd4]"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                </Button>
-                <div>
-                  <h1 className="text-[15px] font-bold text-[#e9ebef] leading-none">
-                    {t('modelBrowser.title')}
-                  </h1>
-                  <p className="font-mono text-[9px] font-medium text-[#565d6b] tracking-[0.12em] uppercase mt-1">
-                    {t('modelBrowser.subtitle')}
-                  </p>
-                </div>
-              </div>
-
+        <PageHeader title={t('modelBrowser.title')} subtitle={t('modelBrowser.subtitle')} right={
               <Button
                 onClick={openUploadModal}
                 variant="default"
@@ -554,9 +525,9 @@ const ModelBrowser: React.FC<ModelBrowserProps> = ({ serverUrl: propServerUrl })
               >
                 <Upload className="h-4 w-4" />
               </Button>
-            </div>
-
-            {/* Second Row - Search and Filter Controls */}
+        }>
+          <div className="px-3 pb-3 space-y-2">
+            {/* Search and Filter Controls */}
             <div className="flex items-center space-x-2">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-3.5 w-3.5 text-white/30" />
@@ -589,7 +560,7 @@ const ModelBrowser: React.FC<ModelBrowserProps> = ({ serverUrl: propServerUrl })
               </div>
             )}
           </div>
-        </div>
+        </PageHeader>
 
         {/* Content */}
         <div className="container mx-auto px-4 py-5 max-w-6xl">

@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { PageHeader } from '@/components/navigation/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Video, Download, X, AlertTriangle, CheckCircle, Loader2, Play, ExternalLink, Globe, RefreshCw } from 'lucide-react';
+import { Video, Download, X, AlertTriangle, CheckCircle, Loader2, Play, ExternalLink, Globe, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { useConnectionStore } from '@/ui/store/connectionStore';
 import ComfyUIService from '@/infrastructure/api/ComfyApiClient';
@@ -36,7 +36,6 @@ interface VideoDownloadResponse {
 
 const VideoDownloader: React.FC = () => {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const { isConnected, hasExtension, isCheckingExtension } = useConnectionStore();
 
   // Form state
@@ -56,11 +55,6 @@ const VideoDownloader: React.FC = () => {
   const [isDownloadActive, setIsDownloadActive] = useState(false);
 
   const hasServerRequirements = isConnected && hasExtension;
-
-  const handleBack = () => {
-    sessionStorage.setItem('app-navigation', 'true');
-    navigate('/', { replace: true });
-  };
 
   // Listen to log events
   useEffect(() => {
@@ -275,26 +269,7 @@ const VideoDownloader: React.FC = () => {
         }}
       >
         {/* Header */}
-        <header className="sticky top-0 z-50 pwa-header bg-[#0b0c0f]/95 backdrop-blur-xl border-b border-white/[0.08] relative overflow-hidden">
-          <div className="relative z-10 flex items-center justify-between p-4">
-            <div className="flex items-center space-x-3">
-              <Button
-                onClick={handleBack}
-                variant="ghost"
-                size="sm"
-                className="bg-white/[0.045] border border-white/[0.08] hover:bg-white/[0.08] transition-all h-9 w-9 p-0 flex-shrink-0 rounded-[10px] text-[#c8ccd4]"
-              >
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
-              <div>
-                <h1 className="text-[15px] font-bold text-[#e9ebef] leading-none">
-                  {t('videoDownloader.title')}
-                </h1>
-                <p className="font-mono text-[9px] font-medium text-[#565d6b] tracking-[0.12em] uppercase mt-1">
-                  {t('videoDownloader.subtitle')}
-                </p>
-              </div>
-            </div>
+        <PageHeader title={t('videoDownloader.title')} subtitle={t('videoDownloader.subtitle')} right={
             <Button
               onClick={() => window.open('https://github.com/yt-dlp/yt-dlp#supported-sites', '_blank')}
               variant="outline"
@@ -304,8 +279,7 @@ const VideoDownloader: React.FC = () => {
             >
               <Globe className="h-4 w-4" />
             </Button>
-          </div>
-        </header>
+        } />
 
         <div className="container mx-auto px-4 py-5 max-w-4xl space-y-2">
           {/* Server Requirements Card */}

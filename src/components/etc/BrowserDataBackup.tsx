@@ -12,7 +12,6 @@ import {
   Clock,
   HardDrive,
   Server,
-  ArrowLeft,
   Settings,
   Shield,
   ShieldAlert,
@@ -24,6 +23,7 @@ import { Separator } from '@/components/ui/separator';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
+import { PageHeader } from '@/components/navigation/PageHeader';
 import { useTranslation } from 'react-i18next';
 import {
   getAllTranslationDrafts,
@@ -548,19 +548,7 @@ export const BrowserDataBackup: React.FC = () => {
             position: 'absolute'
           }}
         >
-          <header className="sticky top-0 z-50 bg-[#0b0c0f]/95 backdrop-blur-xl border-b border-white/[0.08] relative overflow-hidden">
-            <div className="relative z-10 p-4">
-              <div className="flex items-center space-x-4">
-                <Button onClick={() => navigate(-1)} variant="outline" size="sm" className="bg-white/[0.045] border border-white/[0.08] hover:bg-white/[0.08] h-9 w-9 p-0 rounded-[10px] text-[#c8ccd4]">
-                  <ArrowLeft className="h-4 w-4" />
-                </Button>
-                <div>
-                  <h1 className="text-[15px] font-bold text-[#e9ebef]">{t('backup.title')}</h1>
-                  <p className="font-mono text-[9px] font-medium text-[#565d6b] tracking-[0.12em] uppercase mt-1">{t('backup.subtitle')}</p>
-                </div>
-              </div>
-            </div>
-          </header>
+          <PageHeader title={t('backup.title')} subtitle={t('backup.subtitle')} />
           <div className="container mx-auto px-4 py-5 max-w-2xl">
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-[#ffa348]/[0.06] border border-[#ffa348]/[0.22] rounded-xl p-4 text-center shadow-xl">
               <div className="bg-[#ffa348]/[0.12] border border-[#ffa348]/30 p-0 rounded-[10px] w-9 h-9 flex items-center justify-center mx-auto mb-4">
@@ -622,13 +610,10 @@ export const BrowserDataBackup: React.FC = () => {
             position: 'absolute'
           }}
         >
+          <PageHeader title={t('backup.title')} subtitle={t('backup.subtitle')} />
           <div className="container mx-auto px-4 py-5 max-w-2xl relative">
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center">
-              <Button onClick={() => navigate(-1)} variant="ghost" className="absolute top-0 left-0 text-[#8a919e]">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back
-              </Button>
-              <div className="bg-[#f25555]/[0.08] border border-[#f25555]/25 rounded-xl shadow-xl p-4 mt-12">
+              <div className="bg-[#f25555]/[0.08] border border-[#f25555]/25 rounded-xl shadow-xl p-4">
                 <div className="bg-[#f25555]/[0.12] border border-[#f25555]/30 p-0 rounded-[10px] w-9 h-9 flex items-center justify-center mx-auto mb-4">
                   <AlertTriangle className="w-6 h-6 text-white" />
                 </div>
@@ -679,19 +664,7 @@ export const BrowserDataBackup: React.FC = () => {
           position: 'absolute'
         }}
       >
-        <header className="sticky top-0 z-50 bg-[#0b0c0f]/95 backdrop-blur-xl border-b border-white/[0.08] relative overflow-hidden">
-          <div className="relative z-10 p-4">
-            <div className="flex items-center space-x-4">
-              <Button onClick={() => navigate(-1)} variant="outline" size="sm" className="bg-white/[0.045] border border-white/[0.08] hover:bg-white/[0.08] h-9 w-9 p-0 rounded-[10px] text-[#c8ccd4]">
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
-              <div>
-                <h1 className="text-[15px] font-bold text-[#e9ebef]">{t('backup.title')}</h1>
-                <p className="font-mono text-[9px] font-medium text-[#565d6b] tracking-[0.12em] uppercase mt-1">{t('backup.subtitle')}</p>
-              </div>
-            </div>
-          </div>
-        </header>
+        <PageHeader title={t('backup.title')} subtitle={t('backup.subtitle')} />
 
         <div className="container mx-auto px-4 py-5 max-w-2xl relative">
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="border border-white/[0.08] rounded-xl p-3.5 space-y-2" style={{ background: 'rgba(255,255,255,0.025)' }}>

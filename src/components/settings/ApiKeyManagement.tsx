@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, KeyRound, Plus, Trash2, Eye, EyeOff, ShieldCheck, AlertTriangle, CheckCircle, ExternalLink, Loader2 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { KeyRound, Plus, Trash2, Eye, EyeOff, ShieldCheck, AlertTriangle, CheckCircle, ExternalLink, Loader2 } from 'lucide-react';
+import { PageHeader } from '@/components/navigation/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -56,7 +56,6 @@ const SUPPORTED_PROVIDERS = [
 
 export const ApiKeyManagement: React.FC = () => {
   const { t, i18n } = useTranslation();
-  const navigate = useNavigate();
   const [apiKeys, setApiKeys] = useState<ApiKeyInfo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -169,33 +168,11 @@ export const ApiKeyManagement: React.FC = () => {
     return SUPPORTED_PROVIDERS.find(p => p.id === providerId);
   };
 
-  const handleBack = () => {
-    sessionStorage.setItem('app-navigation', 'true');
-    navigate('/', { replace: true });
-  };
-
   return (
     <div className="pwa-container bg-[#0b0c0f] text-white overflow-hidden">
       <div className="absolute inset-0 bg-[#0b0c0f]" />
       <div className="absolute inset-0 overflow-y-auto overflow-x-hidden custom-scrollbar" style={{ WebkitOverflowScrolling: 'touch' }}>
-        <header className="sticky top-0 z-50 pwa-header bg-[#0b0c0f]/95 backdrop-blur-xl border-b border-white/[0.08]">
-          <div className="flex items-center justify-between p-4">
-            <div className="flex items-center gap-3 min-w-0">
-              <Button
-                onClick={handleBack}
-                variant="ghost"
-                size="sm"
-                className="h-9 w-9 p-0 shrink-0 rounded-[10px] bg-white/[0.045] border border-white/[0.08] text-[#c8ccd4] hover:bg-white/[0.08] hover:text-white"
-              >
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
-              <div className="min-w-0">
-                <h1 className="text-[15px] font-bold text-[#e9ebef] leading-none truncate">{t('apiKeyManagement.title')}</h1>
-                <p className="font-mono text-[9px] font-medium text-[#565d6b] tracking-[0.12em] uppercase mt-1 truncate">
-                  {t('apiKeyManagement.subtitle')}
-                </p>
-              </div>
-            </div>
+        <PageHeader title={t('apiKeyManagement.title')} subtitle={t('apiKeyManagement.subtitle')} right={
             <Button
               onClick={() => setShowAddForm((current) => !current)}
               className="h-9 w-9 p-0 shrink-0 rounded-[10px] bg-[#3069f0] hover:bg-[#3f78f5] text-white active:scale-95"
@@ -203,8 +180,7 @@ export const ApiKeyManagement: React.FC = () => {
             >
               <Plus className={`h-4 w-4 transition-transform ${showAddForm ? 'rotate-45' : ''}`} strokeWidth={2} />
             </Button>
-          </div>
-        </header>
+        } />
 
         <main className="container mx-auto max-w-xl px-4 py-4 space-y-3">
           <section className="rounded-xl border border-[#34c77b]/20 p-3.5" style={{ background: 'rgba(52,199,123,.07)' }}>

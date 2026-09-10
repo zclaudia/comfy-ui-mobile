@@ -1,3 +1,4 @@
+import { CloseButton } from '@/components/navigation/PageHeader';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { comfyAuthenticatedFetch } from '@/infrastructure/auth/ComfyAuthService';
@@ -323,12 +324,7 @@ export const WorkflowSnapshots: React.FC<WorkflowSnapshotsProps> = ({
             {/* Sticky Header */}
             <div className="absolute top-0 left-0 w-full z-30 flex items-center justify-between border-b h-11 pl-4 pr-[40px] bg-[#0f1116]/90 backdrop-blur-xl border-white/[0.08]">
               <div className="absolute right-3 top-1/2 -translate-y-1/2 flex-shrink-0">
-                <button
-                  onClick={onClose}
-                  className="p-1.5 rounded-lg bg-white/[0.06] text-[#9aa3b2] hover:text-white hover:bg-white/[0.1] transition-all pointer-events-auto"
-                >
-                  <X className="w-4 h-4" />
-                </button>
+                <CloseButton onClick={onClose} className="pointer-events-auto" />
               </div>
 
               <div className="flex items-center gap-2 flex-1 min-w-0 pointer-events-none">

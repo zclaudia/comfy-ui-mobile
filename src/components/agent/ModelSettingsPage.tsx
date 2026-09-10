@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useGoBack } from '@/components/navigation/useGoBack';
 import { Check, Eye, Loader2, Pencil, Plus, Trash2 } from 'lucide-react';
 import type { AgentModel, AgentModelInput, AgentModels } from '@/infrastructure/api/AgentApi';
 import { SimpleConfirmDialog } from '@/components/ui/SimpleConfirmDialog';
@@ -14,6 +15,7 @@ const button = 'h-10 px-3 rounded-xl border border-white/10 bg-white/5 text-sm d
 export default function ModelSettingsPage() {
   const at = useAgentText();
   const navigate = useNavigate();
+  const goBack = useGoBack();
   const { api, state } = useAgentStatus();
   const [data, setData] = useState<AgentModels | null>(null);
   const [editing, setEditing] = useState<AgentModel | 'new' | null>(null);
@@ -53,7 +55,7 @@ export default function ModelSettingsPage() {
     && Number.isInteger(form.stepTimeoutSeconds) && (form.stepTimeoutSeconds ?? 0) >= 30 && (form.stepTimeoutSeconds ?? 0) <= 1800;
 
   return <main className="h-dvh flex flex-col text-[#e9ebef] bg-[#0b0c0f]">
-    <ChatHeader title={at('助手模型')} onBack={() => navigate(-1)} />
+    <ChatHeader title={at('助手模型')} onBack={goBack} />
     <div className="flex-1 overflow-y-auto px-4 py-5 pb-10 w-full max-w-2xl mx-auto space-y-5" style={{ paddingBottom: 'max(2.5rem, env(safe-area-inset-bottom))' }}>
       <p className="text-sm leading-6 text-slate-400">{at('配置用于对话和上下文压缩的语言模型。切换模型从下一条消息生效，所有设备共享配置。')}</p>
       {state === 'no-gateway' && <button className={button} onClick={() => navigate('/settings/server')}>{at('打开连接设置')}</button>}

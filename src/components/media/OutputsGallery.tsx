@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { ArrowLeft, Image as ImageIcon, Video, Loader2, RefreshCw, Server, AlertCircle, CheckCircle, Trash2, FolderOpen, Check, X, MousePointer, ChevronLeft, CheckSquare, Copy, LayoutGrid, FolderTree, ChevronRight } from 'lucide-react';
+import { BackButton, CloseButton } from '@/components/navigation/PageHeader';
+import { Image as ImageIcon, Video, Loader2, RefreshCw, Server, AlertCircle, CheckCircle, Trash2, FolderOpen, Check, X, MousePointer, CheckSquare, Copy, LayoutGrid, FolderTree, ChevronRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
@@ -10,7 +11,6 @@ import { IComfyFileInfo } from '@/shared/types/comfy/IComfyFile';
 import { useConnectionStore } from '@/ui/store/connectionStore';
 import { FilePreviewModal } from '../modals/FilePreviewModal';
 import { SimpleConfirmDialog } from '../ui/SimpleConfirmDialog';
-import { useNavigate } from 'react-router-dom';
 import { isImageFile, isVideoFile } from '@/shared/utils/ComfyFileUtils';
 import { AuthenticatedImage } from './AuthenticatedImage';
 
@@ -318,7 +318,6 @@ export const OutputsGallery: React.FC<OutputsGalleryProps> = ({
   const [showMovePanel, setShowMovePanel] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
 
-  const navigate = useNavigate();
   const { url: serverUrl, isConnected, hasExtension, isCheckingExtension, checkExtension } = useConnectionStore();
 
   // Memoize the service instance to prevent infinite loops
@@ -484,31 +483,13 @@ export const OutputsGallery: React.FC<OutputsGalleryProps> = ({
     return () => observer.disconnect();
   }, []);
 
-  const handleGoBack = () => {
-    // If inside a subfolder in folder view, go back to parent folder
-    if (viewMode === 'folders' && selectedSubfolder && selectedSubfolder !== '/') {
-      const parts = selectedSubfolder.split('/').filter(Boolean);
-      if (parts.length <= 1) {
-        setSelectedSubfolder('/');
-      } else {
-        parts.pop();
-        setSelectedSubfolder(parts.join('/'));
-      }
-      return;
-    }
-
-    // If at root of folder view, we can either stay or go back to main menu
-    // User requested Root Folder to main screen behavior
-    if (viewMode === 'folders' && selectedSubfolder === '/') {
-      // Just let it fall through to the default navigate('/workflows')
-    }
-
-    // Otherwise, use default go back behavior
-    if (isFileSelectionMode && onBackClick) {
-      onBackClick();
-    } else {
-      navigate('/workflows');
-    }
+  // A subfolder is a pushed level inside the tab: the arrow pops it. The tab root has no "back".
+  const insideSubfolder = viewMode === 'folders' && !!selectedSubfolder && selectedSubfolder !== '/';
+  const leaveSubfolder = () => {
+    if (!insideSubfolder || !selectedSubfolder) return;
+    const parts = selectedSubfolder.split('/').filter(Boolean);
+    parts.pop();
+    setSelectedSubfolder(parts.length ? parts.join('/') : '/');
   };
 
   // Check if any folder is selected
@@ -872,14 +853,7 @@ export const OutputsGallery: React.FC<OutputsGalleryProps> = ({
         />
         {/* Single-row header: back tile | title + mono sub | action tiles */}
         <div className="relative flex items-center gap-2.5 px-3.5 pt-3 pb-2 md:px-8 pointer-events-auto">
-          <button
-            onClick={handleGoBack}
-            className="w-9 h-9 shrink-0 flex items-center justify-center rounded-[10px] border border-white/10 text-[#e9ebef] backdrop-blur-md transition-all active:scale-95"
-            style={{ background: 'rgba(255,255,255,0.06)' }}
-            title={t('common.back')}
-          >
-            <ChevronLeft className="h-[17px] w-[17px]" strokeWidth={1.9} />
-          </button>
+          {insideSubfolder && <BackButton onClick={leaveSubfolder} />}
 
           <div className="flex-1 min-w-0">
             <h1 className="text-[19px] font-extrabold text-white leading-[1.15] tracking-[-0.01em] truncate">
@@ -969,6 +943,9 @@ export const OutputsGallery: React.FC<OutputsGalleryProps> = ({
                 {isSelectionMode ? <X className="h-4 w-4" strokeWidth={2} /> : <CheckSquare className="h-4 w-4" strokeWidth={1.8} />}
               </button>
             )}
+
+            {/* As a picker the gallery is an overlay on top of an editor: X dismisses it */}
+            {isFileSelectionMode && onBackClick && <CloseButton onClick={onBackClick} />}
           </div>
         </div>
       </header>

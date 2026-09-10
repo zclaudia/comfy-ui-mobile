@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { AlertCircle, Link as LinkIcon, ArrowLeft, RefreshCw, Plus, Play, Edit2, Trash2, Loader2, XCircle } from 'lucide-react';
+import { PageHeader, headerTile, headerTileStyle } from '@/components/navigation/PageHeader';
+import { AlertCircle, Link as LinkIcon, RefreshCw, Plus, Play, Edit2, Trash2, Loader2, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -350,21 +351,9 @@ const WorkflowChainList: React.FC = () => {
   // Show connection error if not connected
   if (!isConnected) {
     return (
-      <div className="container mx-auto p-6 max-w-4xl">
-        <div className="flex items-center gap-4 mb-6">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => navigate('/workflows')}
-            className="rounded-full"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div>
-            <h1 className="text-3xl font-bold">{t('workflowChain.title')}</h1>
-            <p className="text-muted-foreground">{t('workflowChain.subtitle')}</p>
-          </div>
-        </div>
+      <div className="fixed inset-0 overflow-y-auto bg-[#0b0c0f] text-[#e9ebef]">
+        <PageHeader title={t('workflowChain.title')} subtitle={t('workflowChain.subtitle')} fallback="/workflows" />
+        <div className="container mx-auto p-6 max-w-4xl">
 
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
@@ -373,6 +362,7 @@ const WorkflowChainList: React.FC = () => {
             {t('workflowChain.connectServerFirst')}
           </AlertDescription>
         </Alert>
+        </div>
       </div>
     );
   }
@@ -380,24 +370,13 @@ const WorkflowChainList: React.FC = () => {
   // Show extension check loading
   if (checkingExtension) {
     return (
-      <div className="container mx-auto p-6 max-w-4xl">
-        <div className="flex items-center gap-4 mb-6">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => navigate('/workflows')}
-            className="rounded-full"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div>
-            <h1 className="text-3xl font-bold">{t('workflowChain.title')}</h1>
-            <p className="text-muted-foreground">{t('workflowChain.subtitle')}</p>
-          </div>
-        </div>
+      <div className="fixed inset-0 overflow-y-auto bg-[#0b0c0f] text-[#e9ebef]">
+        <PageHeader title={t('workflowChain.title')} subtitle={t('workflowChain.subtitle')} fallback="/workflows" />
+        <div className="container mx-auto p-6 max-w-4xl">
 
         <div className="flex items-center justify-center py-12">
           <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
         </div>
       </div>
     );
@@ -406,21 +385,9 @@ const WorkflowChainList: React.FC = () => {
   // Show extension not available error
   if (!extensionAvailable) {
     return (
-      <div className="container mx-auto p-6 max-w-4xl">
-        <div className="flex items-center gap-4 mb-6">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => navigate('/workflows')}
-            className="rounded-full"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div>
-            <h1 className="text-3xl font-bold">{t('workflowChain.title')}</h1>
-            <p className="text-muted-foreground">{t('workflowChain.subtitle')}</p>
-          </div>
-        </div>
+      <div className="fixed inset-0 overflow-y-auto bg-[#0b0c0f] text-[#e9ebef]">
+        <PageHeader title={t('workflowChain.title')} subtitle={t('workflowChain.subtitle')} fallback="/workflows" />
+        <div className="container mx-auto p-6 max-w-4xl">
 
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
@@ -429,6 +396,7 @@ const WorkflowChainList: React.FC = () => {
             {t('workflowChain.extensionRequired')}
           </AlertDescription>
         </Alert>
+        </div>
       </div>
     );
   }
@@ -449,10 +417,7 @@ const WorkflowChainList: React.FC = () => {
       }}
     >
       {/* Main Background with Gradient */}
-      <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-purple-50/30 to-pink-50/30 dark:from-slate-950 dark:via-slate-900 dark:to-slate-900" />
-
-      {/* Glassmorphism Background Overlay */}
-      <div className="absolute inset-0 bg-gradient-to-br from-white/10 via-transparent to-slate-900/10 pointer-events-none" />
+      <div className="absolute inset-0 bg-[#0b0c0f]" />
 
       {/* Main Scrollable Content Area */}
       <div
@@ -466,39 +431,12 @@ const WorkflowChainList: React.FC = () => {
         }}
       >
         {/* Fixed Header inside scroll area */}
-        <header className="sticky top-0 z-50 pwa-header bg-white/20 dark:bg-slate-800/20 backdrop-blur-xl border-b border-white/20 dark:border-slate-600/20 shadow-2xl shadow-slate-900/10 dark:shadow-slate-900/25 relative overflow-hidden">
-          {/* Gradient Overlay for Enhanced Glass Effect */}
-          <div className="absolute inset-0 bg-gradient-to-br from-white/10 via-transparent to-slate-900/10 pointer-events-none" />
-          <div className="relative flex items-center justify-between p-4 z-10">
-            <div className="flex items-center space-x-3">
-              <Button
-                onClick={() => navigate('/workflows')}
-                variant="ghost"
-                size="sm"
-                className="bg-white/20 dark:bg-slate-700/20 backdrop-blur-sm border border-white/30 dark:border-slate-600/30 shadow-lg hover:shadow-xl hover:bg-white/30 dark:hover:bg-slate-700/30 transition-all duration-300 h-10 w-10 p-0 flex-shrink-0 rounded-lg"
-              >
-                <ArrowLeft className="h-5 w-5" />
-              </Button>
-              <div>
-                <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                  <LinkIcon className="h-5 w-5" />
-                  {t('workflowChain.title')}
-                </h1>
-                <p className="text-sm text-slate-600 dark:text-slate-400">
-                  {t('workflowChain.subtitleList')}
-                </p>
-              </div>
-            </div>
-            <Button
-              onClick={() => navigate('/chains/create')}
-              variant="ghost"
-              size="sm"
-              className="bg-white/20 dark:bg-slate-700/20 backdrop-blur-sm border border-white/30 dark:border-slate-600/30 shadow-lg hover:shadow-xl hover:bg-white/30 dark:hover:bg-slate-700/30 transition-all duration-300 h-10 w-10 p-0 flex-shrink-0 rounded-lg"
-            >
-              <Plus className="h-5 w-5" />
-            </Button>
-          </div>
-        </header>
+        <PageHeader
+          title={<span className="flex items-center gap-2"><LinkIcon className="h-4 w-4" />{t('workflowChain.title')}</span>}
+          subtitle={t('workflowChain.subtitleList')}
+          fallback="/workflows"
+          right={<button type="button" onClick={() => navigate('/chains/create')} className={headerTile} style={headerTileStyle}><Plus className="h-[17px] w-[17px]" strokeWidth={1.8} /></button>}
+        />
 
         <div className="container mx-auto px-6 py-8 max-w-4xl relative z-10">
 

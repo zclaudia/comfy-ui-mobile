@@ -1,3 +1,4 @@
+import { CloseButton } from '@/components/navigation/PageHeader';
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
@@ -309,12 +310,7 @@ export const NodeAddModal: React.FC<NodeAddModalProps> = ({
             >
               {/* Floating Close Button */}
               <div className="absolute right-4 top-1/2 -translate-y-1/2 flex-shrink-0 scale-75">
-                <button
-                  onClick={onClose}
-                  className="p-2 rounded-full bg-black/20 text-white hover:bg-black/40 transition-all pointer-events-auto"
-                >
-                  <X className="w-5 h-5" />
-                </button>
+                <CloseButton onClick={onClose} className="pointer-events-auto" />
               </div>
 
               <div className="flex flex-col justify-center flex-1 min-w-0 pointer-events-none">

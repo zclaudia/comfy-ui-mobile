@@ -1,3 +1,4 @@
+import { CloseButton } from '@/components/navigation/PageHeader';
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import ReactDOM from 'react-dom';
@@ -179,13 +180,7 @@ const SideMenu: React.FC<SideMenuProps> = ({
         {/* Header (56px) */}
         <div className="flex-none h-14 flex items-center justify-between px-[18px] border-b border-white/[0.08]">
           <h2 className="text-[17px] font-bold leading-none">{t('menu.title')}</h2>
-          <button
-            onClick={onClose}
-            className="w-[34px] h-[34px] rounded-[10px] border border-white/[0.08] flex items-center justify-center text-[#c8ccd4] hover:text-white transition-colors"
-            style={{ background: 'rgba(255,255,255,0.045)' }}
-          >
-            <X className="w-[15px] h-[15px]" strokeWidth={1.9} />
-          </button>
+          <CloseButton onClick={onClose} />
         </div>
 
         {/* Content - Scrollable */}

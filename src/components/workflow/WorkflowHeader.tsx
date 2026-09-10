@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, Loader2, ChevronRight, Home, Network, MessageSquare } from 'lucide-react';
+import { Loader2, ChevronRight, Home, Network, MessageSquare } from 'lucide-react';
+import { BackButton } from '@/components/navigation/PageHeader';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -124,13 +125,7 @@ export const WorkflowHeader: React.FC<WorkflowHeaderProps> = ({
         style={{ background: 'rgba(11,12,15,0.86)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)' }}
       >
         <div className="h-14 flex items-center gap-[11px] px-3 relative z-10">
-          <button
-            onClick={onNavigateBack}
-            className="w-9 h-9 shrink-0 flex items-center justify-center rounded-[10px] border border-white/[0.08] text-[#c8ccd4] hover:text-white transition-colors"
-            style={{ background: 'rgba(255,255,255,0.045)' }}
-          >
-            <ArrowLeft className="w-[17px] h-[17px]" strokeWidth={1.8} />
-          </button>
+          <BackButton onClick={onNavigateBack} />
 
           <div className="min-w-0 flex-1">
             {sessionStack && sessionStack.length > 1 ? (

@@ -6,7 +6,8 @@
  */
 
 import React from 'react';
-import { AlertCircle, Info, RefreshCw, Copy, X, Wrench, ArrowLeft } from 'lucide-react';
+import { AlertCircle, Info, RefreshCw, Copy, Wrench } from 'lucide-react';
+import { BackButton, CloseButton } from '@/components/navigation/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
@@ -383,14 +384,7 @@ export const ExecutionErrorDisplay: React.FC<ExecutionErrorDisplayProps> = ({
             <div className="p-4 pb-2.5">
               <div className="flex items-start justify-between">
                 <div className="flex items-start gap-3">
-                  <Button 
-                    size="sm" 
-                    variant="ghost" 
-                    onClick={hideTechnicalDetails}
-                    className="h-8 w-8 p-0 mr-1"
-                  >
-                    <ArrowLeft className="h-4 w-4" />
-                  </Button>
+                  <BackButton onClick={hideTechnicalDetails} />
                   <div>
                     <h2 className="text-[14px] font-bold text-[#e9ebef]">Raw Details</h2>
                     <p className="mt-0.5 text-[11.5px] leading-relaxed text-[#8a919e]">
@@ -401,13 +395,6 @@ export const ExecutionErrorDisplay: React.FC<ExecutionErrorDisplayProps> = ({
                     </p>
                   </div>
                 </div>
-                
-                {/* Close Button - Top Right */}
-                {onClearErrors && (
-                  <Button size="sm" variant="ghost" onClick={onClearErrors} className="h-8 w-8 p-0">
-                    <X className="h-4 w-4" />
-                  </Button>
-                )}
               </div>
             </div>
             
@@ -458,18 +445,6 @@ export const ExecutionErrorDisplay: React.FC<ExecutionErrorDisplayProps> = ({
                     <code>{JSON.stringify(technicalDetailsError.error, null, 2)}</code>
                   </pre>
                 </div>
-              </div>
-              
-              {/* Back Button */}
-              <div className="flex justify-center pt-3">
-                <Button
-                  onClick={hideTechnicalDetails}
-                  size="sm"
-                  className="bg-white/10 hover:bg-white/20 backdrop-blur-sm border border-gray-400/50 text-gray-400 hover:text-gray-300 hover:border-gray-300/60 shadow-lg hover:shadow-xl transition-all duration-200"
-                >
-                  <ArrowLeft className="h-4 w-4 mr-1" />
-                  Back
-                </Button>
               </div>
             </div>
           </div>
@@ -564,11 +539,7 @@ export const ExecutionErrorDisplay: React.FC<ExecutionErrorDisplayProps> = ({
                 </div>
                 
                 {/* Close Button - Top Right */}
-                {onClearErrors && (
-                  <Button size="sm" variant="ghost" onClick={onClearErrors} className="h-8 w-8 p-0">
-                    <X className="h-4 w-4" />
-                  </Button>
-                )}
+                {onClearErrors && <CloseButton onClick={onClearErrors} />}
               </div>
             </div>
       

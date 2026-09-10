@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ArrowLeft, Maximize, Play, X } from 'lucide-react';
+import { Maximize, Play } from 'lucide-react';
+import { BackButton, CloseButton } from '@/components/navigation/PageHeader';
+import { useGoBack } from '@/components/navigation/useGoBack';
 import { toast } from 'sonner';
 import { useConnectionStore } from '@/ui/store/connectionStore';
 import { resolveGatewayUrl } from '@/config/runtime';
@@ -59,7 +60,7 @@ const MODE_LABELS: { mode: number; label: string }[] = [
 ];
 
 const CanvasLabPage: React.FC = () => {
-  const navigate = useNavigate();
+  const goBack = useGoBack('/workflows');
   const storedUrl = useConnectionStore((s) => s.url);
   const serverUrl = useMemo(
     () => resolveGatewayUrl(storedUrl),
@@ -228,13 +229,7 @@ const CanvasLabPage: React.FC = () => {
     <div className="fixed inset-0 pt-safe flex flex-col bg-slate-950">
       {/* Top bar */}
       <div className="flex items-center gap-3 px-3 py-2 bg-slate-900 border-b border-slate-800 z-20">
-        <button
-          className="p-2 rounded-lg text-slate-300 hover:bg-slate-800"
-          onClick={() => navigate('/workflows')}
-          aria-label="Back"
-        >
-          <ArrowLeft className="w-5 h-5" />
-        </button>
+        <BackButton onClick={goBack} />
         <div className="flex-1 min-w-0">
           <div className="text-sm font-semibold text-slate-100">Canvas Lab</div>
           <div className="text-[11px] text-slate-400 truncate">
@@ -311,13 +306,7 @@ const CanvasLabPage: React.FC = () => {
                     </button>
                   ))}
                 </div>
-                <button
-                  className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-800"
-                  onClick={() => setSheetDismissed(true)}
-                  aria-label="Close"
-                >
-                  <X className="w-5 h-5" />
-                </button>
+                <CloseButton onClick={() => setSheetDismissed(true)} />
               </div>
 
               <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">

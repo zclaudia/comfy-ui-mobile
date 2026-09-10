@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
+import { PageHeader } from '@/components/navigation/PageHeader';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, Plus, X, Save, Play, Edit, Loader2, CheckCircle2, XCircle, RefreshCw, Dices } from 'lucide-react';
+import { Plus, X, Save, Play, Edit, Loader2, CheckCircle2, XCircle, RefreshCw, Dices } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -859,10 +860,7 @@ export const WorkflowChainEditor: React.FC = () => {
       }}
     >
       {/* Main Background with Gradient */}
-      <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-purple-50/30 to-pink-50/30 dark:from-slate-950 dark:via-slate-900 dark:to-slate-900" />
-
-      {/* Glassmorphism Background Overlay */}
-      <div className="absolute inset-0 bg-gradient-to-br from-white/10 via-transparent to-slate-900/10 pointer-events-none" />
+      <div className="absolute inset-0 bg-[#0b0c0f]" />
 
       {/* Main Scrollable Content Area */}
       <div
@@ -876,28 +874,11 @@ export const WorkflowChainEditor: React.FC = () => {
         }}
       >
         {/* Fixed Header inside scroll area */}
-        <header className="sticky top-0 z-50 pwa-header bg-white/20 dark:bg-slate-800/20 backdrop-blur-xl border-b border-white/20 dark:border-slate-600/20 shadow-2xl shadow-slate-900/10 dark:shadow-slate-900/25 relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-white/10 via-transparent to-slate-900/10 pointer-events-none" />
-          <div className="relative flex items-center justify-between p-4 z-10">
-            <div className="flex items-center space-x-3 flex-1 min-w-0">
-              <Button
-                onClick={() => navigate('/chains')}
-                variant="ghost"
-                size="sm"
-                className="bg-white/20 dark:bg-slate-700/20 backdrop-blur-sm border border-white/30 dark:border-slate-600/30 shadow-lg hover:shadow-xl hover:bg-white/30 dark:hover:bg-slate-700/30 transition-all duration-300 h-10 w-10 p-0 flex-shrink-0 rounded-lg"
-              >
-                <ArrowLeft className="h-5 w-5" />
-              </Button>
-              <div className="min-w-0 flex-1">
-                <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100 truncate">
-                  {id && chainName ? chainName : (id ? t('workflowChain.editor.editChain') : t('workflowChain.editor.newChain'))}
-                </h1>
-                <p className="text-sm text-slate-600 dark:text-slate-400">
-                  {t('workflowChain.editor.workflowsCount_plural', { count: workflowNodes.length })}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 flex-shrink-0">
+        <PageHeader
+          title={id && chainName ? chainName : (id ? t('workflowChain.editor.editChain') : t('workflowChain.editor.newChain'))}
+          subtitle={t('workflowChain.editor.workflowsCount_plural', { count: workflowNodes.length })}
+          fallback="/chains"
+          right={<>
               {/* Batch Actions - Always visible when there are workflows */}
               {workflowNodes.length > 0 && (
                 <>
@@ -967,9 +948,8 @@ export const WorkflowChainEditor: React.FC = () => {
                   <Save className="h-5 w-5" />
                 </Button>
               )}
-            </div>
-          </div>
-        </header>
+          </>}
+        />
 
         <div className="container mx-auto px-6 py-8 max-w-4xl relative z-10">
           {/* Chain Progress and Console - Only shown when this chain is executing */}

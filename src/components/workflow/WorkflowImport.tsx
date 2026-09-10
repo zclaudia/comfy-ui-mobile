@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Download, Server, AlertCircle, CheckCircle, Loader2, ExternalLink, Search, X, Folder, ChevronRight, CornerLeftUp } from 'lucide-react';
+import { Download, Server, AlertCircle, CheckCircle, Loader2, ExternalLink, Search, X, Folder, ChevronRight, CornerLeftUp } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
+import { PageHeader } from '@/components/navigation/PageHeader';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -461,32 +462,7 @@ const WorkflowImport: React.FC = () => {
         }}
       >
         {/* Header */}
-        <header className="sticky top-0 z-50 pwa-header bg-[#0b0c0f]/95 backdrop-blur-xl border-b border-white/[0.08] relative overflow-hidden">
-          <div className="relative z-10 p-4">
-            <div className="flex items-center space-x-3">
-              <Button
-                onClick={() => {
-                  sessionStorage.setItem('app-navigation', 'true');
-                  navigate('/', { replace: true });
-                }}
-                variant="ghost"
-                size="sm"
-                className="bg-white/[0.045] border border-white/[0.08] hover:bg-white/[0.08] transition-all h-9 w-9 p-0 flex-shrink-0 rounded-[10px] text-[#c8ccd4]"
-                style={{ touchAction: 'manipulation' }}
-              >
-                <ArrowLeft className="w-4 h-4" />
-              </Button>
-              <div>
-                <h1 className="text-[15px] font-bold text-[#e9ebef] leading-none">
-                  {t('workflow.import.title')}
-                </h1>
-                <p className="font-mono text-[9px] font-medium text-[#565d6b] tracking-[0.12em] uppercase mt-1">
-                  {t('workflow.import.subtitle')}
-                </p>
-              </div>
-            </div>
-          </div>
-        </header>
+        <PageHeader title={t('workflow.import.title')} subtitle={t('workflow.import.subtitle')} />
 
         {/* Content */}
         <div className="container mx-auto px-4 py-5 max-w-4xl">

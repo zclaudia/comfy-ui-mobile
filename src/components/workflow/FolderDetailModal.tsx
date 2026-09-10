@@ -1,3 +1,4 @@
+import { CloseButton } from '@/components/navigation/PageHeader';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X, Folder, FileText, Trash2, AlertTriangle, FolderInput } from 'lucide-react';
@@ -135,13 +136,7 @@ const FolderDetailModal: React.FC<FolderDetailModalProps> = ({
                                             </p>
                                         </div>
                                     </div>
-                                    <button
-                                        onClick={onClose}
-                                        className="flex-shrink-0 ml-3 p-2 bg-white/[0.06] border border-white/[0.08] hover:bg-white/[0.1] transition-all duration-200 rounded-xl"
-                                        aria-label={t('common.close')}
-                                    >
-                                        <X className="w-5 h-5 text-[#c8ccd4]" />
-                                    </button>
+                                    <CloseButton onClick={onClose} className="ml-3" />
                                 </div>
 
                                 {/* Content */}

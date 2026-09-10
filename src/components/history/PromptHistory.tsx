@@ -1,3 +1,4 @@
+import { CloseButton } from '@/components/navigation/PageHeader';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -755,14 +756,7 @@ export const PromptHistoryContent: React.FC<{
                 <RefreshCw className={`h-4 w-4 ${(isLoading || outputsLoading) ? 'animate-spin' : ''}`} />
               </Button>
               {onClose && !isEmbedded && (
-                <Button
-                  onClick={onClose}
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 w-7 p-0 rounded-[7px] border border-white/[0.08] bg-white/[0.045] text-[#c8ccd4] hover:text-white hover:bg-white/[0.08]"
-                >
-                  <X className="h-4 w-4" />
-                </Button>
+                <CloseButton onClick={onClose} />
               )}
             </div>
           </div>

@@ -1,3 +1,4 @@
+import { CloseButton } from '@/components/navigation/PageHeader';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
@@ -543,12 +544,7 @@ export const MissingNodeInstallerModal: React.FC<MissingNodeInstallerModalProps>
               <div
                 className={`absolute right-4 top-1/2 -translate-y-1/2 flex-shrink-0 transition-transform duration-300 ${isHeaderCompact ? 'scale-75' : 'scale-100'}`}
               >
-                <button
-                  onClick={onClose}
-                  className="p-1.5 rounded-lg bg-white/[0.06] text-[#9aa3b2] hover:text-white hover:bg-white/[0.1] transition-all pointer-events-auto"
-                >
-                  <X className="w-4 h-4" />
-                </button>
+                <CloseButton onClick={onClose} className="pointer-events-auto" />
               </div>
 
               <div className="flex flex-col justify-center flex-1 min-w-0 pointer-events-none">

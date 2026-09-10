@@ -4,8 +4,9 @@ import { WorkflowAnalysisService, WorkflowGroupReport } from '@/core/services/Wo
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { BackButton } from '@/components/navigation/PageHeader';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, ArrowRight, Layers, ExternalLink, Loader2, Play, VolumeX, Shuffle, ListOrdered, LayoutGrid, ChevronDown, ChevronUp, ChevronRight, Square, X } from 'lucide-react';
+import { ArrowRight, Layers, ExternalLink, Loader2, Play, VolumeX, Shuffle, ListOrdered, LayoutGrid, ChevronDown, ChevronUp, ChevronRight, Square, X } from 'lucide-react';
 import { ComfyGraphNode } from '@/core/domain/ComfyGraphNode';
 import { WidgetValueEditor } from '@/components/controls/WidgetValueEditor';
 import { useWidgetValueEditor } from '@/hooks/useWidgetValueEditor';
@@ -875,14 +876,7 @@ export const WorkflowStackEditor: React.FC<WorkflowStackEditorProps> = ({ graph,
             <header className="z-10 pwa-header shrink-0 bg-slate-600/20 backdrop-blur-3xl border-b border-white/30 shadow-xl">
                 <div className="px-4 py-5 space-y-4 relative overflow-hidden">
                     <div className="flex items-center space-x-4 relative z-10">
-                        <Button
-                            onClick={onClose}
-                            variant="ghost"
-                            size="sm"
-                            className="bg-white/10 hover:bg-white/20 border border-white/20 transition-all duration-300 h-10 w-10 p-0 flex-shrink-0 rounded-xl"
-                        >
-                            <ArrowLeft className="w-5 h-5 text-white" />
-                        </Button>
+                        <BackButton onClick={onClose} />
                         <div className="flex flex-col min-w-0 flex-grow">
                             <div className="flex items-center gap-2">
                                 <Layers className="h-4 w-4 text-blue-400 shrink-0" />

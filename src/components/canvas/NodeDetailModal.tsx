@@ -1,3 +1,4 @@
+import { CloseButton } from '@/components/navigation/PageHeader';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
@@ -1033,13 +1034,7 @@ export const NodeDetailModal: React.FC<NodeDetailModalProps> = ({
                             <div
                                 className={`absolute right-4 top-1/2 -translate-y-1/2 flex-shrink-0 transition-transform duration-300 ${isHeaderCompact ? 'scale-75' : 'scale-100'}`}
                             >
-                                <button
-                                    onClick={onClose}
-                                    aria-label={t('common.close')}
-                                    className={`p-1.5 rounded-lg transition-all ${hasCustomColor ? 'bg-black/20 text-white hover:bg-black/40' : 'bg-white/[0.06] text-[#9aa3b2] hover:text-white hover:bg-white/[0.1]'}`}
-                                >
-                                    <X className="w-4 h-4" />
-                                </button>
+                                <CloseButton onClick={onClose} className={hasCustomColor ? 'text-white border-white/25' : ''} />
                             </div>
 
                             <div className="flex flex-col justify-center flex-1 min-w-0">

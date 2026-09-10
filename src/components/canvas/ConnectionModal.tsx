@@ -1,3 +1,4 @@
+import { CloseButton } from '@/components/navigation/PageHeader';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -109,12 +110,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
                       </p>
                     </div>
                   </div>
-                  <button
-                    onClick={onClose}
-                    className="p-2.5 rounded-full bg-black/20 text-white hover:bg-black/40 transition-all active:scale-90"
-                  >
-                    <X className="h-5 w-5" />
-                  </button>
+                  <CloseButton onClick={onClose} />
                 </div>
               </div>
 

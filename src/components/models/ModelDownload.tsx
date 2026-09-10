@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { PageHeader } from '@/components/navigation/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { ArrowLeft, Package, Download, X, AlertTriangle, CheckCircle, Loader2, Key, Settings, Trash2, RotateCcw, PlayCircle, Clock, XCircle } from 'lucide-react';
+import { Package, Download, X, AlertTriangle, CheckCircle, Loader2, Key, Settings, Trash2, RotateCcw, PlayCircle, Clock, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { useConnectionStore } from '@/ui/store/connectionStore';
 import ComfyUIService from '@/infrastructure/api/ComfyApiClient';
@@ -62,11 +63,6 @@ const ModelDownload: React.FC = () => {
   const [isClearingHistory, setIsClearingHistory] = useState(false);
 
   const hasServerRequirements = isConnected && hasExtension;
-
-  const handleBack = () => {
-    sessionStorage.setItem('app-navigation', 'true');
-    navigate('/', { replace: true });
-  };
 
   // Load model folders
   const loadModelFolders = async () => {
@@ -357,26 +353,7 @@ const ModelDownload: React.FC = () => {
         }}
       >
         {/* Header */}
-        <header className="sticky top-0 z-50 pwa-header bg-[#0b0c0f]/95 backdrop-blur-xl border-b border-white/[0.08] relative overflow-hidden">
-          <div className="relative z-10 flex items-center justify-between p-4">
-            <div className="flex items-center space-x-3">
-              <Button
-                onClick={handleBack}
-                variant="ghost"
-                size="sm"
-                className="bg-white/[0.045] border border-white/[0.08] hover:bg-white/[0.08] transition-all h-9 w-9 p-0 flex-shrink-0 rounded-[10px] text-[#c8ccd4]"
-              >
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
-              <div>
-                <h1 className="text-[15px] font-bold text-[#e9ebef] leading-none">
-                  {t('modelDownload.title')}
-                </h1>
-                <p className="font-mono text-[9px] font-medium text-[#565d6b] tracking-[0.12em] uppercase mt-1">
-                  {t('modelDownload.subtitle')}
-                </p>
-              </div>
-            </div>
+        <PageHeader title={t('modelDownload.title')} subtitle={t('modelDownload.subtitle')} right={
             <Button
               onClick={() => navigate('/settings/api-keys')}
               variant="outline"
@@ -386,8 +363,7 @@ const ModelDownload: React.FC = () => {
             >
               <Key className="h-4 w-4" />
             </Button>
-          </div>
-        </header>
+        } />
 
         <div className="container mx-auto px-4 py-5 max-w-4xl space-y-2">
           {/* Server Requirements Card */}

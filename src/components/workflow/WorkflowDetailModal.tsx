@@ -1,3 +1,4 @@
+import { CloseButton } from '@/components/navigation/PageHeader';
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
@@ -264,13 +265,7 @@ const WorkflowDetailModal: React.FC<WorkflowDetailModalProps> = ({
                   </p>
                 </div>
               </div>
-              <button
-                onClick={onClose}
-                className="flex-shrink-0 ml-3 p-1.5 bg-white/[0.06] border border-white/[0.08] hover:bg-white/[0.1] transition-all duration-200 rounded-lg"
-                aria-label="Close"
-              >
-                <X className="w-4 h-4 text-[#c8ccd4]" />
-              </button>
+              <CloseButton onClick={onClose} className="ml-3" />
             </div>
 
             {/* Content - Scrollable */}

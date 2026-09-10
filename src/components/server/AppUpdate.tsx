@@ -15,6 +15,8 @@ import { Progress } from '@/components/ui/progress';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
+import { useGoBack } from '@/components/navigation/useGoBack';
+import { PageHeader } from '@/components/navigation/PageHeader';
 import { useTranslation } from 'react-i18next';
 import { comfyAuthenticatedFetch } from '@/infrastructure/auth/ComfyAuthService';
 
@@ -30,6 +32,7 @@ interface UpdateInfo {
 export const AppUpdate: React.FC = () => {
     const { t } = useTranslation();
     const navigate = useNavigate();
+    const goBack = useGoBack();
     const { url: serverUrl, remoteVersion, isConnected } = useConnectionStore();
 
     const [loading, setLoading] = useState(true);
@@ -148,7 +151,7 @@ export const AppUpdate: React.FC = () => {
                     <Server className="w-12 h-10 mx-auto text-[#565d6b] mb-4" />
                     <h2 className="text-[15px] font-bold text-[#e9ebef] mb-2">ComfyUI Disconnected</h2>
                     <p className="text-[#8a919e] mb-3 text-[12px]">Please connect to a ComfyUI server first to manage updates.</p>
-                    <Button onClick={() => navigate(-1)} variant="outline" className="w-full">{t('common.back')}</Button>
+                    <Button onClick={goBack} variant="outline" className="w-full">{t('common.back')}</Button>
                 </div>
             </div>
         );
@@ -164,17 +167,7 @@ export const AppUpdate: React.FC = () => {
             <div className="absolute inset-0 bg-[#0b0c0f]" />
 
             <div className="absolute inset-0 overflow-y-auto overflow-x-hidden safe-area-inset" style={{ touchAction: 'pan-y' }}>
-                <header className="sticky top-0 z-50 bg-[#0b0c0f]/95 backdrop-blur-xl border-b border-white/[0.08] p-4">
-                    <div className="max-w-2xl mx-auto flex items-center space-x-4">
-                        <Button onClick={() => navigate(-1)} variant="outline" size="icon" className="h-9 w-9 bg-white/[0.045] border border-white/[0.08] hover:bg-white/[0.08] rounded-[10px] text-[#c8ccd4]">
-                            <ArrowLeft className="h-4 w-4" />
-                        </Button>
-                        <div>
-                            <h1 className="text-[15px] font-bold text-[#e9ebef]">{t('appUpdate.title')}</h1>
-                            <p className="text-xs text-[#71798a]">{t('appUpdate.subtitle')}</p>
-                        </div>
-                    </div>
-                </header>
+                <PageHeader title={t('appUpdate.title')} subtitle={t('appUpdate.subtitle')} />
 
                 <main className="container mx-auto px-4 py-5 max-w-2xl relative">
                     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-2">

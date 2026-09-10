@@ -1,3 +1,4 @@
+import { CloseButton } from '@/components/navigation/PageHeader';
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -255,14 +256,7 @@ export const WidgetTypeDefinitionModal: React.FC<WidgetTypeDefinitionModalProps>
                   {t('widgetType.subtitle')}
                 </p>
               </div>
-              <Button
-                onClick={onClose}
-                variant="ghost"
-                size="sm"
- className="h-8 w-8 p-0"
-              >
-                <X className="h-4 w-4" />
-              </Button>
+              <CloseButton onClick={onClose} />
             </div>
 
             {/* Content */}
