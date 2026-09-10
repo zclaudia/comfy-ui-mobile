@@ -15,7 +15,9 @@ gateway/.data/
 *.local
 src-tauri/target/
 src-tauri/gen/schemas/
-src-tauri/gen/android/
+# gen/android is generated once by `tauri android init` and then maintained by
+# hand (MainActivity insets/cookie patches, manifest). It carries its own
+# .gitignore rules for build outputs and local config, so it is tracked.
 
 # Android release signing (keep out of version control)
 src-tauri/*.keystore
