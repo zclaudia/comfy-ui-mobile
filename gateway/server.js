@@ -6,6 +6,8 @@ import { pipeline } from 'node:stream';
 import { WebSocket, WebSocketServer } from 'ws';
 import { createSessionManager } from './auth.js';
 import { createDeviceStore } from './deviceStore.js';
+import { comfyFrontendRoute, comfyFrameAncestors, comfyAssetPreviewId } from './comfyFrontend.js';
+import { createCanvasAccess } from './canvasAccess.js';
 import {
   authorizeProxyRoute,
   isAllowedWebSocketPath,
@@ -188,6 +190,7 @@ const proxyHttpRequest = (
   upstreamUrl = config.comfyUrl,
   upstreamRequestUrl = request.url,
   upstreamAuthToken = config.comfyAuthToken,
+  frameAncestors,
 ) => {
   const target = buildUpstreamUrl(upstreamRequestUrl, upstreamUrl, upstreamAuthToken);
   const contentLength = Number.parseInt(String(request.headers['content-length'] || '0'), 10);
@@ -202,10 +205,18 @@ const proxyHttpRequest = (
     headers: sanitizeRequestHeaders(request.headers, target, request, config),
     timeout: config.requestTimeoutMs,
   }, (upstreamResponse) => {
-    response.writeHead(
-      upstreamResponse.statusCode || 502,
-      sanitizeResponseHeaders(upstreamResponse.headers),
-    );
+    const headers = sanitizeResponseHeaders(upstreamResponse.headers);
+    if (request.canvasAccess) {
+      headers['referrer-policy'] = 'no-referrer';
+      headers['cache-control'] = 'no-store';
+    }
+    if (frameAncestors) {
+      response.removeHeader('X-Frame-Options');
+      delete headers['x-frame-options'];
+      const policy = String(headers['content-security-policy'] || '').split(';').filter(part => !/^\s*frame-ancestors(?:\s|$)/i.test(part)).filter(part => part.trim()).join('; ');
+      headers['content-security-policy'] = `${policy ? `${policy}; ` : ''}${frameAncestors}`;
+    }
+    response.writeHead(upstreamResponse.statusCode || 502, headers);
     pipeline(upstreamResponse, response, (error) => {
       if (error && !response.destroyed) response.destroy(error);
     });
@@ -289,9 +300,9 @@ const safeWebSocketCloseCode = (code) => {
   return 1000;
 };
 
-const proxyWebSocket = (client, request, config) => {
+const proxyWebSocket = (client, request, config, upstreamRequestUrl = request.url) => {
   const target = buildUpstreamUrl(
-    request.url,
+    upstreamRequestUrl,
     config.comfyUrl,
     config.comfyAuthToken,
     true,
@@ -339,11 +350,12 @@ const proxyWebSocket = (client, request, config) => {
   });
 };
 
-export const createGatewayServer = (config, { agentService } = {}) => {
+export const createGatewayServer = (config, { agentService, agentRequestHandler, frontendAssetProvider } = {}) => {
   let agent = agentService;
-  let agentHandler;
+  let agentHandler = agentRequestHandler;
   const deviceStore = createDeviceStore(config);
   const sessions = createSessionManager(config, deviceStore);
+  const canvasAccess = createCanvasAccess(sessions, { cookieName: config.sessionCookieName });
   const rateLimit = createRateLimiter();
   const webSocketServer = new WebSocketServer({
     noServer: true,
@@ -362,7 +374,7 @@ export const createGatewayServer = (config, { agentService } = {}) => {
     if (request.method === 'OPTIONS') {
       response.writeHead(204, {
         'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
-        'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+        'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-Agent-Schema-Version, X-Agent-Server-Id',
         'Access-Control-Max-Age': '600',
       });
       response.end();
@@ -486,6 +498,7 @@ export const createGatewayServer = (config, { agentService } = {}) => {
     }
 
     if (url.pathname === '/api/gateway/logout' && request.method === 'POST') {
+      canvasAccess.revokeCredentials(request);
       response.setHeader('Set-Cookie', sessions.clearCookie(requestIsSecure(request, config)));
       sendJson(response, 200, { authenticated: false });
       return;
@@ -497,6 +510,37 @@ export const createGatewayServer = (config, { agentService } = {}) => {
       return;
     }
 
+    const accessPath = /^\/api\/gateway\/canvas-access(?:\/([A-Za-z0-9_-]{43})(\/renew)?)?$/.exec(url.pathname);
+    if (accessPath) {
+      response.setHeader('Cache-Control', 'no-store');
+      if (!rateLimit(`canvas-access:${clientAddress(request, config)}`, config.rateLimitPerMinute)) { sendJson(response, 429, { error: 'rate_limit_exceeded' }); return; }
+      try {
+        await readJsonBody(request, 1024);
+        if (request.method === 'POST' && !accessPath[1]) { sendJson(response, 201, canvasAccess.issue(request)); return; }
+        if (request.method === 'POST' && accessPath[2]) { sendJson(response, 200, canvasAccess.renew(request, accessPath[1])); return; }
+        // Possession permits revoking this one read capability; it grants no data mutation.
+        if (request.method === 'DELETE' && accessPath[1] && !accessPath[2]) { canvasAccess.revoke(accessPath[1]); sendJson(response, 200, { revoked: true }); return; }
+        sendJson(response, 405, { error: 'method_not_allowed' });
+      } catch (error) {
+        const status = error.status || (error.message === 'invalid_json' ? 400 : error.message === 'request_body_too_large' ? 413 : 500);
+        sendJson(response, status, { error: status < 500 ? error.message : 'canvas_connection_failed' });
+      }
+      return;
+    }
+    try {
+      const access = canvasAccess.resolve(request, url.pathname);
+      if (access) {
+        url.pathname = access.pathname;
+        response.setHeader('Referrer-Policy', 'no-referrer');
+        response.setHeader('Cache-Control', 'no-store');
+      }
+    } catch (error) { sendJson(response, error.status || 401, { error: error.message }); return; }
+
+    const previewAssetId = comfyAssetPreviewId(url, request.method);
+    if (previewAssetId) {
+      url.pathname = `/api/gateway/agent/assets/${previewAssetId}/content`;
+      url.search = '';
+    }
     if (url.pathname.startsWith('/api/gateway/agent/')) {
       // The principal is per-client so devices keep separate rate-limit buckets; the owner is shared so they see the
       // same sessions.
@@ -553,6 +597,21 @@ export const createGatewayServer = (config, { agentService } = {}) => {
       return;
     }
 
+    const frontend = comfyFrontendRoute(url.pathname, request.method, config);
+    if (frontend) {
+      if (!sessions.authenticate(request)) { sendJson(response, 401, { error: 'gateway_authentication_required' }); return; }
+      if (!frontend.allowed) { sendJson(response, frontend.status || 404, { error: frontend.code || 'frontend_route_not_allowed' }); return; }
+      if (!rateLimit(`api:${clientAddress(request, config)}`, config.rateLimitPerMinute)) { sendJson(response, 429, { error: 'rate_limit_exceeded' }); return; }
+      // Internal fixture seam for testing a matching extension without deploying to ComfyUI.
+      const localAsset = ['GET', 'HEAD'].includes(request.method) && frontendAssetProvider?.(frontend.upstreamPath);
+      if (localAsset) {
+        response.writeHead(200, { 'Content-Type': localAsset.contentType, 'Cache-Control': 'no-store' });
+        response.end(request.method === 'HEAD' ? undefined : localAsset.body); return;
+      }
+      proxyHttpRequest(request, response, config, config.comfyUrl, `${frontend.upstreamPath}${url.search}`, config.comfyAuthToken, frontend.document ? comfyFrameAncestors(config) : undefined);
+      return;
+    }
+
     const route = authorizeProxyRoute(url.pathname, request.method, config);
     if (route.allowed || route.status === 403) {
       if (!sessions.authenticate(request)) {
@@ -592,7 +651,11 @@ export const createGatewayServer = (config, { agentService } = {}) => {
       rejectUpgrade(socket, 403, 'Origin Not Allowed');
       return;
     }
-    if (!isAllowedWebSocketPath(url.pathname)) {
+    let access;
+    try { access = canvasAccess.resolve(request, url.pathname); if (access) url.pathname = access.pathname; }
+    catch { rejectUpgrade(socket, 401, 'Unauthorized'); return; }
+    const socketPath = url.pathname.startsWith('/comfy/') ? url.pathname.slice('/comfy'.length) : url.pathname;
+    if (!isAllowedWebSocketPath(socketPath)) {
       rejectUpgrade(socket, 404, 'Not Found');
       return;
     }
@@ -601,7 +664,8 @@ export const createGatewayServer = (config, { agentService } = {}) => {
       return;
     }
     webSocketServer.handleUpgrade(request, socket, head, (client) => {
-      proxyWebSocket(client, request, config);
+      if (access) canvasAccess.watch(access.id, client);
+      proxyWebSocket(client, request, config, `${socketPath}${url.search}`);
     });
   });
 
@@ -613,7 +677,7 @@ export const createGatewayServer = (config, { agentService } = {}) => {
           import('./dist/agent/service.js'), import('./dist/agent/routes.js'),
         ]);
         agent ??= new AgentService(config);
-        agentHandler = handleAgentRequest;
+        agentHandler ??= handleAgentRequest;
         agent.start();
       }
       return new Promise((resolve, reject) => {
@@ -625,6 +689,7 @@ export const createGatewayServer = (config, { agentService } = {}) => {
       });
     },
     stop: async () => {
+      canvasAccess.clear();
       await agent?.stop();
       return new Promise((resolve, reject) => {
       webSocketServer.clients.forEach((client) => client.terminate());

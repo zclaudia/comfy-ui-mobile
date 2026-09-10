@@ -270,7 +270,7 @@ export class ComfyGraph {
       revision: this.revision || 0,
       last_node_id: this.last_node_id,
       last_link_id: this.last_link_id,
-      nodes: this._nodes as any,
+      nodes: this._nodes.map(node => node.serialize()),
       links: links.map(link => ([
         link.id,
         link.origin_id,
@@ -283,9 +283,7 @@ export class ComfyGraph {
       config: this.config || {},
       extra: this.extra || {},
       // Wrap subgraphs in definitions for ComfyUI compatibility
-      definitions: {
-        subgraphs: Array.from(this.subgraphs.values())
-      },
+      ...(this.subgraphs.size ? { definitions: { subgraphs: Array.from(this.subgraphs.values()) } } : {}),
       version: 0.4
     } as any; // Cast to any to allow definitions
 

@@ -1,5 +1,151 @@
 # Workflow agent MVP
 
+## Multi-draft workspace implementation status
+
+The optional V2 backend now provides independent drafts/revisions, durable assets,
+Run-based execution and recovery, structured request context, persisted selection
+cards, and draft-scoped HTTP/tool contracts. The app now chooses its chat client by
+the server's schema version; V2 chat has creation/reference selection, independent
+result cards, confirmation, history and source details, plus paginated session search
+and archive restoration. Editable draft canvases support mobile/official switching,
+local recovery and conditional synchronization. Independent library saving uses
+fixed revisions, materialized references, ETag checks and server readback. Migrated
+links remain read-only; users explicitly choose a draft before continuing edits.
+Leave production V2 disabled until the full acceptance matrix in
+[`docs/agent-conversation-workspace-design.md`](../../docs/agent-conversation-workspace-design.md)
+is complete. Current evidence and remaining items are tracked in
+[`the implementation record`](../../docs/agent-conversation-workspace-implementation.md).
+Scripted provider tests verify orchestration, not real model intent
+resolution or GPU/video quality.
+
+For isolated V2 browser checks (requires `ffmpeg`), run:
+
+```sh
+npm run build:agent
+node_modules/.bin/tsx gateway/agent/test/workspaceUiHarness.ts
+# In another terminal; match the URL printed by the harness if overriding its port:
+VITE_GATEWAY_TARGET=http://127.0.0.1:53023 npm run dev -- --host 127.0.0.1 --port 5187
+```
+
+Open `http://127.0.0.1:5187/settings/server` and connect with fixture token
+`local-workspace-ui-test-token`. The harness uses temporary data and a scripted
+model, solid-colour PNGs and a one-second test-pattern video. It can exercise the
+image/video/edit-image/update-video sequence, exact-parameter reruns and confirmation;
+the message `选择测试` exercises a persisted selection card. It does not evaluate
+natural-language understanding or visual generation quality. Ctrl-C removes only
+its temporary fixture directory. `WORKSPACE_UI_PORT` can override the gateway port;
+the allowed browser origin stays `http://127.0.0.1:5187`.
+
+Real model/GPU checks are opt-in and must use a separate V2 database and media
+directory. With that Gateway already running, supply its URL and test token:
+
+```sh
+E2E_WORKSPACE_LIVE=1 E2E_GATEWAY_URL=http://127.0.0.1:53038 E2E_GATEWAY_TOKEN=YOUR_TEST_TOKEN node tests/e2e/workspace-live.e2e.mjs
+E2E_WORKSPACE_LIVE=1 E2E_GATEWAY_URL=http://127.0.0.1:53038 E2E_GATEWAY_TOKEN=YOUR_TEST_TOKEN node tests/e2e/workspace-reference-live.e2e.mjs
+```
+
+The first script performs four real image/video rounds; the second checks a
+two-image batch, natural-language selection of its second image, and an independent
+fork without generation. Reports retain request IDs, task IDs, snapshots and complete
+terminal event pages under `tests/output/workspace-live/`. A failed or timed-out
+observation never automatically replays a POST; inspect the saved task first.
+Visual fidelity must be checked separately from successful execution and binding.
+
+For an isolated V2 backend, set:
+
+```dotenv
+AGENT_WORKSPACE_V2=true
+AGENT_WORKSPACE_SERVER_ID=main-comfy
+# Defaults to assets/ alongside GATEWAY_AGENT_STORE, keeping both in the same persistent volume.
+# AGENT_WORKSPACE_MEDIA_DIR=/data/assets
+```
+
+The server identity must identify the actual configured ComfyUI connection and stay
+stable across restarts. V2 mutating requests require `X-Agent-Schema-Version: 2`.
+
+Deploy the matching Gateway, client, and ComfyUI extension together. Official draft
+canvases require both `fe/mobileBridge.js` and `fe/managedExecution.js` from
+`comfy-mobile-ui-api-extension`; an older bridge cannot provide managed execution
+and the client keeps generation disabled until its handshake succeeds. The local
+acceptance proxy's JS overlay is a test fixture, not a production extension install.
+Keep the database and asset directory on persistent storage and preserve both in
+backups. Reasoning-model request timeouts are configurable per profile; the latest
+local qwen3.8 acceptance uses 240 seconds after 90-second calls repeatedly timed out.
+
+Managed draft iframes obtain a short-lived read capability using authenticated
+`POST /api/gateway/canvas-access`. The returned path is
+`/comfy/_access/<id>/`; the native device token stays in parent API headers.
+Authenticated `POST /api/gateway/canvas-access/:id/renew` extends the same lease
+(default lifetime 30 minutes, renewal interval 10 minutes), without reloading the
+iframe. `DELETE /api/gateway/canvas-access/:id` revokes that read capability and
+closes its WebSockets. Possession permits revoking only that capability; renewal
+requires normal authentication and the same principal. Browser logout revokes its
+leases, expired or invalid original credentials fail subsequent validation, and
+Gateway restart invalidates all in-memory leases. The underlying ComfyUI route
+allowlist and managed-asset ownership checks remain in force. Capability requests
+allow GET/HEAD only; generation remains a parent Workspace Run operation.
+Treat these paths as temporary read credentials when configuring access logs.
+This mechanism currently applies to managed draft canvases; legacy library iframe
+behavior is unchanged. A renewal failure retains the mounted editor and displays a
+connection error so the user can switch back to the mobile editor before reopening.
+
+Canvas clients also send `X-Agent-Server-Id` with the URI-encoded stable server ID.
+When present, the workspace API rejects both reads and writes if this identity differs
+from the configured backend. This guards locally cached drafts when a connection URL
+starts serving another ComfyUI environment. CORS preflight allows both headers.
+
+`POST /sessions/:sid/drafts/:did/discard-local` accepts the original optional
+`pending` save and `fork` local-fork payloads. It checks their exact command digests
+and records uncommitted request IDs in `workspace_request_cancellations` within
+one transaction. Late submissions with those IDs are rejected. Committed revisions
+and forks remain intact; the response includes the current revision and any committed
+results. Preserve the cancellation table with the workspace database when backing up
+or restoring it. Cancellation does not execute the supplied canvas or start a Run.
+
+Use `POST /sessions/:sid/drafts` with either
+`{source:"template",requestId,name,template:{templateId,text,references?}}` or
+`{source:"canvas",requestId,name,canvas,bindings}`. Messages carry
+`{requestId,message,context:{targetDraftId?,sourceRevision?,selectedAssetIds?,action?}}`.
+Reference slots come from template inspection; file paths are never asset identities.
+The exact implemented endpoints are in `workspace/routes.ts`. Library save intents,
+client writes and server readback are implemented and have been checked against
+the actual file extension with separate image/video test files and a concurrent
+ETag conflict. Archived-session cleanup preserves pinned/shared provenance and
+retries failed blob deletion through a durable operation. See the implementation log.
+
+Migrated transcript responses include `data.workspaceLegacy` references resolved from
+`legacy_workspace_refs`; original event rows and sequence numbers are unchanged.
+`GET /sessions/:sid/versions/:version` resolves only a recorded legacy version mapping
+and returns a read-only revision. Missing mappings return 404; legacy writes still
+require upgrading to an explicit draft API. Legacy Run summaries expose incomplete
+execution evidence, and legacy media provenance remains visibly unverified where the
+historical original bytes cannot be established.
+
+Existing databases require an explicit migration with the Gateway stopped. First
+perform a read-only inventory:
+
+```sh
+npm run migrate:agent-workspace -- --database gateway/.data/agent.sqlite
+```
+
+After active tasks and library writes have been completed or explicitly stopped,
+stop the Gateway and run the migration with a new backup filename and the source
+server identity:
+
+```sh
+npm run migrate:agent-workspace -- --database gateway/.data/agent.sqlite --apply --backup gateway/.data/agent-before-workspace.sqlite --server-id main-comfy
+```
+
+The CLI holds an exclusive database lock across the WAL-consistent backup and
+transactional migration. It refuses active work or backup overwrite, retains old
+tables/events, and does not run media capture or GPU work during migration. Restart
+with V2 enabled only with the matching client. A database with workspace data cannot
+be opened by the legacy mode of this Gateway. Rollback requires restoring the
+pre-migration database and matching application together; preserve any new media
+and V2 data before restoring. Do not roll back just the executable after V2 writes.
+
+The sections below describe the existing V1 client/runtime unless explicitly stated.
+
 The Gateway now hosts a Vercel AI SDK agent, SQLite task/version/event storage,
 ComfyUI execution polling, and authenticated APIs. The App entry is the **对话**
 tab (`/chats`); each session owns a draft (its version history) and may record which library workflow it started from and where the user last saved it. Nothing reaches the library without an explicit save.
@@ -190,8 +336,31 @@ remain unsupported. H3 dimensions must be multiples of 32 and frame counts 17k+5
 The fixed profiles match the reviewed model filenames and combinations. FL2VA
 can select the installed Q5/Q6 variant. Reference templates require an explicit
 `referenceImage`, `referenceAudio` or `referenceVideo` filename already uploaded
-through ComfyUI/the App. The agent never chooses private reference assets for the
-user. The chat composer supports user-selected attachment uploads.
+through ComfyUI/the App, or an input path returned by `prepare_output_image` for
+an image the user refers to from this conversation. The agent never chooses private
+reference assets for the user. The chat composer supports user-selected attachment uploads.
+
+A conversation can generate an image, then use it to generate video in a later
+turn. `list_session_outputs` reads successful runs from durable result events
+(10 runs per page; `before` is the last `resultSeq`), independently of context
+compaction and the task-list limit. `prepare_output_image` selects a `resultSeq`
+and zero-based `outputIndex` from this session, downloads the image (up to 20 MB),
+and uploads a copy into `input/` with an `agent-<sessionId>-<resultSeq>-<index>`
+filename prefix. Core [LoadImage](https://github.com/Comfy-Org/ComfyUI/blob/master/nodes.py)
+lists only input-root files in its schema; root copies keep strict workflow choice
+validation compatible with that behavior. The tool returns the
+actual loader path and source run/version; a persisted receipt reuses that copy
+on subsequent calls and across restarts. Only PNG/JPEG/WebP/GIF/AVIF images are
+supported by this copy tool. Missing source files produce an actionable error.
+
+`create_model_workflow` and `create_from_template` accept optional `baseVersion`:
+omitting it still requires an empty session, while supplying the current version
+switches the draft to a reviewed template as a new immutable version. Old versions,
+execution results and library copies remain available. For image-to-video, prepare
+the selected output first, then create `h3-ref-image` with its `referenceImage` path
+and current `baseVersion`, validate and submit. Multiple matching images require
+the user to clarify their selection. Recent run references are included in session
+state each step; generated images are still not automatically sent to the LLM.
 
 Z-Image defaults to 1024 square (hires: 2048×1152), 8 steps, CFG 1. H3 defaults to
 864×480, 22 frames at 24fps (about 0.92s), with the reviewed LoRA/scheduler. Longer

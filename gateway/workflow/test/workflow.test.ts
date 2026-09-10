@@ -10,6 +10,19 @@ import { applyCanvasPatch, canvasToPrompt, promptToCanvas } from '../canvas.js';
 import type { Canvas } from '../canvas.js';
 import { ComfyAdapter, ComfyRequestError } from '../comfyAdapter.js';
 
+test('official H3 serialization retains auto encoding with both nested and legacy codec defaults', async () => {
+  const canvas: Canvas = JSON.parse(await readFile(new URL('../../../tests/fixtures/workspace-official-h3-canvas.json', import.meta.url), 'utf8'));
+  const metadata: ObjectInfo = JSON.parse(await readFile(new URL('../../agent/test/model-fixtures/object-info.json', import.meta.url), 'utf8'));
+  const prompt = canvasToPrompt(canvas, metadata, false);
+  assert.deepEqual(prompt['16'].inputs, { video: ['15', 0], filename_prefix: 'ComfyMobile/Agent/h3-ref-image', format: 'auto', codec: 'auto' });
+  assert.equal(prompt['17'].inputs.image, 'asset:00000000-0000-4000-8000-000000000001');
+  const save = canvas.nodes.find(node => node.type === 'SaveVideo')!;
+  save.widgets_values![3] = 'h264';
+  assert.throws(() => canvasToPrompt(canvas, metadata, false), /Advanced SaveVideo/, 'unadapted encoding values must not be silently ignored');
+  save.widgets_values![3] = 'auto'; save.widgets_values![1] = 'mp4';
+  assert.throws(() => canvasToPrompt(canvas, metadata, false), /Advanced SaveVideo/);
+});
+
 const info: ObjectInfo = {
   CheckpointLoaderSimple: { input: { required: { ckpt_name: [['v1-5-pruned-emaonly-fp16.safetensors']] } }, output: ['MODEL', 'CLIP', 'VAE'] },
   CLIPTextEncode: { input: { required: { text: ['STRING'], clip: ['CLIP'] } }, output: ['CONDITIONING'] },
@@ -177,4 +190,42 @@ test('adapter uses configured auth, validates before submit and preserves execut
   await adapter.getQueue();
   await adapter.getHistory('run-1');
   await assert.rejects(async () => adapter.getHistory('../queue'), /Invalid prompt ID/);
+});
+
+test('generated image copy uses authenticated multipart input upload and bounds chunked downloads', async t => {
+  const image = Buffer.from('a generated image fixture');
+  const received: { url: string; type?: string; body: Buffer }[] = [];
+  let uploadName = 'renamed.png';
+  const server = createServer(async (req, res) => {
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) chunks.push(Buffer.from(chunk));
+    received.push({ url: req.url!, type: req.headers['content-type'], body: Buffer.concat(chunks) });
+    if (req.url!.startsWith('/view')) {
+      res.setHeader('Content-Type', 'image/png');
+      res.write(image.subarray(0, 4));
+      return res.end(image.subarray(4));
+    }
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ name: uploadName, subfolder: 'agent-chat/generated/test', type: 'input' }));
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  const adapter = new ComfyAdapter({ comfyUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, comfyAuthToken: 'private-token' });
+  const ref = { filename: 'cat.png', subfolder: 'A folder', type: 'output' };
+  const file = await adapter.getFile(ref);
+  assert.deepEqual(Buffer.from(file.bytes), image);
+  assert.deepEqual(await adapter.uploadImage(file, 'copy.png', 'agent-chat/generated/test'), { filename: 'renamed.png', subfolder: 'agent-chat/generated/test', type: 'input' });
+  assert.ok(received.every(r => new URL(r.url, 'http://localhost').searchParams.get('token') === 'private-token'));
+  assert.equal(new URL(received[0].url, 'http://localhost').searchParams.get('subfolder'), ref.subfolder);
+  const form = await new Response(received[1].body, { headers: { 'Content-Type': received[1].type! } }).formData();
+  assert.equal(form.get('type'), 'input');
+  assert.equal(form.get('subfolder'), 'agent-chat/generated/test');
+  assert.equal(form.get('overwrite'), 'false');
+  const uploadedFile = form.get('image') as File;
+  assert.equal(uploadedFile.name, 'copy.png');
+  assert.deepEqual(Buffer.from(await uploadedFile.arrayBuffer()), image);
+  await assert.rejects(adapter.getFile(ref, undefined, 8), (e: unknown) => e instanceof ComfyRequestError && e.status === 413);
+  uploadName = '../outside.png';
+  await assert.rejects(adapter.uploadImage(file, 'copy.png', 'agent-chat/generated/test'), (e: unknown) => e instanceof ComfyRequestError && e.status === 502);
 });

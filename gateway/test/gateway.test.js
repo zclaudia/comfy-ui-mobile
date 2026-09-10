@@ -18,6 +18,15 @@ test('provider credential accidentally placed in model field is rejected without
   assert.throws(() => loadGatewayConfig({ GATEWAY_AUTH_TOKEN: AUTH_TOKEN, AGENT_LLM_MODEL: `=${secret}` }), error => !error.message.includes(secret));
 });
 
+test('workspace media defaults to the persistent database directory and requires a stable server identity', () => {
+  const base = { GATEWAY_AUTH_TOKEN: AUTH_TOKEN, GATEWAY_AGENT_STORE: '/data/agent.sqlite', AGENT_WORKSPACE_V2: 'true' };
+  assert.throws(() => loadGatewayConfig(base), /AGENT_WORKSPACE_SERVER_ID/);
+  const configured = loadGatewayConfig({ ...base, AGENT_WORKSPACE_SERVER_ID: 'main-comfy' });
+  assert.deepEqual(configured.agentWorkspace, { directory: '/data/assets', serverId: 'main-comfy' });
+  assert.equal(loadGatewayConfig({ ...base, AGENT_WORKSPACE_V2: 'false' }).agentWorkspace, undefined);
+  assert.equal(loadGatewayConfig({ ...base, AGENT_WORKSPACE_SERVER_ID: 'main-comfy', AGENT_WORKSPACE_MEDIA_DIR: '/media/assets' }).agentWorkspace.directory, '/media/assets');
+});
+
 const listen = (server) => new Promise((resolve, reject) => {
   server.once('error', reject);
   server.listen(0, '127.0.0.1', () => {
@@ -73,6 +82,13 @@ test('Gateway protects allowlisted HTTP routes and proxies authenticated request
   const gatewayAddress = await gateway.start();
   t.after(() => gateway.stop());
   const baseUrl = `http://127.0.0.1:${gatewayAddress.port}`;
+
+  const canvasPreflight = await fetch(`${baseUrl}/api/gateway/agent/sessions`, {
+    method: 'OPTIONS', headers: { 'Access-Control-Request-Method': 'POST', 'Access-Control-Request-Headers': 'x-agent-schema-version,x-agent-server-id' },
+  });
+  assert.equal(canvasPreflight.status, 204);
+  const canvasHeaders = canvasPreflight.headers.get('access-control-allow-headers').toLowerCase();
+  assert.ok(canvasHeaders.includes('x-agent-schema-version') && canvasHeaders.includes('x-agent-server-id'));
 
   const health = await fetch(`${baseUrl}/api/gateway/health`);
   assert.equal(health.status, 200);

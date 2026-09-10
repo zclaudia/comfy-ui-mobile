@@ -9,6 +9,7 @@
   "dependencies": {
     "@ai-sdk/openai-compatible": "2.0.74",
     "ai": "6.0.277",
+    "sharp": "0.35.4",
     "ws": "^8.18.3",
     "zod": "3.25.76"
   }

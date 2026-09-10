@@ -4,6 +4,9 @@ import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { ModelMessage } from 'ai';
 import type { Canvas } from '../workflow/canvas.js';
+import type { AgentOutput } from './media.js';
+import type { WorkspaceTaskState } from './workspace/types.js';
+import { canonicalJson } from './workspace/digest.js';
 
 export type State = 'queued' | 'running' | 'waiting_comfy' | 'waiting_user' | 'reconciling' | 'completed' | 'failed' | 'cancelled';
 export const activeStates: State[] = ['queued', 'running', 'waiting_comfy', 'waiting_user', 'reconciling'];
@@ -51,8 +54,10 @@ export interface Task {
   messages: ModelMessage[]; completionChecked?: boolean; awaitingCompletion?: boolean; execution?: { attempt: string; version: number; promptId?: string; submitted: number };
   result?: unknown; error?: string; modelId?: string; contextScale?: number; contextRetried?: boolean;
   approval?: Approval; pausedAt?: number; retries?: number; notBefore?: number;
+  workspace?: WorkspaceTaskState;
 }
 export interface AgentEvent { seq: number; taskId: string | null; kind: string; data: unknown; created: number }
+export interface SessionRun { resultSeq: number; taskId: string; version: number; promptId: string; outputs: AgentOutput[] }
 /** ComfyUI loader nodes address input files as `subfolder/filename`; keep the text reference in that form. */
 export function attachmentPath(attachment: MediaRef) { return attachment.subfolder ? `${attachment.subfolder}/${attachment.filename}` : attachment.filename; }
 /** Pixel dimensions let the model check orientation and upscale ratios without seeing the image. */
@@ -95,10 +100,11 @@ function nextLibrarySaveOp(current: LibrarySaveOp | undefined, incoming: Library
 
 /** Single Gateway process. Transactions are short and bounded; GPU/model work never runs inside them. */
 export class AgentStore {
+  private transactionDepth = 0;
   readonly db: DatabaseSync;
-  constructor(path: string) {
+  constructor(path: string, connection?: DatabaseSync) {
     if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-    this.db = new DatabaseSync(path);
+    this.db = connection ?? new DatabaseSync(path);
     this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
       CREATE TABLE IF NOT EXISTS sessions(id TEXT PRIMARY KEY, owner TEXT NOT NULL, data TEXT NOT NULL);
       CREATE INDEX IF NOT EXISTS session_owner ON sessions(owner);
@@ -162,9 +168,19 @@ export class AgentStore {
   }
   close() { this.db.close(); }
   transaction<T>(fn: () => T): T {
-    this.db.exec('BEGIN IMMEDIATE');
-    try { const result = fn(); this.db.exec('COMMIT'); return result; }
-    catch (error) { this.db.exec('ROLLBACK'); throw error; }
+    // Nested service calls share the outer immediate transaction. A caught
+    // inner failure rolls back only its own writes; an outer failure rolls
+    // back the complete task/plan/run bundle, including released savepoints.
+    const depth = this.transactionDepth;
+    const point = `agent_transaction_${depth}`;
+    this.db.exec(depth ? `SAVEPOINT ${point}` : 'BEGIN IMMEDIATE');
+    this.transactionDepth++;
+    try { const result = fn(); this.db.exec(depth ? `RELEASE SAVEPOINT ${point}` : 'COMMIT'); return result; }
+    catch (error) {
+      if (depth) { this.db.exec(`ROLLBACK TO SAVEPOINT ${point}`); this.db.exec(`RELEASE SAVEPOINT ${point}`); }
+      else this.db.exec('ROLLBACK');
+      throw error;
+    } finally { this.transactionDepth--; }
   }
   session(id: string, owner?: string): Session {
     const row = this.db.prepare('SELECT data FROM sessions WHERE id=?').get(id);
@@ -254,7 +270,7 @@ export class AgentStore {
     const rows = before === undefined
       ? this.db.prepare('SELECT data FROM versions WHERE session_id=? ORDER BY version DESC LIMIT ?').all(id, limit + 1)
       : this.db.prepare('SELECT data FROM versions WHERE session_id=? AND version<? ORDER BY version DESC LIMIT ?').all(id, before, limit + 1);
-    const versions = rows.slice(0, limit).map(r => { const { canvas: _, ...metadata } = JSON.parse(r.data as string); return metadata as Omit<Version, 'canvas'>; });
+    const versions = rows.slice(0, limit).map(r => { const metadata = JSON.parse(r.data as string); delete metadata.canvas; return metadata as Omit<Version, 'canvas'>; });
     return { versions, hasMore: rows.length > limit };
   }
   /** Idempotency for manual version commits: a retry after a lost response must not create a second version. */
@@ -291,19 +307,20 @@ export class AgentStore {
       : this.db.prepare(`SELECT data FROM tasks WHERE state IN (${activeSql}) ORDER BY rowid`).all();
     return rows.map(r => JSON.parse(r.data as string));
   }
-  enqueue(sessionId: string, requestId: string, message: string, durationMs: number, attachments: Attachment[] = [], modelId?: string): Task {
+  enqueue(sessionId: string, requestId: string, message: string, durationMs: number, attachments: Attachment[] = [], modelId?: string, workspace?: Pick<WorkspaceTaskState, 'schemaVersion' | 'requestContext' | 'directRun'>): Task {
     return this.transaction(() => {
       const existing = this.db.prepare('SELECT data FROM tasks WHERE session_id=? AND request_id=?').get(sessionId, requestId);
       if (existing) {
         const task = JSON.parse(existing.data as string) as Task;
-        if (task.message !== message || JSON.stringify(task.attachments ?? []) !== JSON.stringify(attachments)) throw new AgentHttpError(409, '请求 ID 已用于其他消息');
+        if (task.message !== message || JSON.stringify(task.attachments ?? []) !== JSON.stringify(attachments)
+          || canonicalJson(task.workspace ? { schemaVersion: task.workspace.schemaVersion, requestContext: task.workspace.requestContext, ...(task.workspace.directRun ? { directRun: true } : {}) } : null) !== canonicalJson(workspace ?? null)) throw new AgentHttpError(409, '请求 ID 已用于其他消息');
         return task;
       }
-      if (this.tasks(sessionId).some(t => activeStates.includes(t.state))) throw new AgentHttpError(409, '请先等待或停止当前任务');
+      if (this.db.prepare(`SELECT id FROM tasks WHERE session_id=? AND state IN (${activeSql}) LIMIT 1`).get(sessionId)) throw new AgentHttpError(409, '请先等待或停止当前任务');
       if (this.tasks().length >= 20) throw new AgentHttpError(429, '后台任务队列已满');
-      const task: Task = { id: randomUUID(), sessionId, requestId, message, ...(attachments.length ? { attachments } : {}), state: 'queued', ...(modelId ? { modelId } : {}), created: Date.now(), deadline: Date.now() + durationMs, steps: 0, previews: 0, messages: [] };
+      const task: Task = { id: randomUUID(), sessionId, requestId, message, ...(attachments.length ? { attachments } : {}), state: 'queued', ...(modelId ? { modelId } : {}), ...(workspace ? { workspace: structuredClone(workspace) } : {}), created: Date.now(), deadline: Date.now() + durationMs, steps: 0, previews: 0, messages: [] };
       this.db.prepare('INSERT INTO tasks VALUES(?,?,?,?,?)').run(task.id, sessionId, requestId, task.state, JSON.stringify(task));
-      this.event(sessionId, task.id, 'user', { text: message, ...(attachments.length ? { attachments } : {}) });
+      this.event(sessionId, task.id, 'user', { text: message, ...(attachments.length ? { attachments } : {}), ...(workspace ? { context: workspace.requestContext, ...(workspace.directRun ? { directRun: true } : {}) } : {}) });
       this.event(sessionId, task.id, 'state', { state: 'queued' });
       return task;
     });
@@ -315,6 +332,16 @@ export class AgentStore {
   events(id: string, after = 0): AgentEvent[] {
     return this.db.prepare('SELECT seq,task_id,kind,data,created FROM events WHERE session_id=? AND seq>? ORDER BY seq LIMIT 200').all(id, after)
       .map(r => ({ seq: Number(r.seq), taskId: r.task_id as string | null, kind: r.kind as string, data: JSON.parse(r.data as string), created: Number(r.created) }));
+  }
+  /** Durable execution evidence, independent of model context compaction and the task-list limit. */
+  sessionRuns(id: string, before = Number.MAX_SAFE_INTEGER): SessionRun[] {
+    return this.db.prepare("SELECT seq,task_id,data FROM events WHERE session_id=? AND kind='result' AND json_extract(data,'$.success')=1 AND seq<? ORDER BY seq DESC LIMIT 10").all(id, before)
+      .map(r => ({ ...JSON.parse(r.data as string), resultSeq: Number(r.seq), taskId: r.task_id as string }));
+  }
+  sessionRun(id: string, resultSeq: number): SessionRun {
+    const row = this.db.prepare("SELECT task_id,data FROM events WHERE session_id=? AND seq=? AND kind='result' AND json_extract(data,'$.success')=1").get(id, resultSeq);
+    if (!row) throw new AgentHttpError(404, '本对话中找不到该成功生成结果');
+    return { ...JSON.parse(row.data as string), resultSeq, taskId: row.task_id as string };
   }
   recentMessages(id: string): ModelMessage[] {
     const context = this.context(id);

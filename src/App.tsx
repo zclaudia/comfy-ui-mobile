@@ -29,8 +29,7 @@ import { WorkflowStackPage } from '@/components/workflow/WorkflowStackPage';
 import { AppUpdate } from '@/components/server/AppUpdate';
 import CanvasLabPage from '@/components/canvas/CanvasLabPage';
 import CloudWorkflowSyncController from '@/components/workflow/CloudWorkflowSyncController';
-import SessionListPage from '@/components/agent/SessionListPage';
-import ChatPage from '@/components/agent/ChatPage';
+import { AgentChatPage, AgentSessionListPage, AgentCanvasPage } from '@/components/agent/AgentPages';
 import ModelSettingsPage from '@/components/agent/ModelSettingsPage';
 import { useAgentActivityPoll } from '@/components/agent/useAgentActivityPoll';
 import { TabLayout } from '@/components/navigation/TabLayout';
@@ -45,7 +44,7 @@ import { RootRedirect } from '@/components/navigation/RootRedirect';
 // the previous session's messages, composer draft and scroll position.
 const ChatPageRoute: React.FC = () => {
   const { id } = useParams();
-  return <ChatPage key={id ?? 'new'} />;
+  return <AgentChatPage key={id ?? 'new'} />;
 };
 
 const WorkflowEditorRoute: React.FC = () => {
@@ -250,13 +249,15 @@ const AppRouter: React.FC = () => {
       <Routes>
         <Route path="/" element={<RootRedirect />} />
         <Route element={<TabLayout />}>
-          <Route path="/chats" element={<SessionListPage />} />
+          <Route path="/chats" element={<AgentSessionListPage />} />
           <Route path="/workflows" element={<WorkflowList />} />
           <Route path="/outputs" element={<OutputsGallery />} />
         </Route>
         <Route path="/agent" element={<Navigate to="/chats" replace />} />
         <Route path="/chat/new" element={<ChatPageRoute />} />
         <Route path="/chat/:id" element={<ChatPageRoute />} />
+        <Route path="/chat/:id/versions/:legacyVersion" element={<ChatPageRoute />} />
+        <Route path="/chat/:sessionId/drafts/:draftId/canvas" element={<AgentCanvasPage />} />
         <Route path="/workflow/:id" element={<WorkflowEditorRoute />} />
         <Route path="/workflow-stack/:id" element={<WorkflowStackPage />} />
         <Route path="/chains" element={<WorkflowChainList />} />

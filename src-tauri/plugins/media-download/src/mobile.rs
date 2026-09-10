@@ -4,7 +4,7 @@ use tauri::{
     AppHandle, Runtime,
 };
 
-use crate::models::{DownloadRequest, DownloadResponse};
+use crate::models::{DownloadRequest, DownloadResponse, SaveJsonRequest, SaveJsonResponse};
 
 pub struct MediaDownload<R: Runtime>(PluginHandle<R>);
 
@@ -21,6 +21,9 @@ pub fn init<R: Runtime, C: DeserializeOwned>(
 }
 
 impl<R: Runtime> MediaDownload<R> {
+    pub fn save_json_file(&self, payload: SaveJsonRequest) -> crate::Result<SaveJsonResponse> {
+        self.0.run_mobile_plugin("saveJsonFile", payload).map_err(Into::into)
+    }
     pub fn enqueue_download(
         &self,
         payload: DownloadRequest,

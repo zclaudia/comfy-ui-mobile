@@ -48,6 +48,7 @@ interface UploadState {
 }
 
 interface NodeDetailModalProps {
+    renderParameter?: (nodeId: number, inputName: string, currentValue: unknown) => React.ReactNode | undefined;
     selectedNode: ComfyGraphNode;
     nodeMetadata: Map<number, INodeWithMetadata>;
     metadataLoading: boolean;
@@ -109,6 +110,7 @@ interface NodeDetailModalProps {
 }
 
 export const NodeDetailModal: React.FC<NodeDetailModalProps> = ({
+    renderParameter,
     selectedNode,
     nodeMetadata,
     metadataLoading,
@@ -539,6 +541,8 @@ export const NodeDetailModal: React.FC<NodeDetailModalProps> = ({
                                     </div>
                                 ) : (
                                     (() => {
+                                        const overridden = renderParameter?.(nodeId, param.name, getWidgetValue(nodeId, param.name, param.value));
+                                        if (overridden !== undefined) return overridden;
                                         const parameterType = detectParameterType(param);
                                         const wrapperClasses = "space-y-1.5";
 
@@ -1031,6 +1035,7 @@ export const NodeDetailModal: React.FC<NodeDetailModalProps> = ({
                             >
                                 <button
                                     onClick={onClose}
+                                    aria-label={t('common.close')}
                                     className={`p-1.5 rounded-lg transition-all ${hasCustomColor ? 'bg-black/20 text-white hover:bg-black/40' : 'bg-white/[0.06] text-[#9aa3b2] hover:text-white hover:bg-white/[0.1]'}`}
                                 >
                                     <X className="w-4 h-4" />

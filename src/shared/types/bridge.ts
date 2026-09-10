@@ -52,6 +52,8 @@ export interface BridgeNode {
 }
 
 export interface BridgeGraphSummary {
+  /** Both official queue entry points are guarded by the workspace shell. */
+  managedExecution?: boolean;
   nodeCount: number;
   workflowName: string | null;
   frontendVersion: string | null;
@@ -81,6 +83,7 @@ export type BridgeEventMessage =
   | { source: typeof BRIDGE_SOURCE; type: 'bridge-ready'; payload: BridgeGraphSummary }
   | { source: typeof BRIDGE_SOURCE; type: 'graph-changed'; payload: BridgeGraphSummary }
   | { source: typeof BRIDGE_SOURCE; type: 'graph-mutated'; payload: Record<string, never> }
+  | { source: typeof BRIDGE_SOURCE; type: 'execution-requested'; payload: Record<string, never> }
   | { source: typeof BRIDGE_SOURCE; type: 'selection-changed'; payload: BridgeNode | null }
   | { source: typeof BRIDGE_SOURCE; type: 'queue-result'; payload: BridgeQueueResult }
   | {
@@ -96,7 +99,7 @@ export type BridgeEventMessage =
 
 export type ShellCommandMessage =
   | { source: typeof SHELL_SOURCE; type: 'get-state' }
-  | { source: typeof SHELL_SOURCE; type: 'load-workflow'; payload: { workflow: unknown } }
+  | { source: typeof SHELL_SOURCE; type: 'load-workflow'; payload: { workflow: unknown; managedExecution?: boolean } }
   | { source: typeof SHELL_SOURCE; type: 'select-node'; payload: { nodeId: number | string } }
   | {
       source: typeof SHELL_SOURCE;

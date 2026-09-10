@@ -7,6 +7,7 @@ import { useConnectionStore } from './ui/store/connectionStore'
 import { initializePlatformRuntime, isTauriRuntime } from './platform/runtime'
 import { restoreNativeGatewaySession } from './platform/gatewaySession'
 import App from './App.tsx'
+import { registerOfflineShell } from './platform/offlineShell'
 
 const root = document.getElementById('root')!
 
@@ -21,6 +22,7 @@ const bootstrap = async () => {
       <App />
     </StrictMode>,
   )
+  void registerOfflineShell()
 }
 
 void bootstrap().catch((error) => {

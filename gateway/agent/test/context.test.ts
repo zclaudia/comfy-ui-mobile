@@ -50,6 +50,17 @@ test('an oversized recent tool result is summarized as a complete exchange with 
   assert.equal(result.messages.at(-1)?.content, '当前任务');
 });
 
+test('summary requests use available model context while the resulting memory fits the smaller action budget', async () => {
+  const model = summarizer();
+  const result = await compactContext({ ...options(model), budget: 3000, summaryBudget: 24000,
+    messages: [{ role: 'user', content: '历史目标：保留猫咪，已经完成图片生成。'.repeat(400) }, { role: 'user', content: '当前任务' }] });
+  assert.equal(result.compacted, true); assert.ok(estimateTokens(result.messages) <= 3000);
+  assert.equal(model.doGenerateCalls.length, 1, 'tool schema reservations must not split a fitting summary request into many small calls');
+  const request = model.doGenerateCalls[0];
+  assert.ok(estimateTokens(request.prompt) + (request.maxOutputTokens ?? 0) < 24000);
+  assert.equal(result.messages.at(-1)?.content, '当前任务');
+});
+
 test('short histories skip summarization; empty summaries and oversized latest requests fail explicitly', async () => {
   const model = summarizer();
   const messages: ModelMessage[] = [{ role: 'user', content: '当前任务' }];
@@ -121,6 +132,46 @@ test('service compacts, records usage, persists memory across turns, and uses ta
     assert.equal((await drain(service, next.id)).state, 'completed');
     assert.ok(JSON.stringify(model.doGenerateCalls.at(-1)?.prompt).includes('早期约束：蓝色'));
   } finally { await service.stop(); }
+});
+
+test('batched compaction and the following action get independent request timeouts', async () => {
+  const issued: AbortController[] = [];
+  let summaries = 0;
+  const model = new MockLanguageModelV3({ doGenerate: async o => {
+    assert.equal(o.abortSignal?.aborted, false, 'a previous request timeout must not poison this request');
+    if (String(o.prompt[0].content).includes('Maintain a concise')) {
+      summaries++;
+      // Simulate the prior request budget expiring while a later request runs.
+      for (const previous of issued.slice(0, -1)) previous.abort(new DOMException('expired', 'TimeoutError'));
+      return text('早期约束：蓝色。run-1 已成功。');
+    }
+    return o.toolChoice?.type === 'required' ? finish() : text('继续完成。');
+  } });
+  const service = new AgentService(config, { model, adapter: new Adapter() });
+  Object.defineProperty(service, 'stepSignal', { value: (_task: unknown, cancellation: AbortController) => {
+    const request = new AbortController(); issued.push(request);
+    return AbortSignal.any([request.signal, cancellation.signal]);
+  } });
+  try {
+    const session = await service.createSession('owner', 'long chat');
+    for (let i = 0; i < 30; i++) service.store.event(session.id, null, 'user', { text: `早期约束-${i}: ${'蓝色'.repeat(600)}` });
+    const task = service.enqueue(session.id, 'owner', randomUUID(), '继续');
+    assert.equal((await drain(service, task.id)).state, 'completed');
+    assert.ok(summaries > 1);
+    assert.equal(service.store.events(session.id).some(event => event.kind === 'retry'), false);
+  } finally { await service.stop(); }
+});
+
+test('cancellation still stops batched compaction before another provider request', async () => {
+  const cancellation = new AbortController(); let summaries = 0;
+  const model = new MockLanguageModelV3({ doGenerate: async () => {
+    summaries++; cancellation.abort(); return text('部分摘要');
+  } });
+  await assert.rejects(compactContext({ ...options(model),
+    messages: [{ role: 'assistant', content: '历史约束'.repeat(5000) }, { role: 'user', content: '当前任务' }],
+    requestSignal: () => AbortSignal.any([cancellation.signal, AbortSignal.timeout(1000)]),
+  }), { name: 'AbortError' });
+  assert.equal(summaries, 1);
 });
 
 test('context rejection retries once; unrelated provider errors never qualify', async () => {

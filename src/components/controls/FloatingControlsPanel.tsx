@@ -667,8 +667,8 @@ export const FloatingControlsPanel: React.FC<FloatingControlsPanelProps> = ({
           {/* Divider */}
           <div className="h-px w-4 bg-white/[0.07]" />
 
-          {/* Stack View Button */}
-          <div className="relative">
+          {/* Stack view belongs to a library workflow, not a conversation draft. */}
+          {id && <div className="relative">
             <Button
               onClick={handleStackViewClick}
               variant="ghost"
@@ -678,7 +678,7 @@ export const FloatingControlsPanel: React.FC<FloatingControlsPanelProps> = ({
             >
               <Layers className="h-4 w-4" />
             </Button>
-          </div>
+          </div>}
 
           {/* Divider */}
           <div className="h-px w-4 bg-white/[0.07]" />

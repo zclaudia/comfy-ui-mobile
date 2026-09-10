@@ -12,6 +12,7 @@ interface BridgeEventHandlers {
   ready: (summary: BridgeGraphSummary) => void;
   graphChanged: (summary: BridgeGraphSummary) => void;
   graphMutated: () => void;
+  executionRequested: () => void;
   selectionChanged: (node: BridgeNode | null) => void;
   queueResult: (result: BridgeQueueResult) => void;
 }
@@ -32,6 +33,7 @@ export class CanvasBridgeClient {
     ready: new Set(),
     graphChanged: new Set(),
     graphMutated: new Set(),
+    executionRequested: new Set(),
     selectionChanged: new Set(),
     queueResult: new Set(),
   };
@@ -85,6 +87,7 @@ export class CanvasBridgeClient {
     if (this.disposed) return;
     // Only accept messages from the embedded frontend's origin
     if (event.origin !== this.serverOrigin) return;
+    if (event.source !== this.iframe?.contentWindow) return;
     const msg = event.data;
     if (!isBridgeEventMessage(msg)) return;
 
@@ -100,6 +103,9 @@ export class CanvasBridgeClient {
         break;
       case 'graph-mutated':
         this.emit('graphMutated');
+        break;
+      case 'execution-requested':
+        this.emit('executionRequested');
         break;
       case 'selection-changed':
         this.emit('selectionChanged', msg.payload);
@@ -150,8 +156,8 @@ export class CanvasBridgeClient {
     this.post({ type: 'get-state' });
   }
 
-  loadWorkflow(workflow: IComfyJson) {
-    this.post({ type: 'load-workflow', payload: { workflow } });
+  loadWorkflow(workflow: IComfyJson, managedExecution = false) {
+    this.post({ type: 'load-workflow', payload: { workflow, managedExecution } });
   }
 
   selectNode(nodeId: number | string) {

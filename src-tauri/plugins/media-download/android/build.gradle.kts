@@ -34,4 +34,5 @@ android {
 
 dependencies {
     implementation(project(":tauri-android"))
+    implementation("androidx.activity:activity:1.6.0")
 }

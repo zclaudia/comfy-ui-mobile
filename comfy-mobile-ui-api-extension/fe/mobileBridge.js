@@ -4,10 +4,22 @@
 // frontend is embedded by the mobile shell (inside an iframe), or when
 // ?mobileBridge=1 is passed for direct debugging.
 import { app } from "../../scripts/app.js";
+import { api } from "../../scripts/api.js";
+import { installManagedExecution } from "./managedExecution.js";
 
 const BRIDGE_SOURCE = "comfy-mobile-bridge";
 const SHELL_SOURCE = "comfy-mobile-shell";
 const PROTOCOL_VERSION = 1;
+let managedExecutionRequested = isEmbedded() && new URLSearchParams(window.location.search).get("workspaceExecution") === "1";
+let managedExecutionReady = () => false;
+let managedExecutionInstalled = false;
+let managedWorkflowLoaded = false;
+function enableManagedExecution() {
+  managedExecutionRequested = true;
+  if (managedExecutionInstalled) return;
+  managedExecutionInstalled = true;
+  managedExecutionReady = installManagedExecution(app, api, () => post('execution-requested', {}));
+}
 
 function isEmbedded() {
   try {
@@ -122,6 +134,7 @@ function graphSummary() {
   } catch {}
   return {
     nodeCount: app.graph?._nodes?.length ?? 0,
+    managedExecution: managedExecutionRequested && managedWorkflowLoaded && managedExecutionReady(),
     workflowName,
     frontendVersion: window.__COMFYUI_FRONTEND_VERSION__ ?? null,
     protocolVersion: PROTOCOL_VERSION,
@@ -143,33 +156,100 @@ function respond(requestId, ok, data, error) {
 // The shell's workflow must win over the frontend's own session restore,
 // which can finish after bridge-ready and replace the graph.
 let lastShellWorkflow = null;
+let loadedShellGraph = null;
 let applyingShellWorkflow = false;
+
+function workflowFingerprint(workflow) {
+  const copy = safeClone(workflow);
+  // Fit/zoom changes the viewport, not the document being edited.
+  if (copy?.extra) delete copy.extra.ds;
+  return JSON.stringify(copy, (_key, value) => value && typeof value === 'object' && !Array.isArray(value)
+    ? Object.fromEntries(Object.keys(value).sort().map(key => [key, value[key]])) : value);
+}
+
+function prepareManagedMediaNode(node) {
+  if (!managedExecutionRequested || !lastShellWorkflow) return;
+  const input = { LoadImage: 'image', LoadVideo: 'file', LoadAudio: 'audio' }[node.type];
+  const widget = node.widgets?.find(item => item.name === input);
+  if (!input || !widget) return;
+  const tokens = (lastShellWorkflow.nodes ?? []).filter(item => item.type === node.type)
+    .map(item => item.widgets_values?.[0])
+    .filter(value => typeof value === 'string' && /^asset:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value));
+  if (!tokens.length) return;
+  // The official missing-media scan checks this list before requesting a
+  // preview. Managed tokens resolve through the authenticated Gateway route.
+  // Clone per widget so other graphs retain their original file options.
+  const values = widget.options?.values;
+  const add = items => Array.isArray(items) ? [...new Set([...items, ...tokens])] : items;
+  widget.options = { ...widget.options, values: typeof values === 'function'
+    ? function (...args) { return add(values.apply(this, args)); } : add(values) };
+}
 
 // Graph fingerprint state (structural-change detection). Reset after
 // shell-driven loads so a fresh load never reads as a user edit.
 let fpLast = null;
 let fpDirty = false;
 
-async function loadWorkflow({ workflow }) {
+async function loadWorkflow({ workflow, managedExecution }) {
   if (!workflow) return;
-  lastShellWorkflow = workflow;
+  // The official router may remove the initial query before extensions load.
+  // The authenticated parent therefore requests execution ownership in the workflow handoff too.
+  if (managedExecution === true) enableManagedExecution();
+  if (managedExecutionRequested) {
+    managedWorkflowLoaded = false;
+    post('graph-changed', graphSummary());
+  }
+  lastShellWorkflow = safeClone(workflow);
+  loadedShellGraph = null;
   applyingShellWorkflow = true;
   try {
     await app.loadGraphData(workflow);
+    managedWorkflowLoaded = true;
     // The stored view state may not include the nodes — always fit after load
     fitView();
+    // Frontend upgrades normalize slots, sizes and optional defaults on load.
+    // Capture that baseline so browsing does not save those changes as edits.
+    if (app.graph?.serialize) loadedShellGraph = workflowFingerprint(app.graph.serialize());
   } catch (e) {
     console.warn("[MobileBridge] load-workflow failed", e);
   } finally {
     applyingShellWorkflow = false;
     fpLast = null;
     fpDirty = false;
+    post('graph-changed', graphSummary());
   }
 }
 
 async function handleGetWorkflow(requestId) {
   try {
-    const data = app.graph.serialize();
+    const data = safeClone(app.graph.serialize());
+    if (lastShellWorkflow && loadedShellGraph && workflowFingerprint(data) === loadedShellGraph) {
+      respond(requestId, true, safeClone(lastShellWorkflow));
+      return;
+    }
+    // LiteGraph omits shell metadata and some frontend versions add a named
+    // widget cache. Preserve the input representation without hiding edits.
+    if (lastShellWorkflow) {
+      for (const key of ['name', 'mobile_ui_metadata']) {
+        if (!(key in data) && key in lastShellWorkflow) data[key] = safeClone(lastShellWorkflow[key]);
+      }
+      const originals = new Map((lastShellWorkflow.nodes ?? []).map(node => [String(node.id), node]));
+      for (const node of data.nodes ?? []) {
+        const original = originals.get(String(node.id));
+        if (!original || original.type !== node.type) continue;
+        if (!('widgets_values_named' in original)) delete node.widgets_values_named;
+        else node.widgets_values_named = { ...original.widgets_values_named, ...node.widgets_values_named };
+        const runtime = app.graph._nodes?.find(item => String(item.id) === String(node.id));
+        for (const widget of runtime?.widgets ?? []) {
+          if (node.widgets_values_named && widget.name in node.widgets_values_named) {
+            node.widgets_values_named[widget.name] = safeClone(widget.value);
+          }
+          if (widget.name === 'control_after_generate' && data.mobile_ui_metadata?.control_after_generate) {
+            data.mobile_ui_metadata.control_after_generate[String(node.id)] = widget.value;
+          }
+        }
+      }
+    }
     respond(requestId, true, safeClone(data));
   } catch (e) {
     respond(requestId, false, undefined, String(e?.message ?? e));
@@ -210,6 +290,7 @@ function applyControlAfterGenerate() {
 
 async function handleGetPrompt(requestId) {
   try {
+    if (managedExecutionRequested) throw new Error('Draft execution is compiled by the conversation runtime');
     applyControlAfterGenerate();
     const p = await app.graphToPrompt();
     respond(requestId, true, { workflow: safeClone(p.workflow), output: safeClone(p.output) });
@@ -413,6 +494,7 @@ function injectCss() {
 }
 
 function handleShellMessage(event) {
+  if (event.source !== window.parent) return;
   const msg = event.data;
   if (!msg || msg.source !== SHELL_SOURCE) return;
   if (shellOrigin === "*") shellOrigin = event.origin;
@@ -475,6 +557,9 @@ function handleShellMessage(event) {
 
 
 if (isEmbedded()) {
+  if (managedExecutionRequested) {
+    enableManagedExecution();
+  }
   app.registerExtension({
     name: "ComfyMobile.CanvasBridge",
     setup() {
@@ -617,6 +702,9 @@ if (isEmbedded()) {
       // from being overwritten by the frontend's async session restore.
       setTimeout(announceReady, 1500);
       console.log("[MobileBridge] active (embedded mode)");
+    },
+    loadedGraphNode(node) {
+      prepareManagedMediaNode(node);
     },
     afterConfigureGraph() {
       announceReady();

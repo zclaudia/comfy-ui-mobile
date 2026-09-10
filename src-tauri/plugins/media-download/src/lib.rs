@@ -31,7 +31,7 @@ impl<R: Runtime, T: Manager<R>> MediaDownloadExt<R> for T {
 
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
     Builder::new("media-download")
-        .invoke_handler(tauri::generate_handler![commands::enqueue_download])
+        .invoke_handler(tauri::generate_handler![commands::enqueue_download, commands::save_json_file])
         .setup(|app, api| {
             #[cfg(mobile)]
             let media_download = mobile::init(app, api)?;

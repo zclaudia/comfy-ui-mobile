@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -53,6 +53,133 @@ async function drain(service: AgentService, id: string, limit = 20) {
   }
   throw new Error(`Task did not finish: ${JSON.stringify(service.store.task(id))}`);
 }
+
+class ReferenceComfy extends FakeComfy {
+  modelInfo = JSON.parse(readFileSync(new URL('./model-fixtures/object-info.json', import.meta.url), 'utf8'));
+  uploads = 0;
+  override async getObjectInfo() { return structuredClone(this.modelInfo); }
+  override async uploadImage(file: { bytes: Uint8Array; mediaType: string }, filename: string, subfolder: string) {
+    this.uploads++;
+    // ComfyUI may rename an uploaded file; the workflow must use the returned name.
+    const uploaded = { filename: `renamed-${filename}`, subfolder, type: 'input' as const };
+    this.files[`input/${subfolder}/${uploaded.filename}`] = file;
+    // Match core LoadImage: subfolder uploads are not listed in its combo choices.
+    if (!subfolder) this.modelInfo.LoadImage.input.required.image[0].push(uploaded.filename);
+    return uploaded;
+  }
+  override async submit(prompt: unknown, nodeInfo: any, context: any) {
+    const result = await super.submit(prompt, nodeInfo, context);
+    if (Object.values(prompt as Record<string, { class_type: string }>).some(n => n.class_type === 'MiniMaxH3ReferenceToVideo')) {
+      this.executions[result.promptId].outputs = { '16': { videos: [{ filename: 'clip.mp4', subfolder: 'Agent', type: 'output' }] } };
+    }
+    return result;
+  }
+}
+
+test('a generated image becomes a video reference in the next turn after restart, preserving versions and provenance', async t => {
+  const folder = mkdtempSync(join(tmpdir(), 'agent-reference-'));
+  t.after(() => rmSync(folder, { recursive: true, force: true }));
+  const path = join(folder, 'agent.sqlite');
+  const adapter = new ReferenceComfy();
+  const image = { bytes: new Uint8Array([1, 2, 3]), mediaType: 'image/png' };
+  adapter.files['output/Agent/sample.png'] = image;
+  let service = new AgentService(config(path), { adapter, model: scripted([
+    call('create_model_workflow', { profileId: 'z-image-turbo', text: 'A cat' }),
+    call('submit_preview', { version: 1 }), answer('图片已生成。'),
+  ]) });
+  const session = await service.createSession('a', '图生视频');
+  const first = service.enqueue(session.id, 'a', randomUUID(), '生成一张猫的图片');
+  assert.equal((await drain(service, first.id)).state, 'completed');
+  const original = service.store.version(session.id, 1)!;
+  const run = service.store.sessionRuns(session.id)[0];
+  assert.equal(run.taskId, first.id);
+  // Simulate a compacted checkpoint with no asset paths: durable result lookup still works.
+  service.store.saveContext({ ...service.store.task(first.id), messages: [{ role: 'user', content: 'Earlier conversation was summarized.' }] });
+  await service.stop();
+  const referenceImage = `renamed-agent-${session.id}-${run.resultSeq}-0.png`;
+  const prepare = { resultSeq: run.resultSeq, outputIndex: 0 };
+  const model = scripted([
+    call('list_session_outputs', {}), call('prepare_output_image', prepare),
+    call('prepare_output_image', prepare), // Repeated model call must reuse the durable copy.
+    call('create_model_workflow', { baseVersion: 1, profileId: 'h3-ref-image', text: 'The cat waves', referenceImage, width: 480, height: 480 }),
+    call('submit_preview', { version: 2 }), answer('视频已生成。'),
+  ]);
+  service = new AgentService(config(path), { adapter, model });
+  try {
+    const second = service.enqueue(session.id, 'a', randomUUID(), '基于刚才这张图生成猫挥手的视频');
+    const completed = await drain(service, second.id);
+    assert.equal(completed.state, 'completed', completed.error);
+    assert.equal(adapter.submits, 2);
+    assert.equal(adapter.uploads, 1);
+    assert.equal(adapter.fileReads, 1);
+    const stateMessage = model.doGenerateCalls[0].prompt.at(-1)!;
+    assert.match((stateMessage.content[0] as { text: string }).text, new RegExp(`"resultSeq":${run.resultSeq}`));
+    assert.deepEqual(service.store.version(session.id, 1), original);
+    const prompt = canvasToPrompt(service.store.version(session.id)!.canvas, adapter.modelInfo);
+    assert.equal(Object.values(prompt).find(n => n.class_type === 'LoadImage')!.inputs.image, referenceImage);
+    assert.ok(Object.values(prompt).some(n => n.class_type === 'MiniMaxH3ReferenceToVideo'));
+    const runs = service.store.sessionRuns(session.id);
+    assert.deepEqual(runs.map(r => r.outputs[0].kind), ['video', 'image']);
+    assert.deepEqual(runs.map(r => r.version), [2, 1]);
+    assert.equal((service.store.receipt(first.id, `output-image:${run.resultSeq}:0`) as any).source.promptId, run.promptId);
+    service.restore(session.id, 'a', 1, 2);
+    assert.deepEqual(service.store.version(session.id)!.canvas, original.canvas);
+  } finally { await service.stop(); }
+});
+
+test('reference selection rejects other conversations, failed runs, missing images and non-image outputs', async () => {
+  const adapter = new ReferenceComfy();
+  let steps: ReturnType<typeof call | typeof answer>[] = [];
+  let index = 0;
+  const service = new AgentService(config(), { adapter, model: new MockLanguageModelV3({ doGenerate: async () => steps[index++] }) });
+  try {
+    const session = await service.createSession('a', 'Current');
+    const other = await service.createSession('a', 'Other');
+    const record = (id: string, success: boolean, filename: string, kind = 'image') => {
+      service.store.event(id, null, 'result', { success, version: 1, promptId: 'old', outputs: [{ filename, subfolder: '', type: 'output', kind }] });
+      return service.store.events(id).at(-1)!.seq;
+    };
+    const foreign = record(other.id, true, 'private.png');
+    const failed = record(session.id, false, 'partial.png');
+    const video = record(session.id, true, 'video.mp4', 'video');
+    const missing = record(session.id, true, 'deleted.png');
+    steps = [foreign, failed, video, missing].map(resultSeq => call('prepare_output_image', { resultSeq, outputIndex: 0 }));
+    steps.push(call('prepare_output_image', { resultSeq: missing, outputIndex: 1 }), answer('无法读取指定图片。'), call('finish_response', { answer: '无法读取指定图片。' }));
+    const task = service.enqueue(session.id, 'a', randomUUID(), '复用之前的图');
+    assert.equal((await drain(service, task.id)).state, 'completed');
+    const errors = service.store.events(session.id).filter(e => e.kind === 'tool_finished') as any[];
+    assert.equal(errors.length, 5);
+    assert.ok(errors.every(e => e.data.isError));
+    assert.match(errors[3].data.result.error, /已不存在/);
+    assert.equal(adapter.fileReads, 1, 'only the same-session image reaches file access');
+    assert.equal(adapter.uploads, 0);
+    assert.equal(adapter.submits, 0);
+    assert.equal(service.store.sessionRuns(session.id).length, 2);
+  } finally { await service.stop(); }
+});
+
+test('switching templates requires the current version and validation failure preserves the draft', async () => {
+  const adapter = new ReferenceComfy();
+  const model = scripted([
+    call('create_model_workflow', { profileId: 'h3-fl2va', text: 'Move' }),
+    call('create_model_workflow', { baseVersion: 0, profileId: 'h3-fl2va', text: 'Move' }),
+    call('create_model_workflow', { baseVersion: 1, profileId: 'h3-ref-image', text: 'Move', referenceImage: 'nonexistent.png' }),
+    answer('保持当前工作流。'),
+  ]);
+  const service = new AgentService(config(), { adapter, model });
+  try {
+    const session = await service.createSession('a', 'Existing');
+    const { createModelWorkflow } = await import('../modelProfiles.js');
+    const canvas = createModelWorkflow(adapter.modelInfo, { profileId: 'z-image-turbo', text: 'Cat' });
+    service.store.commitVersion(session.id, 0, canvas, 'Image');
+    const task = service.enqueue(session.id, 'a', randomUUID(), '切换为视频');
+    assert.equal((await drain(service, task.id)).state, 'completed');
+    assert.equal(service.store.session(session.id).version, 1);
+    assert.deepEqual(service.store.version(session.id)!.canvas, canvas);
+    assert.equal(service.store.events(session.id).filter(e => e.kind === 'tool_finished' && (e.data as any).isError).length, 3);
+    assert.equal(adapter.submits, 0);
+  } finally { await service.stop(); }
+});
 
 test('AI SDK loop creates, patches, previews and saves; reconnect cursor and disk persistence work', async t => {
   const folder = mkdtempSync(join(tmpdir(), 'agent-mvp-'));

@@ -4,7 +4,8 @@
  * Uses ComfyGraph for data operations with canvas rendering
  */
 
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo, useImperativeHandle } from 'react';
+import type { WorkflowEditorHandle, WorkflowEditorIntegration } from './WorkflowEditorStorage';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -24,7 +25,7 @@ import { ComfyGraph } from '@/core/domain/ComfyGraph';
 import { ComfyGraphNode } from '@/core/domain/ComfyGraphNode';
 
 // Infrastructure Services
-import { addWorkflow, getWorkflow, updateWorkflow, loadAllWorkflows, saveAllWorkflows } from '@/infrastructure/storage/IndexedDBWorkflowService';
+import { addWorkflow, getWorkflow as getLibraryWorkflow, updateWorkflow as updateLibraryWorkflow, loadAllWorkflows } from '@/infrastructure/storage/IndexedDBWorkflowService';
 import { ComfyNodeMetadataService } from '@/infrastructure/api/ComfyNodeMetadataService';
 import ComfyUIService from '@/infrastructure/api/ComfyApiClient';
 import { convertGraphToAPI } from '@/infrastructure/api/ComfyApiFunctions';
@@ -73,7 +74,6 @@ import { useCanvasRenderer } from '@/hooks/useCanvasRenderer';
 import { useWidgetValueEditor } from '@/hooks/useWidgetValueEditor';
 import { useFileOperations } from '@/hooks/useFileOperations';
 import { useMobileOptimizations } from '@/hooks/useMobileOptimizations';
-import { useWorkflowStorage } from '@/hooks/useWorkflowStorage';
 import { useConnectionMode } from '@/hooks/useConnectionMode';
 
 import { DEFAULT_CANVAS_CONFIG } from '@/config/canvasConfig';
@@ -118,8 +118,11 @@ const convertLiteGraphGroups = (groups: IComfyGraphGroup[]): GroupBounds[] => {
   }).filter(Boolean) as GroupBounds[];
 };
 
-const WorkflowEditor: React.FC = () => {
-  const { id } = useParams<{ id: string }>();
+const WorkflowEditor: React.FC<{ integration?: WorkflowEditorIntegration; editorRef?: React.Ref<WorkflowEditorHandle> }> = ({ integration, editorRef }) => {
+  const { id: routeId } = useParams<{ id: string }>();
+  const id = integration?.storage.id ?? routeId;
+  const updateWorkflow = useCallback((value: IComfyWorkflow) => integration
+    ? integration.storage.save(value) : updateLibraryWorkflow(value), [integration]);
   const navigate = useNavigate();
   const { t } = useTranslation();
 
@@ -131,6 +134,7 @@ const WorkflowEditor: React.FC = () => {
 
   // ComfyGraph instance  
   const comfyGraphRef = useRef<any | null>(null);
+  const initialDraftCanvasRef = useRef<{ serialized: string; original: IComfyJson } | null>(null);
 
   // Global store (for current workflow tracking)
   const {
@@ -299,9 +303,6 @@ const WorkflowEditor: React.FC = () => {
   }, [workflow?.workflow_json]);
 
   // #region Hooks
-
-  // Workflow storage hook
-  const workflowStorage = useWorkflowStorage();
 
   // Current prompt tracking
   const currentPromptIdRef = useRef<string | null>(null);
@@ -704,7 +705,8 @@ const WorkflowEditor: React.FC = () => {
   // edits. The shell does not mirror interactions back into legacy UI; it
   // only tracks dirtiness (graph-mutated events) and persists on save or
   // when switching canvas modes.
-  const officialCanvasEnabled = useCanvasV2Store((s) => s.officialCanvasEnabled);
+  const preferredOfficialCanvas = useCanvasV2Store((s) => s.officialCanvasEnabled);
+  const officialCanvasEnabled = preferredOfficialCanvas && !integration?.forceMobileCanvas;
   const setOfficialCanvasEnabled = useCanvasV2Store((s) => s.setOfficialCanvasEnabled);
   const [canvasDirty, setCanvasDirty] = useState(false);
   const canvasRevisionRef = useRef(0);
@@ -716,7 +718,8 @@ const WorkflowEditor: React.FC = () => {
   const handleBridgeGraphMutated = useCallback(() => {
     canvasRevisionRef.current += 1;
     setCanvasDirty(true);
-  }, []);
+    if (integration) setCanvasUpdateTrigger(value => value + 1);
+  }, [integration]);
   useEffect(() => {
     canvasRevisionRef.current = 0;
     setCanvasDirty(false);
@@ -729,7 +732,8 @@ const WorkflowEditor: React.FC = () => {
     setVueNodesEnabled(
       typeof summary.vueNodesEnabled === 'boolean' ? summary.vueNodesEnabled : null
     );
-  }, []);
+    if (integration) setCanvasUpdateTrigger(value => value + 1);
+  }, [integration]);
   const handleSetNodesRenderer = useCallback((enabled: boolean) => {
     setVueNodesEnabled(enabled);
     // Official settings API: persists per user and applies live (the
@@ -977,7 +981,7 @@ const WorkflowEditor: React.FC = () => {
 
     try {
       // Get workflow from storage
-      const storedWorkflow = await getWorkflow(id);
+      const storedWorkflow = integration ? await integration.storage.load() : await getLibraryWorkflow(id);
       if (!storedWorkflow) {
         throw new Error(t('workflow.loadFailed'));
       }
@@ -989,9 +993,10 @@ const WorkflowEditor: React.FC = () => {
       }
 
       // Fetch object info for accurate widget initialization
-      const fetchedObjectInfo = await ComfyNodeMetadataService.fetchObjectInfo();
+      const fetchedObjectInfo = await (integration?.loadObjectInfo?.() ?? ComfyNodeMetadataService.fetchObjectInfo());
       setObjectInfo(fetchedObjectInfo);
       const graph = await WorkflowGraphService.createGraphFromWorkflow(workflowData, fetchedObjectInfo);
+      if (integration) initialDraftCanvasRef.current = { serialized: JSON.stringify(serializeGraph(graph)), original: workflowData };
 
 
       if (!graph) {
@@ -1154,7 +1159,7 @@ const WorkflowEditor: React.FC = () => {
       setGroupBounds(calculatedGroupBounds);
 
       // Load metadata if connected
-      if (isConnected) {
+      if (isConnected || integration?.loadObjectInfo) {
         loadNodeMetadata(nodes);
       }
 
@@ -1199,10 +1204,11 @@ const WorkflowEditor: React.FC = () => {
     workflowJson: IComfyJson,
     baseWorkflow: IComfyWorkflow
   ) => {
-    const workflowObjectInfo = objectInfo || await ComfyNodeMetadataService.fetchObjectInfo();
+    const workflowObjectInfo = objectInfo || await (integration?.loadObjectInfo?.() ?? ComfyNodeMetadataService.fetchObjectInfo());
     if (!objectInfo) setObjectInfo(workflowObjectInfo);
 
     const graph = await WorkflowGraphService.createGraphFromWorkflow(workflowJson, workflowObjectInfo);
+    if (integration) initialDraftCanvasRef.current = { serialized: JSON.stringify(serializeGraph(graph)), original: workflowJson };
     if (!graph) throw new Error(t('promptHistory.workflowRecovery.openFailed'));
 
     wrapGraphNodesForLogging(graph);
@@ -1244,11 +1250,14 @@ const WorkflowEditor: React.FC = () => {
     setGroupBounds(convertLiteGraphGroups(groups));
     setCanvasWorkflowRevision((revision) => revision + 1);
 
-    if (isConnected) loadNodeMetadata(nodes);
+    if (isConnected || integration?.loadObjectInfo) loadNodeMetadata(nodes);
   }, [isConnected, objectInfo, setGlobalWorkflow, t, widgetEditor]);
 
   const captureVisibleWorkflowJson = useCallback(async (): Promise<IComfyJson> => {
     const bridge = getActiveCanvasBridge();
+    if (integration && officialCanvasEnabled && (!bridge?.isReady || !bridge.lastSummary?.managedExecution)) {
+      throw new Error(t('workflow.managedCanvasUnavailable'));
+    }
     if (officialCanvasEnabled && bridge?.isReady) {
       return await bridge.getWorkflow() as IComfyJson;
     }
@@ -1256,10 +1265,38 @@ const WorkflowEditor: React.FC = () => {
     const rootGraph = useGlobalStore.getState().sessionStack[0]?.graph || comfyGraphRef.current;
     if (!rootGraph) throw new Error(t('workflow.noGraph'));
     const graphWithWidgetChanges = createExecutionGraph(rootGraph, widgetEditor.modifiedWidgetValues);
-    return serializeGraph(graphWithWidgetChanges);
-  }, [officialCanvasEnabled, t, widgetEditor.modifiedWidgetValues]);
+    const canvas = serializeGraph(graphWithWidgetChanges);
+    const initial = initialDraftCanvasRef.current;
+    return integration && initial && JSON.stringify(canvas) === initial.serialized ? initial.original : canvas;
+  }, [officialCanvasEnabled, t, widgetEditor.modifiedWidgetValues, integration]);
+
+  const exitIntegratedEditor = useCallback(async () => {
+    if (!integration) return;
+    // An unsupported bridge is covered by a blocking overlay and has no editable
+    // document to checkpoint. The existing durable copy remains authoritative.
+    const bridge = getActiveCanvasBridge();
+    if (officialCanvasEnabled && (!bridge?.isReady || !bridge.lastSummary?.managedExecution)) await integration.exit();
+    else await integration.exit(await captureVisibleWorkflowJson());
+  }, [integration, officialCanvasEnabled, captureVisibleWorkflowJson]);
+
+  useImperativeHandle(editorRef, () => ({ capture: captureVisibleWorkflowJson,
+    reload: async canvas => { if (workflow) await loadWorkflowJsonIntoSession(canvas, workflow); } }),
+  [captureVisibleWorkflowJson, loadWorkflowJsonIntoSession, workflow]);
+
+  // The owner checkpoints a separate draft document. Graph/bridge runtime objects never enter it.
+  useEffect(() => {
+    if (!integration || !workflow || isLoading) return;
+    if (!widgetEditor.hasModifications() && !canvasDirty) return;
+    if (officialCanvasEnabled && (!getActiveCanvasBridge()?.isReady || !getActiveCanvasBridge()?.lastSummary?.managedExecution)) return;
+    const checkpoint = () => { void captureVisibleWorkflowJson().then(canvas => integration.checkpoint(canvas)).catch(integration.onError); };
+    const timer = window.setTimeout(checkpoint, 600);
+    const onHidden = () => { if (document.visibilityState === 'hidden') checkpoint(); };
+    document.addEventListener('visibilitychange', onHidden);
+    return () => { window.clearTimeout(timer); document.removeEventListener('visibilitychange', onHidden); };
+  }, [integration, workflow, isLoading, officialCanvasEnabled, canvasDirty, canvasUpdateTrigger, captureVisibleWorkflowJson]);
 
   const handleOpenHistoryWorkflow = useCallback(async (workflowJson: IComfyJson, filename: string) => {
+    if (integration) return;
     if (!workflow) return;
     setIsHistorySessionBusy(true);
     try {
@@ -1310,6 +1347,7 @@ const WorkflowEditor: React.FC = () => {
   }, [officialCanvasEnabled]);
 
   const handleSaveHistoryWorkflowAsNew = useCallback(async () => {
+    if (integration) return;
     if (!historyWorkflowSession) return;
     setIsHistorySessionBusy(true);
     try {
@@ -1362,7 +1400,7 @@ const WorkflowEditor: React.FC = () => {
       const metadataMap = new Map<number, INodeWithMetadata>();
 
       // Fetch object info once for all nodes
-      const fetchedObjectInfo = await ComfyNodeMetadataService.fetchObjectInfo();
+      const fetchedObjectInfo = await (integration?.loadObjectInfo?.() ?? ComfyNodeMetadataService.fetchObjectInfo());
       setObjectInfo(fetchedObjectInfo);
 
       for (const node of nodes) {
@@ -1570,7 +1608,8 @@ const WorkflowEditor: React.FC = () => {
       const serializedData = rootGraph.serialize();
 
       // Update workflow_json
-      const updatedWorkflowJson = serializedData;
+      const initial = initialDraftCanvasRef.current;
+      const updatedWorkflowJson = integration && initial && JSON.stringify(serializedData) === initial.serialized ? initial.original : serializedData;
 
       // Update entire workflow object
       const updatedWorkflow: IComfyWorkflow = {
@@ -1584,6 +1623,7 @@ const WorkflowEditor: React.FC = () => {
         await updateWorkflow(updatedWorkflow);
       } catch (error) {
         console.error('Failed to save workflow:', error);
+        integration?.onError(error);
         return;
       }
 
@@ -1608,6 +1648,7 @@ const WorkflowEditor: React.FC = () => {
 
     } catch (error) {
       console.error('Failed to save workflow:', error);
+      integration?.onError(error);
     } finally {
       saveInFlightRef.current = false;
       setIsSaving(false);
@@ -1619,6 +1660,12 @@ const WorkflowEditor: React.FC = () => {
   // edits on the leaving side are intentionally discarded; only explicit
   // saves cross. Both sides reload from storage on entry.
   const handleToggleCanvasMode = useCallback(async () => {
+    if (integration?.forceMobileCanvas) { integration.onError(new Error('本机模式使用手机画布，在线重新打开后可切换')); return; }
+    const bridge = getActiveCanvasBridge();
+    if (integration && (!officialCanvasEnabled || (bridge?.isReady && bridge.lastSummary?.managedExecution))) {
+      try { await integration.checkpoint(await captureVisibleWorkflowJson()); }
+      catch (error) { integration.onError(error); return; }
+    }
     widgetEditor.clearModifications();
     setCanvasDirty(false);
     // A save tapped right before the toggle may still be committing — wait
@@ -1639,12 +1686,17 @@ const WorkflowEditor: React.FC = () => {
     // navigation (workflow_json -> graph -> bounds, loading spinner and
     // all). No partial-reload state can survive the transition.
     setOfficialCanvasEnabled(!officialCanvasEnabled);
-  }, [officialCanvasEnabled, widgetEditor, setOfficialCanvasEnabled]);
+  }, [officialCanvasEnabled, widgetEditor, setOfficialCanvasEnabled, integration, captureVisibleWorkflowJson]);
   // #endregion workflow storage actions
 
   // #region prompt actions
   // Execute workflow using our completed Graph to API conversion
   const handleExecute = async () => {
+    if (integration) {
+      try { await integration.execute(await captureVisibleWorkflowJson()); }
+      catch (error) { integration.onError(error); }
+      return;
+    }
     if (!comfyGraphRef.current || !isConnected || !workflow) {
       toast.error(t('workflow.submitFailed'));
       return;
@@ -3665,7 +3717,7 @@ const WorkflowEditor: React.FC = () => {
           <h2 className="mb-1.5 text-[14px] font-bold text-[#e9ebef]">{t('workflow.loadFailed')}</h2>
           <p className="mb-4 text-[11.5px] leading-relaxed text-[#8a919e]">{error}</p>
           <button
-            onClick={() => navigate('/workflows')}
+            onClick={() => integration ? void integration.exit().catch(integration.onError) : navigate('/workflows')}
             className="h-9 rounded-[10px] bg-[#3069f0] px-4 text-[12px] font-semibold text-white transition-colors hover:bg-[#3f78f5]"
           >
             {t('workflow.backToList')}
@@ -3676,9 +3728,8 @@ const WorkflowEditor: React.FC = () => {
   }
 
   // Main render
-  const hasUnsavedWorkflowChanges = historyWorkflowDirty
-    || widgetEditor.hasModifications()
-    || (officialCanvasEnabled && canvasDirty);
+  const hasUnsavedWorkflowChanges = integration ? integration.hasUnsavedChanges
+    : historyWorkflowDirty || widgetEditor.hasModifications() || (officialCanvasEnabled && canvasDirty);
 
   return (
     <div className="pwa-container relative w-full">
@@ -3721,11 +3772,13 @@ const WorkflowEditor: React.FC = () => {
             setIsNodePanelVisible(false);
             setSelectedNode(null);
           } else {
-            navigate('/workflows');
+            if (integration) void exitIntegratedEditor().catch(integration.onError);
+            else navigate('/workflows');
           }
         }}
         onSaveChanges={handleSaveChanges}
-        onOpenChat={authMode === 'gateway' && workflow ? () => navigate(`/chat/new?workflow=${encodeURIComponent(workflow.id)}`) : undefined}
+        onOpenChat={integration ? () => { void exitIntegratedEditor().catch(integration.onError); }
+          : authMode === 'gateway' && workflow ? () => navigate(`/chat/new?workflow=${encodeURIComponent(workflow.id)}`) : undefined}
         chatActive={chatActive}
       />
 
@@ -3745,6 +3798,7 @@ const WorkflowEditor: React.FC = () => {
       {/* Canvas */}
       {officialCanvasEnabled ? (
         <CanvasHost
+          onManagedExecute={integration ? () => { void handleExecute(); } : undefined}
           workflowJson={workflow?.workflow_json ?? null}
           workflowKey={id ? `${id}:${canvasWorkflowRevision}` : null}
           onReady={handleBridgeReady}
@@ -3855,7 +3909,7 @@ const WorkflowEditor: React.FC = () => {
 
       {/* Floating Control Panel - Hidden during repositioning and connection mode */}
       {!canvasInteraction.repositionMode.isActive && !connectionMode.connectionMode.isActive && (
-        <QuickActionPanel
+        integration ? integration.renderActions(handleExecute) : <QuickActionPanel
           workflow={workflow}
           onExecute={handleExecute}
           onInterrupt={handleInterrupt}
@@ -4095,7 +4149,7 @@ const WorkflowEditor: React.FC = () => {
         <FloatingControlsPanel
           onRandomizeSeeds={handleRandomizeSeeds}
           onShowGroupModer={() => setIsGroupModeModalOpen(true)}
-          onShowWorkflowSnapshots={handleShowWorkflowSnapshots}
+          onShowWorkflowSnapshots={integration ? integration.openHistory : handleShowWorkflowSnapshots}
           onSearchNode={handleSearchNode}
           onNavigateToNode={canvasInteraction.handleNavigateToNode}
           onSelectNode={setSelectedNode}
@@ -4130,7 +4184,7 @@ const WorkflowEditor: React.FC = () => {
           installablePackageCount={installablePackageCount}
           missingNodesCount={missingWorkflowNodes.length}
           onShowMissingNodeInstaller={() => setIsMissingNodeModalOpen(true)}
-          onOpenHistoryWorkflow={handleOpenHistoryWorkflow}
+          onOpenHistoryWorkflow={integration ? undefined : handleOpenHistoryWorkflow}
         />
       )}
 
@@ -4138,6 +4192,7 @@ const WorkflowEditor: React.FC = () => {
       {/* Selected Node Panel (Now NodeDetailModal) */}
       {isNodePanelVisible && selectedNode && (
         <NodeDetailModal
+          renderParameter={integration?.renderParameter}
           selectedNode={selectedNode as any}
           nodeMetadata={nodeMetadata}
           metadataLoading={metadataLoading}
@@ -4229,14 +4284,14 @@ const WorkflowEditor: React.FC = () => {
         missingModels={missingModels}
         widgetEditor={widgetEditor}
       />
-      <WorkflowSnapshots
+      {!integration && <WorkflowSnapshots
         isOpen={isWorkflowSnapshotsOpen}
         onClose={() => setIsWorkflowSnapshotsOpen(false)}
         currentWorkflowId={id || ''}
         onSaveSnapshot={handleSaveSnapshot}
         onLoadSnapshot={handleLoadSnapshot}
         serverUrl={resolveGatewayUrl(serverUrl)}
-      />
+      />}
 
       {/* Group Mode Modal */}
       <GroupModeModal
@@ -4369,4 +4424,3 @@ const WorkflowEditor: React.FC = () => {
 };
 
 export default WorkflowEditor;
-

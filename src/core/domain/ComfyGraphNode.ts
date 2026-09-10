@@ -52,6 +52,7 @@ export class ComfyGraphNode implements IComfyGraphNode {
 
   // Internal state
   private _widgets: IComfyWidget[]
+  private _namedWidgetValues?: Record<string, unknown>
   private _isExecuting: boolean = false
   private _lastExecutionTime: number = 0
   private _executionId: string | null = null
@@ -106,6 +107,10 @@ export class ComfyGraphNode implements IComfyGraphNode {
       this.serialize_widgets = false
     }
     this.properties = (comfyNode?.properties ? { ...comfyNode.properties } : {}) as INodeProperties
+    const namedValues = (comfyNode as (Partial<IComfyGraphNode> & { widgets_values_named?: Record<string, unknown> }) | undefined)?.widgets_values_named
+    if (namedValues) {
+      this._namedWidgetValues = { ...namedValues }
+    }
 
     // Internal state
     this._widgets = []
@@ -551,6 +556,14 @@ export class ComfyGraphNode implements IComfyGraphNode {
     if (this.widgets_values && this.widgets_values.length > 0) {
       data.widgets_values = [...this.widgets_values]
     }
+    if (this._namedWidgetValues) {
+      data.widgets_values_named = { ...this._namedWidgetValues }
+      this._widgets.forEach((widget, index) => {
+        if (widget.name in data.widgets_values_named && index < (this.widgets_values?.length ?? 0)) {
+          data.widgets_values_named[widget.name] = this.widgets_values[index]
+        }
+      })
+    }
 
     if (this.properties && Object.keys(this.properties).length > 0) {
       data.properties = { ...this.properties }
@@ -575,6 +588,7 @@ export class ComfyGraphNode implements IComfyGraphNode {
    * Configure node from serialized data
    */
   configure(data: any): void {
+    this._namedWidgetValues = data.widgets_values_named ? { ...data.widgets_values_named } : undefined
     if (data.id !== undefined) this.id = data.id
     if (data.type) this.type = data.type
     if (data.class_type) this.comfyClass = data.class_type

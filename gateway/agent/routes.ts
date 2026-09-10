@@ -5,6 +5,7 @@ import { AgentHttpError } from './store.js';
 import { WorkflowError } from '../workflow/engine.js';
 import type { AgentService } from './service.js';
 import type { Canvas } from '../workflow/canvas.js';
+import { handleWorkspaceRequest } from './workspace/routes.js';
 
 const id = z.string().uuid();
 const version = z.number().int().positive();
@@ -60,6 +61,7 @@ export async function handleAgentRequest(service: AgentService, owner: string, r
       if (!modelPath[2] && method === 'PUT') return send(200, { model: service.models.save(modelInput.parse(await readBody(request)), modelPath[1]) });
       if (!modelPath[2] && method === 'DELETE') return send(200, service.models.remove(modelPath[1]));
     }
+    if (service.workspace) return await handleWorkspaceRequest(service, owner, request, response, url, readBody, send);
     if (path === '/sessions' && method === 'GET') return send(200, { sessions: service.store.list(owner) });
     if (path === '/sessions' && method === 'POST') {
       const body = createInput.parse(await readBody(request));

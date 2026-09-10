@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
 import fs from 'node:fs'
+import { offlineShellPlugin } from './build/offlineShell'
 
 const versionFile = path.resolve(__dirname, 'comfy-mobile-ui-api-extension/version.json')
 const versionPayload = JSON.stringify(
@@ -58,7 +59,8 @@ export default defineConfig(({ mode }) => {
     plugins: [
       versionPlugin,
       react(),
-      tailwindcss()
+      tailwindcss(),
+      offlineShellPlugin()
     ],
     resolve: {
       alias: {

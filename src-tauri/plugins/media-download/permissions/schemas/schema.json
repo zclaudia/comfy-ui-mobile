@@ -307,10 +307,22 @@
           "markdownDescription": "Denies the enqueue_download command without any pre-configured scope."
         },
         {
-          "description": "Allows Comfy Mobile to save an authenticated media response with Android DownloadManager.\n#### This default permission set includes:\n\n- `allow-enqueue-download`",
+          "description": "Enables the save_json_file command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-save-json-file",
+          "markdownDescription": "Enables the save_json_file command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the save_json_file command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-save-json-file",
+          "markdownDescription": "Denies the save_json_file command without any pre-configured scope."
+        },
+        {
+          "description": "Allows authenticated media downloads and user-selected JSON backup exports.\n#### This default permission set includes:\n\n- `allow-enqueue-download`\n- `allow-save-json-file`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Allows Comfy Mobile to save an authenticated media response with Android DownloadManager.\n#### This default permission set includes:\n\n- `allow-enqueue-download`"
+          "markdownDescription": "Allows authenticated media downloads and user-selected JSON backup exports.\n#### This default permission set includes:\n\n- `allow-enqueue-download`\n- `allow-save-json-file`"
         }
       ]
     }

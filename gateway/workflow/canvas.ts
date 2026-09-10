@@ -77,7 +77,14 @@ export function canvasToPrompt(canvas: Canvas, info: ObjectInfo, validate = true
       if ((node.inputs ?? []).some(i => i.link != null) || (node.outputs ?? []).some(o => o.links?.length)) fail('Notes cannot have executable links');
       continue;
     }
-    if (node.type === 'SaveVideo' && (node.widgets_values?.length ?? 0) > 3) fail('Advanced SaveVideo encoding widgets require an explicit codec; use auto encoding');
+    if (node.type === 'SaveVideo' && (node.widgets_values?.length ?? 0) > 3) {
+      // Current V3 frontends retain the legacy codec input and also serialize
+      // the nested format.codec default. Both represent auto encoding here.
+      const autoDefaults = node.widgets_values?.length === 4 && node.widgets_values.slice(1).every(value => value === 'auto')
+        && node.inputs?.some(input => input.name === 'format.codec' && input.link == null)
+        && node.inputs?.some(input => input.name === 'codec' && input.link == null);
+      if (!autoDefaults) fail('Advanced SaveVideo encoding widgets require an explicit codec; use auto encoding');
+    }
     const inputs: Record<string, InputValue> = {};
     const names = new Set<string>();
     for (const [slot, input] of (node.inputs ?? []).entries()) {
