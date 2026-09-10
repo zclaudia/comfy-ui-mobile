@@ -26,7 +26,11 @@ export default function SessionListPage() {
   const [search, setSearch] = useState('');
   const [error, setError] = useState('');
   const [loaded, setLoaded] = useState(false);
-  const [pendingDelete, setPendingDelete] = useState<AgentSession | null>(null);
+  // Batch selection: long-press a row to enter, tap rows to toggle, delete from the footer.
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [confirmBatchDelete, setConfirmBatchDelete] = useState(false);
+  const [batchBusy, setBatchBusy] = useState(false);
 
   const load = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -59,12 +63,28 @@ export default function SessionListPage() {
   }, [sessions, search]);
   const serverHost = (serverUrl || '').replace(/^https?:\/\//, '').replace(/\/+$/, '');
 
-  async function remove(session: AgentSession) {
-    try {
-      await api.remove(session.id);
-      setSessions(previous => previous.filter(s => s.id !== session.id));
-      toast.success(at('会话已删除'));
-    } catch (e) { toast.error(at(e instanceof Error ? e.message : '删除失败')); }
+  const selectedSessions = useMemo(() => filtered.filter(s => selected.has(s.id) && !s.active), [filtered, selected]);
+  const allSelected = filtered.length > 0 && filtered.every(s => selected.has(s.id));
+  const exitSelection = () => { setSelecting(false); setSelected(new Set()); };
+  const toggleRow = (id: string) => setSelected(previous => { const next = new Set(previous); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+
+  function handleRowLongPress(session: AgentSession) {
+    try { navigator.vibrate?.(15); } catch { /* haptics unavailable */ }
+    if (selecting) toggleRow(session.id);
+    else { setSelecting(true); setSelected(new Set([session.id])); }
+  }
+
+  async function batchRemove() {
+    if (batchBusy || !selectedSessions.length) return;
+    setBatchBusy(true);
+    let ok = 0; let failed = 0;
+    for (const session of selectedSessions) {
+      try { await api.remove(session.id); setSessions(previous => previous.filter(s => s.id !== session.id)); ok++; }
+      catch { failed++; }
+    }
+    if (ok) toast.success(at('已删除 {{count}} 个会话', { count: ok }));
+    if (failed) toast.error(at('{{count}} 个会话删除失败', { count: failed }));
+    exitSelection(); setBatchBusy(false);
   }
 
   const chips = [
@@ -79,10 +99,18 @@ export default function SessionListPage() {
         <button onClick={() => setMenuOpen(true)} className="shrink-0 -ml-1 p-1.5 text-[#c8ccd4] hover:text-white transition-colors" aria-label={at('菜单')}><Menu className="w-5 h-5" strokeWidth={1.7} /></button>
         <div className="w-[26px] h-[26px] shrink-0 rounded-[7px] bg-[#3069f0] flex items-center justify-center"><Bot size={16} strokeWidth={2} className="text-white" /></div>
         <span className="shrink-0 text-[13.5px] font-semibold">{at('对话')}</span>
-        {serverHost && <span className="min-w-0 shrink font-mono text-[11px] text-[#565d6b] px-1.5 py-[3px] border border-white/10 rounded-[5px] max-w-[164px] truncate">{serverHost}</span>}
+        {serverHost && !selecting && <span className="min-w-0 shrink font-mono text-[11px] text-[#565d6b] px-1.5 py-[3px] border border-white/10 rounded-[5px] max-w-[164px] truncate">{serverHost}</span>}
         <div className="flex-1" />
-        {state !== 'no-gateway' && <button onClick={() => navigate('/settings/agent')} className="shrink-0 h-9 w-9 flex items-center justify-center rounded-[9px] border border-white/10 text-slate-400" aria-label={at('助手模型')}><Settings2 size={17} /></button>}
-        {ready && <button data-agent-new onClick={() => navigate('/chat/new')} className="shrink-0 h-9 px-3.5 flex items-center gap-1.5 rounded-[9px] bg-[#3069f0] hover:bg-[#3f78f5] text-white text-[12.5px] font-semibold transition-colors"><Plus className="w-[13px] h-[13px]" strokeWidth={2.4} />{at('新对话')}</button>}
+        {selecting
+          ? <>
+            <span className="shrink-0 text-[12px] font-semibold text-[#c8ccd4]" data-agent-selection-count>{at('已选 {{count}} 个', { count: selected.size })}</span>
+            <button onClick={() => setSelected(allSelected ? new Set() : new Set(filtered.map(s => s.id)))} disabled={!filtered.length} className="shrink-0 h-9 px-3 rounded-[9px] border border-white/10 text-[12px] font-medium text-[#c8ccd4] disabled:opacity-40" aria-label={at(allSelected ? '取消全选' : '全选')}>{at(allSelected ? '取消全选' : '全选')}</button>
+            <button onClick={exitSelection} className="shrink-0 h-9 w-9 flex items-center justify-center rounded-[9px] border border-white/10 text-slate-400" aria-label={at('退出选择')}><X className="w-4 h-4" /></button>
+          </>
+          : <>
+            {state !== 'no-gateway' && <button onClick={() => navigate('/settings/agent')} className="shrink-0 h-9 w-9 flex items-center justify-center rounded-[9px] border border-white/10 text-slate-400" aria-label={at('助手模型')}><Settings2 size={17} /></button>}
+            {ready && <button data-agent-new onClick={() => navigate('/chat/new')} className="shrink-0 h-9 px-3.5 flex items-center gap-1.5 rounded-[9px] bg-[#3069f0] hover:bg-[#3f78f5] text-white text-[12.5px] font-semibold transition-colors"><Plus className="w-[13px] h-[13px]" strokeWidth={2.4} />{at('新对话')}</button>}
+          </>}
       </div>
     </header>
     {state !== 'ready' ? <AgentGuide state={state} onRetry={retry} /> : <>
@@ -107,10 +135,15 @@ export default function SessionListPage() {
           <div className="flex flex-wrap justify-center gap-2 mt-2">{chips.map(chip => <button key={chip.to} onClick={() => navigate(chip.to)} className="h-[34px] px-3 rounded-[9px] border border-white/[0.08] bg-white/[0.035] text-[12px] font-medium text-[#c8ccd4] flex items-center gap-1.5">{chip.icon}{chip.label}</button>)}</div>
         </div>}
         {loaded && sessions.length > 0 && !filtered.length && <p className="py-10 text-center text-[12px] text-[#66758a]">{at('没有匹配的会话')}</p>}
-        {filtered.map(session => <SessionRow key={session.id} session={session} baseUrl={api.baseUrl} onOpen={() => navigate(`/chat/${session.id}`)} onLongPress={() => setPendingDelete(session)} />)}
+        {filtered.map(session => <SessionRow key={session.id} session={session} baseUrl={api.baseUrl} onOpen={() => navigate(`/chat/${session.id}`)} onLongPress={() => handleRowLongPress(session)} selecting={selecting} isSelected={selected.has(session.id)} onToggle={() => toggleRow(session.id)} />)}
       </main>
+      {selecting && <footer className="flex-none border-t border-white/[0.08] p-3 pb-safe flex gap-2" style={{ background: '#0b0c0f' }}>
+        <button disabled={batchBusy || !selectedSessions.length} onClick={() => setConfirmBatchDelete(true)} className="flex-1 h-11 flex items-center justify-center gap-1.5 rounded-[10px] border border-[#f25555]/40 bg-[#f25555]/10 text-[#f25555] text-[13px] font-semibold disabled:opacity-40 transition-opacity">
+          {batchBusy ? at('正在删除…') : at('删除')}
+        </button>
+      </footer>}
     </>}
     <AppSideMenu isOpen={menuOpen} onClose={() => setMenuOpen(false)} />
-    <SimpleConfirmDialog isOpen={!!pendingDelete} onClose={() => setPendingDelete(null)} onConfirm={() => { const target = pendingDelete; setPendingDelete(null); if (target) void remove(target); }} title={at('删除会话')} message={at('只删除对话记录和版本历史，工作流库里的工作流会保留。')} confirmText={at('删除')} cancelText={at('取消')} />
+    <SimpleConfirmDialog isOpen={confirmBatchDelete} onClose={() => setConfirmBatchDelete(false)} onConfirm={() => { setConfirmBatchDelete(false); void batchRemove(); }} title={at('删除会话')} message={at('将永久删除所选 {{count}} 个会话的对话记录和版本历史，无法撤销。', { count: selectedSessions.length })} confirmText={at('删除')} cancelText={at('取消')} />
   </div>;
 }
