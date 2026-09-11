@@ -8,9 +8,11 @@ import { Badge } from '@/components/ui/badge';
 
 import {
     RefreshCw, X, ExternalLink, Play, Image as ImageIcon, SlidersHorizontal, Edit3, Check,
-    Copy, Minimize2, Maximize2, Palette, VolumeX, Shuffle, MousePointer2, Trash2
+    Copy, Minimize2, Maximize2, Palette, VolumeX, Shuffle, MousePointer2, Trash2, Pin
 } from 'lucide-react';
 import { INodeWithMetadata, IProcessedParameter } from '@/shared/types/comfy/IComfyObjectInfo';
+import type { MobileFormTarget } from '@/shared/types/app/IMobileForm';
+import { targetsEqual } from '@/shared/utils/mobileForm';
 import { ComfyGraphNode } from '@/core/domain/ComfyGraphNode';
 import { GroupInspector } from '@/components/canvas/GroupInspector';
 import { darkenColor } from '@/shared/utils/rendering/CanvasRendererService';
@@ -108,6 +110,10 @@ interface NodeDetailModalProps {
     onEnterSubgraph?: (nodeType: string, title: string) => void;
     subgraphDefinition?: any;
     onNodeModeChangeBatch?: (modifications: { nodeId: number, mode: number }[]) => void;
+    /** Widgets currently exposed on the mobile form. */
+    pinnedTargets?: MobileFormTarget[];
+    /** Adds or removes a widget from the form. */
+    onTogglePin?: (target: MobileFormTarget) => void;
 }
 
 export const NodeDetailModal: React.FC<NodeDetailModalProps> = ({
@@ -154,7 +160,9 @@ export const NodeDetailModal: React.FC<NodeDetailModalProps> = ({
     onDisconnectOutput,
     onEnterSubgraph,
     subgraphDefinition,
-    onNodeModeChangeBatch
+    onNodeModeChangeBatch,
+    pinnedTargets,
+    onTogglePin,
 }) => {
     const { t } = useTranslation();
     const nodeId = typeof selectedNode.id === 'string' ? parseInt(selectedNode.id) : selectedNode.id;
@@ -488,6 +496,36 @@ export const NodeDetailModal: React.FC<NodeDetailModalProps> = ({
     // Video preview was mostly stubbed in original code, skipping for brevity unless needed.
     const videoPreview = useMemo(() => extractVideoPreview(), [selectedNode, widgets, nodeId]);
 
+    /**
+     * Pin toggle shown beside each editable widget: one tap puts the widget on
+     * the mobile form, another takes it off. This is the discoverable way to
+     * build a form without entering the form's own edit mode.
+     */
+    const renderPinButton = (param: IProcessedParameter) => {
+        if (!onTogglePin) return null;
+        const target: MobileFormTarget = {
+            nodeId,
+            widget: param.name,
+            nodeType: String(selectedNode.type || ''),
+        };
+        const pinned = (pinnedTargets || []).some((candidate) => targetsEqual(candidate, target));
+        return (
+            <button
+                onClick={(event) => { event.stopPropagation(); onTogglePin(target); }}
+                data-form-pin={`${nodeId}:${param.name}`}
+                aria-pressed={pinned}
+                title={pinned ? t('form.unpin') : t('form.pin')}
+                className={`flex h-[22px] w-[22px] flex-shrink-0 items-center justify-center rounded-[6px] border transition-colors ${
+                    pinned
+                        ? 'border-[#3069f0]/50 bg-[#3069f0]/15 text-[#5b8af5]'
+                        : 'border-white/10 text-[#565d6b] hover:text-[#8a919e]'
+                }`}
+            >
+                <Pin className="h-[11px] w-[11px]" fill={pinned ? 'currentColor' : 'none'} />
+            </button>
+        );
+    };
+
     const detectParameterType = (param: IProcessedParameter): 'IMAGE' | 'VIDEO' | null => {
         const currentValue = getWidgetValue(nodeId, param.name, param.value);
         const possibleValues = param.possibleValues || [];
@@ -570,6 +608,7 @@ export const NodeDetailModal: React.FC<NodeDetailModalProps> = ({
                                                         onFileUpload={onFileUpload}
                                                         onFileUploadDirect={onFileUploadDirect}
                                                         node={selectedNode}
+                                                        headerAccessory={renderPinButton(param)}
                                                         widget={selectedNode.getWidgets ? selectedNode.getWidgets()[((param as any).widgetIndex || 0)] : undefined}
                                                         themeOverride={hasCustomColor ? {
                                                             container: 'bg-black/10 border border-white/5 shadow-none',
@@ -603,6 +642,7 @@ export const NodeDetailModal: React.FC<NodeDetailModalProps> = ({
                                                     onFileUpload={onFileUpload}
                                                     onFileUploadDirect={onFileUploadDirect}
                                                     node={selectedNode}
+                                                    headerAccessory={renderPinButton(param)}
                                                     widget={selectedNode.getWidgets ? selectedNode.getWidgets()[((param as any).widgetIndex || 0)] : undefined}
                                                     themeOverride={hasCustomColor ? {
                                                         container: 'bg-black/10 border border-white/5 shadow-none',

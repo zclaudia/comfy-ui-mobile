@@ -2268,5 +2268,71 @@
         "chats": "대화",
         "workflows": "워크플로",
         "gallery": "갤러리"
+    },
+    "form": {
+        "viewSwitch": "보기",
+        "viewForm": "폼 보기",
+        "viewStructure": "구조 보기",
+        "fieldCount": "{{count}}개 항목",
+        "edit": "폼 편집",
+        "doneEditing": "완료",
+        "addField": "항목 추가",
+        "regenerate": "다시 추천",
+        "regenerated": "폼을 다시 추천했습니다",
+        "autoHint": "이 항목들은 자동으로 선택되었습니다. 폼을 편집해 추가·삭제·이름 변경을 할 수 있습니다.",
+        "saveFailed": "폼을 저장하지 못했습니다",
+        "pinned": "폼에 추가했습니다",
+        "unpinned": "폼에서 제거했습니다",
+        "pin": "폼에 추가",
+        "unpin": "폼에서 제거",
+        "empty": {
+            "title": "폼에 아직 항목이 없습니다",
+            "body": "자주 바꾸는 값을 담아 두면 캔버스에서 노드를 찾지 않고 바로 실행할 수 있습니다."
+        },
+        "section": {
+            "unsorted": "고정됨",
+            "count": "{{count}}"
+        },
+        "field": {
+            "linkedCount": "{{count}}곳",
+            "linkedTitle": "하나의 값을 연결된 모든 노드에 씁니다",
+            "unify": "불일치",
+            "moveUp": "위로",
+            "moveDown": "아래로",
+            "link": "다른 노드 연결",
+            "rename": "이름 변경",
+            "remove": "제거",
+            "unlink": "연결 해제",
+            "openNode": "캔버스에서 보기"
+        },
+        "problem": {
+            "missing-node": "노드가 삭제됨",
+            "type-changed": "노드 종류가 바뀜",
+            "missing-widget": "항목 이름이 바뀌었거나 없음",
+            "connected": "연결선으로 제어됨"
+        },
+        "picker": {
+            "addTitle": "항목 추가",
+            "linkTitle": "항목 연결",
+            "addSubtitle": "노드를 고른 뒤 항목을 선택하세요",
+            "linkSubtitle": "{{name}}과(와) 연결된 노드가 값을 공유합니다",
+            "searchPlaceholder": "노드와 항목 검색",
+            "noNodes": "편집 가능한 항목이 있는 노드가 없습니다",
+            "widgetCount": "{{count}}개 항목",
+            "selectedCount": "{{count}}개 선택",
+            "confirmAdd": "추가",
+            "confirmLink": "연결",
+            "alreadyOnForm": "이미 폼에 있습니다",
+            "alreadyLinked": "이미 연결됨",
+            "isPrimary": "이 항목 자체입니다",
+            "unavailable": "사용할 수 없음",
+            "reason": {
+                "same-target": "같은 항목",
+                "type-mismatch": "값 유형이 다름",
+                "options-mismatch": "공통 선택지가 없음",
+                "unresolved": "읽을 수 없음",
+                "already-linked": "이미 연결됨"
+            }
+        }
     }
 }

@@ -2263,5 +2263,71 @@
         "chats": "チャット",
         "workflows": "ワークフロー",
         "gallery": "ギャラリー"
+    },
+    "form": {
+        "viewSwitch": "表示",
+        "viewForm": "フォーム表示",
+        "viewStructure": "構造表示",
+        "fieldCount": "{{count}} 件の項目",
+        "edit": "フォームを編集",
+        "doneEditing": "完了",
+        "addField": "項目を追加",
+        "regenerate": "もう一度提案",
+        "regenerated": "フォームを再提案しました",
+        "autoHint": "これらの項目は自動で選ばれました。編集して追加・削除・名前変更ができます。",
+        "saveFailed": "フォームを保存できませんでした",
+        "pinned": "フォームに追加しました",
+        "unpinned": "フォームから削除しました",
+        "pin": "フォームに追加",
+        "unpin": "フォームから削除",
+        "empty": {
+            "title": "フォームにまだ項目がありません",
+            "body": "よく変える値を入れておくと、キャンバスでノードを探さずに実行できます。"
+        },
+        "section": {
+            "unsorted": "ピン留め",
+            "count": "{{count}}"
+        },
+        "field": {
+            "linkedCount": "{{count}} 箇所",
+            "linkedTitle": "1つの値をすべてのリンク先に書き込みます",
+            "unify": "不一致",
+            "moveUp": "上へ",
+            "moveDown": "下へ",
+            "link": "他のノードとリンク",
+            "rename": "名前を変更",
+            "remove": "削除",
+            "unlink": "リンク解除",
+            "openNode": "キャンバスで表示"
+        },
+        "problem": {
+            "missing-node": "ノードが削除されました",
+            "type-changed": "ノードの種類が変わりました",
+            "missing-widget": "項目名が変わったか存在しません",
+            "connected": "リンクで制御されています"
+        },
+        "picker": {
+            "addTitle": "項目を追加",
+            "linkTitle": "項目をリンク",
+            "addSubtitle": "ノードを選び、項目を選択します",
+            "linkSubtitle": "{{name}} とリンクしたノードで値を共有します",
+            "searchPlaceholder": "ノードと項目を検索",
+            "noNodes": "編集できる項目を持つノードがありません",
+            "widgetCount": "{{count}} 項目",
+            "selectedCount": "{{count}} 件選択",
+            "confirmAdd": "追加",
+            "confirmLink": "リンク",
+            "alreadyOnForm": "すでにフォームにあります",
+            "alreadyLinked": "すでにリンク済み",
+            "isPrimary": "この項目自身です",
+            "unavailable": "利用できません",
+            "reason": {
+                "same-target": "同じ項目",
+                "type-mismatch": "値の型が違います",
+                "options-mismatch": "共通の選択肢がありません",
+                "unresolved": "読み取れません",
+                "already-linked": "すでにリンク済み"
+            }
+        }
     }
 }

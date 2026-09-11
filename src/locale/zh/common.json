@@ -2264,5 +2264,71 @@
         "chats": "对话",
         "workflows": "工作流",
         "gallery": "画廊"
+    },
+    "form": {
+        "viewSwitch": "视图",
+        "viewForm": "表单视图",
+        "viewStructure": "结构视图",
+        "fieldCount": "{{count}} 项参数",
+        "edit": "编辑表单",
+        "doneEditing": "完成",
+        "addField": "添加参数",
+        "regenerate": "重新推荐",
+        "regenerated": "已重新推荐表单",
+        "autoHint": "这些参数是自动挑选的。编辑表单可以增删或改名。",
+        "saveFailed": "表单保存失败",
+        "pinned": "已添加到表单",
+        "unpinned": "已从表单移除",
+        "pin": "添加到表单",
+        "unpin": "从表单移除",
+        "empty": {
+            "title": "表单里还没有参数",
+            "body": "把常改的值放进来，之后不用在画布上找节点就能直接运行。"
+        },
+        "section": {
+            "unsorted": "已钉住",
+            "count": "{{count}}"
+        },
+        "field": {
+            "linkedCount": "{{count}} 处",
+            "linkedTitle": "改一次，写入所有关联节点",
+            "unify": "不一致",
+            "moveUp": "上移",
+            "moveDown": "下移",
+            "link": "关联其他节点",
+            "rename": "改名",
+            "remove": "移除",
+            "unlink": "解除关联",
+            "openNode": "在画布上查看"
+        },
+        "problem": {
+            "missing-node": "节点已删除",
+            "type-changed": "节点类型已变化",
+            "missing-widget": "参数已改名或不存在",
+            "connected": "已被连线接管"
+        },
+        "picker": {
+            "addTitle": "添加参数",
+            "linkTitle": "关联参数",
+            "addSubtitle": "先选节点，再勾选参数",
+            "linkSubtitle": "与 {{name}} 关联的节点共用一个值",
+            "searchPlaceholder": "搜索节点和参数",
+            "noNodes": "没有可编辑参数的节点",
+            "widgetCount": "{{count}} 个参数",
+            "selectedCount": "已选 {{count}} 个",
+            "confirmAdd": "添加",
+            "confirmLink": "关联",
+            "alreadyOnForm": "已在表单中",
+            "alreadyLinked": "已关联",
+            "isPrimary": "这就是该字段本身",
+            "unavailable": "不可用",
+            "reason": {
+                "same-target": "同一个参数",
+                "type-mismatch": "值类型不同",
+                "options-mismatch": "选项没有交集",
+                "unresolved": "无法读取",
+                "already-linked": "已关联"
+            }
+        }
     }
 }

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2, ChevronRight, Home, Network, MessageSquare } from 'lucide-react';
+import { Loader2, ChevronRight, Home, Network, MessageSquare, SlidersHorizontal, Workflow } from 'lucide-react';
 import { BackButton } from '@/components/navigation/PageHeader';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
@@ -90,6 +90,9 @@ interface WorkflowHeaderProps {
   onNavigateBreadcrumb?: (index: number) => void;
   onOpenChat?: () => void;
   chatActive?: boolean;
+  /** Form/structure switch; omitted when the workflow has no usable form. */
+  viewMode?: 'form' | 'structure';
+  onViewModeChange?: (mode: 'form' | 'structure') => void;
 }
 
 export const WorkflowHeader: React.FC<WorkflowHeaderProps> = ({
@@ -104,6 +107,8 @@ export const WorkflowHeader: React.FC<WorkflowHeaderProps> = ({
   onNavigateBreadcrumb,
   onOpenChat,
   chatActive,
+  viewMode,
+  onViewModeChange,
 }) => {
   const { t } = useTranslation();
   const breadcrumbRef = useRef<HTMLDivElement>(null);
@@ -159,7 +164,7 @@ export const WorkflowHeader: React.FC<WorkflowHeaderProps> = ({
               </h1>
             )}
             <div className="flex items-center gap-1.5 font-mono text-[9px] font-medium text-[#565d6b] tracking-[0.12em] uppercase mt-[3px]">
-              <span>{t('menu.graphView')}</span>
+              <span>{viewMode === 'form' ? t('form.viewForm') : t('menu.graphView')}</span>
               {typeof workflow?.nodeCount === 'number' && workflow.nodeCount > 0 && (
                 <>
                   <span className="text-[#31363f]">·</span>
@@ -168,6 +173,37 @@ export const WorkflowHeader: React.FC<WorkflowHeaderProps> = ({
               )}
             </div>
           </div>
+
+          {viewMode && onViewModeChange && (
+            <div
+              role="group"
+              aria-label={t('form.viewSwitch')}
+              className="flex shrink-0 items-center gap-[2px] rounded-[10px] border border-white/10 bg-[#14171e] p-[3px]"
+            >
+              <button
+                data-e2e-view="form"
+                aria-pressed={viewMode === 'form'}
+                onClick={() => onViewModeChange('form')}
+                title={t('form.viewForm')}
+                className={`flex h-[26px] w-[30px] items-center justify-center rounded-[7px] transition-colors ${
+                  viewMode === 'form' ? 'bg-[#3069f0] text-white' : 'text-[#8a919e]'
+                }`}
+              >
+                <SlidersHorizontal className="h-[14px] w-[14px]" strokeWidth={2} />
+              </button>
+              <button
+                data-e2e-view="structure"
+                aria-pressed={viewMode === 'structure'}
+                onClick={() => onViewModeChange('structure')}
+                title={t('form.viewStructure')}
+                className={`flex h-[26px] w-[30px] items-center justify-center rounded-[7px] transition-colors ${
+                  viewMode === 'structure' ? 'bg-[#3069f0] text-white' : 'text-[#8a919e]'
+                }`}
+              >
+                <Workflow className="h-[14px] w-[14px]" strokeWidth={2} />
+              </button>
+            </div>
+          )}
 
           {onOpenChat && (
             <button

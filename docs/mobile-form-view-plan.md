@@ -1,6 +1,6 @@
 # 移动端工作流表单视图（方案三）设计与实施计划
 
-状态：第二稿，已自查，待开工。2026-09-11。第一稿的三个待确认项已定：默认视图为表单；图钉入口放现有全屏 `NodeDetailModal`；关联字段首期就做。自查改动汇总见第 11 节。
+状态：已实现并通过安卓模拟器 e2e。2026-09-11。实施结果见第 12 节。第一稿的三个待确认项已定：默认视图为表单；图钉入口放现有全屏 `NodeDetailModal`；关联字段首期就做。自查改动汇总见第 11 节。
 
 背景见上一轮讨论：手机上真正高频的操作是"改几个参数 → 运行 → 看结果"，而现有图视图把桌面版全图编辑搬到了 6 英寸屏幕上。方案三的核心是：**每个工作流可以定义一张"表单"，只暴露作者或用户认为需要调的输入；手机端打开工作流默认渲染这张表单，画布降级为查结构时才进的"结构视图"。**
 
@@ -236,3 +236,53 @@ export interface MobileFormField {
 | 图钉入口 | 二选一 | 现有全屏 `NodeDetailModal` | 按你的决定 |
 | 工时 | 阶段 1 两三天 | 阶段 1 三四天 | 加了关联字段和字段级推荐 |
 | 持久化验收 | 只验云同步 | 云同步、桌面往返、草稿入库三条 | 存放位置改动的直接后果 |
+
+## 12. 实施结果（2026-09-11）
+
+阶段 0 到 2 全部完成，阶段 3、4 未做。
+
+### 12.1 新增文件
+
+| 文件 | 作用 |
+|---|---|
+| `src/shared/types/app/IMobileForm.ts` | 表单类型 |
+| `src/shared/utils/mobileForm.ts` | 读写 `extra.comfy_mobile_form`、解析、编辑、关联写入 |
+| `src/shared/utils/executionModifications.ts` | 纯函数：构造提交用的参数改动表 |
+| `src/core/services/FormSuggestionService.ts` | 自动推荐（节点分类 + 字段白名单 + 关联合并） |
+| `src/hooks/useWorkflowRunner.ts` | 共享执行 hook |
+| `src/components/form/WorkflowFormView.tsx` | 表单视图 |
+| `src/components/form/FormTargetPicker.tsx` | 添加字段 / 管理关联的底部面板 |
+| `src/components/form/formParameters.ts` | widget → `IProcessedParameter` |
+| `tests/agent/{mobileForm,formSuggestion,mobileFormDraft,workflowRunner}.test.ts` | 32 条单测 |
+| `tests/e2e/form-view-android.e2e.mjs` | 安卓 e2e，10 条用例 |
+| `tests/fixtures/{formGraph.ts,form-view-workflow.json}` | 测试夹具 |
+
+### 12.2 与第二稿的偏差
+
+1. **自动推荐的关联合并加了一条约束**：同类型节点的同名 widget 只有在**当前值相同**时才合并。值不同说明作者是有意分开的（例如高低噪声采样器的步数区间），合并会改变工作流的实际行为。
+2. **字段标签由控件渲染**，表单不再单独打一行标签。第一版两处都显示导致重复，浪费竖向空间。
+3. **`/workflow-stack/:id` 的入口没有从浮动栏移到设置菜单**。表单成为默认视图后该入口在表单态本就不可见，移动它没有用户可见收益，却要改动设置面板。保留原位，留待后续。
+4. **`WidgetValueEditor` 新增 `headerAccessory` 插槽**。图钉需要放在标签行右侧，原本没有可用位置。
+5. **`test:agent-ui` 脚本加了 `--tsconfig tsconfig.app.json`**，否则测试里的 `@/` 别名无法解析。
+
+### 12.3 顺带修复的既有缺陷
+
+1. **主编辑器每次执行提交的是上一次的种子。** `handleExecute` 用渲染时捕获的 `widgetEditor.modifiedWidgetValues` 构图，而 `autoChangeSeed` 在同一次调用里写入的新种子只进了 React state，图里看不到。抽出的 runner 改用本地同步映射表（堆栈视图原本就是这么做的）。回归测试见 `tests/agent/workflowRunner.test.ts`。
+2. **`tests/agent/draftCanvasCodec.test.ts` 从不校验内层断言。** 子进程继承了父进程的 `NODE_TEST_CONTEXT`，于是改用二进制通道上报并静默退出 0，`execFileSync` 拿到 0 就算通过。故意插入一条失败断言可复现。现在清理子进程环境并直接运行 bundle，失败会真实冒泡。
+
+### 12.4 发现但未修复的既有缺陷
+
+**部分工作流的 widget 值映射错位，导致提交被服务端拒绝。** 例如工作流「图片 Z Image 标准1024」的 KSampler，`widgets_values` 存了 6 项（缺 `control_after_generate`），而转换器按 7 项布局读取，于是 `cfg` 收到了 `"res_multistep"`，服务端返回 400。在 HEAD 上同样复现，与本次改动无关。修复涉及 `widgets_values` 与 `object_info` 的对齐逻辑，风险较高，单列。
+
+### 12.5 验证
+
+| 项目 | 结果 |
+|---|---|
+| `npm run test:agent-ui` | 118 通过（新增 32） |
+| `npm run test:agent` | 146 通过 |
+| `npm run test:gateway` | 10 通过 |
+| `npm run test:transcript` | 13 通过 |
+| `npm run build` | 通过 |
+| `npm run test:e2e:form:android` | 10/10 通过，连跑两次一致 |
+
+安卓 e2e 覆盖：打开工作流默认进表单、表单改值生效、关联两个输入后一处改动写入两个节点、结构视图上同一节点显示相同的值、节点弹窗图钉增删、重启后表单定义仍在且已同步到服务器、从表单运行并在服务端产出真实图片且提交的 prompt 带着表单上的值。

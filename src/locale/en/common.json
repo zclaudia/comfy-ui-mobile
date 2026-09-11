@@ -2267,5 +2267,71 @@
         "chats": "Chats",
         "workflows": "Workflows",
         "gallery": "Gallery"
+    },
+    "form": {
+        "viewSwitch": "View",
+        "viewForm": "Form view",
+        "viewStructure": "Structure view",
+        "fieldCount": "{{count}} inputs",
+        "edit": "Edit form",
+        "doneEditing": "Done",
+        "addField": "Add input",
+        "regenerate": "Suggest again",
+        "regenerated": "Form re-suggested",
+        "autoHint": "These inputs were picked automatically. Edit the form to add, remove or rename them.",
+        "saveFailed": "Could not save the form",
+        "pinned": "Added to the form",
+        "unpinned": "Removed from the form",
+        "pin": "Add to form",
+        "unpin": "Remove from form",
+        "empty": {
+            "title": "No inputs on the form yet",
+            "body": "Pick the values you change often, then run without hunting for nodes on the canvas."
+        },
+        "section": {
+            "unsorted": "Pinned",
+            "count": "{{count}}"
+        },
+        "field": {
+            "linkedCount": "{{count}} nodes",
+            "linkedTitle": "One value, written to every linked node",
+            "unify": "Differs",
+            "moveUp": "Move up",
+            "moveDown": "Move down",
+            "link": "Link another node",
+            "rename": "Rename",
+            "remove": "Remove",
+            "unlink": "Unlink",
+            "openNode": "Show on the canvas"
+        },
+        "problem": {
+            "missing-node": "node deleted",
+            "type-changed": "node type changed",
+            "missing-widget": "input renamed or gone",
+            "connected": "driven by a link"
+        },
+        "picker": {
+            "addTitle": "Add inputs",
+            "linkTitle": "Link inputs",
+            "addSubtitle": "Pick a node, then its inputs",
+            "linkSubtitle": "One value for every node linked to {{name}}",
+            "searchPlaceholder": "Search nodes and inputs",
+            "noNodes": "No node has an editable input",
+            "widgetCount": "{{count}} inputs",
+            "selectedCount": "{{count}} selected",
+            "confirmAdd": "Add",
+            "confirmLink": "Link",
+            "alreadyOnForm": "already on the form",
+            "alreadyLinked": "already linked",
+            "isPrimary": "this is the field itself",
+            "unavailable": "unavailable",
+            "reason": {
+                "same-target": "same input",
+                "type-mismatch": "different value type",
+                "options-mismatch": "no shared options",
+                "unresolved": "cannot be read",
+                "already-linked": "already linked"
+            }
+        }
     }
 }

@@ -56,6 +56,8 @@ interface WidgetValueEditorProps {
   // Callback to save control_after_generate to workflow metadata
   // Callback to save control_after_generate to workflow metadata
   onControlAfterGenerateChange?: (nodeId: number, value: string) => void;
+  /** Rendered beside the type badge; the node panel puts its pin button here. */
+  headerAccessory?: React.ReactNode;
   // Theme override for custom node colors
   themeOverride?: {
     container?: string;
@@ -113,7 +115,8 @@ export const WidgetValueEditor: React.FC<WidgetValueEditorProps> = ({
   node,
   widget,
   onControlAfterGenerateChange,
-  themeOverride
+  themeOverride,
+  headerAccessory,
 }) => {
   const { t } = useTranslation();
   const [showAlbumModal, setShowAlbumModal] = useState(false);
@@ -374,6 +377,7 @@ export const WidgetValueEditor: React.FC<WidgetValueEditorProps> = ({
             </Badge>
           )}
         </div>
+        {headerAccessory}
         <Badge
           variant={hasCustomWidgetDefinition ? "secondary" : "outline"}
  className={`font-mono text-[9px] h-[16px] px-1 rounded flex-shrink-0 ${hasCustomWidgetDefinition ? 'bg-[#3069f0]/[0.12] text-[#7ba3f5] border-[#3069f0]/30' : ''}`}

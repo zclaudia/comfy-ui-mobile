@@ -31,7 +31,8 @@
     "test:e2e:agent": "node --test tests/e2e/agent-live.test.mjs",
     "test:e2e:models": "node tests/e2e/model-adaptation-live.mjs",
     "test:transcript": "tsx --test tests/transcript/*.test.ts",
-    "test:agent-ui": "tsx --test tests/agent/*.test.ts"
+    "test:agent-ui": "tsx --tsconfig tsconfig.app.json --test tests/agent/*.test.ts",
+    "test:e2e:form:android": "node tests/e2e/form-view-android.e2e.mjs"
   },
   "dependencies": {
     "@radix-ui/react-accordion": "^1.2.12",

@@ -6,6 +6,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { BackButton } from '@/components/navigation/PageHeader';
 import { useTranslation } from 'react-i18next';
+import { useWorkflowRunner } from '@/hooks/useWorkflowRunner';
+import { readFormSpec } from '@/shared/utils/mobileForm';
 import { ArrowRight, Layers, ExternalLink, Loader2, Play, VolumeX, Shuffle, ListOrdered, LayoutGrid, ChevronDown, ChevronUp, ChevronRight, Square, X } from 'lucide-react';
 import { ComfyGraphNode } from '@/core/domain/ComfyGraphNode';
 import { WidgetValueEditor } from '@/components/controls/WidgetValueEditor';
@@ -445,10 +447,8 @@ export const WorkflowStackEditor: React.FC<WorkflowStackEditorProps> = ({ graph,
     const [groupingMode, setGroupingMode] = useState<'execution' | 'type'>('type');
     const [globalExpandAction, setGlobalExpandAction] = useState<'expand' | 'collapse' | null>(null);
     const [, setUpdateCounter] = useState(0);
-    const [isExecuting, setIsExecuting] = useState(false);
     const [queueRefreshTrigger, setQueueRefreshTrigger] = useState(0);
     const [executingNodeId, setExecutingNodeId] = useState<string | null>(null);
-    const currentPromptIdRef = useRef<string | null>(null);
     const { isConnected } = useConnectionStore();
 
     // Trigger queue refresh when ID changes
@@ -536,76 +536,26 @@ export const WorkflowStackEditor: React.FC<WorkflowStackEditorProps> = ({ graph,
         processor
     });
 
-    const handleExecute = async () => {
-        if (!graph || !isConnected) {
-            toast.error(t('workflow.submitFailed'));
-            return;
-        }
-
-        try {
-            setIsExecuting(true);
-
-            // Use a local modifications map to capture changes immediately (including seeds)
-            // This is necessary because widgetEditor.modifiedWidgetValues (state) won't update until next render
-            const currentModifications = new Map(widgetEditor.modifiedWidgetValues);
-
-            try {
-                // Get node metadata (injected in WorkflowStackPage)
-                // Note: ComfyGraph stores this in _metadata
-                const objectInfo = (graph as any)._metadata;
-
-                // Create a virtual workflow object for autoChangeSeed
-                const virtualWorkflow = {
-                    id: id || '',
-                    name: workflowName || '',
-                    workflow_json: graph.serialize ? graph.serialize() : {},
-                    graph: graph
-                };
-
-                // Execute auto seed processing
-                await autoChangeSeed(virtualWorkflow as any, null, {
-                    getWidgetValue: (nodeId: number, paramName: string, defaultValue: any) => {
-                        // Check local modifications first for the most current value
-                        const nodeMods = currentModifications.get(nodeId);
-                        if (nodeMods && paramName in nodeMods) {
-                            return nodeMods[paramName];
-                        }
-                        return widgetEditor.getWidgetValue(nodeId, paramName, defaultValue);
-                    },
-                    setWidgetValue: (nodeId: number, paramName: string, value: any) => {
-                        // 1. Update our local map for immediate use in this execution
-                        const nodeMods = currentModifications.get(nodeId) || {};
-                        nodeMods[paramName] = value;
-                        currentModifications.set(nodeId, nodeMods);
-
-                        // 2. Also update the UI state so the change is visible to the user
-                        widgetEditor.setWidgetValue(nodeId, paramName, value);
-                    }
-                });
-            } catch (error) {
-                console.error('Error during seed processing:', error);
-            }
-
-            // Create modified graph using the combined modifications (manual changes + seed changes)
-            const executionGraph = createExecutionGraph(graph, currentModifications);
-            const { apiWorkflow } = convertGraphToAPI(executionGraph);
-
-            const promptId = await ComfyUIService.executeWorkflow({
-                prompt: apiWorkflow,
-                workflow: serializeGraph(executionGraph),
-            }, {
-                workflowId: id || 'stack-editor',
-                workflowName: workflowName || t('workflow.newWorkflowName')
-            });
-
-            currentPromptIdRef.current = promptId;
-        } catch (error) {
-            console.error('Workflow execution failed:', error);
-            toast.error(t('workflow.submitFailed'));
-        } finally {
-            setIsExecuting(false);
-        }
-    };
+    // Execution is shared with WorkflowEditor via useWorkflowRunner, so the
+    // stack view gets the same seed handling and linked-form-field unification.
+    const runner = useWorkflowRunner({
+        getGraph: () => graph,
+        getWorkflow: () => ({
+            id: id || '',
+            name: workflowName || '',
+            workflow_json: graph?.serialize ? graph.serialize() : {},
+            graph,
+        }) as any,
+        getNodeMetadata: () => (graph as any)?._metadata,
+        widgetEditor,
+        isConnected,
+        workflowId: id || 'stack-editor',
+        workflowName,
+        getFormSpec: () => readFormSpec(graph?.serialize ? graph.serialize() : null),
+    });
+    const handleExecute = runner.execute;
+    const handleInterrupt = runner.interrupt;
+    const handleClearQueue = runner.clearQueue;
 
     const handleRandomizeSeeds = useCallback(() => {
         if (!graph) return;
@@ -632,24 +582,6 @@ export const WorkflowStackEditor: React.FC<WorkflowStackEditorProps> = ({ graph,
         }
     }, [graph, widgetEditor, t]);
 
-    const handleInterrupt = useCallback(async () => {
-        try {
-            await ComfyUIService.interruptExecution();
-        } catch (error) {
-            console.error('Failed to interrupt:', error);
-            toast.error(t('workflow.interruptFailed'));
-        }
-    }, []);
-
-    const handleClearQueue = useCallback(async () => {
-        try {
-            await ComfyUIService.clearQueue();
-            toast.success(t('workflow.queueCleared'));
-        } catch (error) {
-            console.error('Failed to clear queue:', error);
-            toast.error(t('workflow.clearQueueFailed'));
-        }
-    }, []);
 
     const handleSaveChanges = async () => {
         if (!graph) return;

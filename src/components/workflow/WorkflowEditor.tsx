@@ -67,6 +67,7 @@ import { NodeAddModal } from '@/components/modals/NodeAddModal';
 import { SimpleConfirmDialog } from '@/components/ui/SimpleConfirmDialog';
 import MissingNodeInstallerModal from '@/components/modals/MissingNodeInstallerModal';
 import MissingModelDetectorModal from '@/components/modals/MissingModelDetectorModal';
+import { WorkflowFormView } from '@/components/form/WorkflowFormView';
 
 // Hooks
 import { useCanvasInteraction } from '@/hooks/useCanvasInteraction';
@@ -75,8 +76,15 @@ import { useWidgetValueEditor } from '@/hooks/useWidgetValueEditor';
 import { useFileOperations } from '@/hooks/useFileOperations';
 import { useMobileOptimizations } from '@/hooks/useMobileOptimizations';
 import { useConnectionMode } from '@/hooks/useConnectionMode';
+import { useWorkflowRunner } from '@/hooks/useWorkflowRunner';
 
 import { DEFAULT_CANVAS_CONFIG } from '@/config/canvasConfig';
+import { suggestFormSpec } from '@/core/services/FormSuggestionService';
+import {
+  addTargetToSpec, allTargets, readFormSpec, resolveSpec,
+  targetsEqual, touchSpec, usableFieldCount, writeFormSpec,
+} from '@/shared/utils/mobileForm';
+import type { MobileFormSpec, MobileFormTarget } from '@/shared/types/app/IMobileForm';
 
 // Stores
 import { useConnectionStore } from '@/ui/store/connectionStore';
@@ -181,7 +189,6 @@ const WorkflowEditor: React.FC<{ integration?: WorkflowEditorIntegration; editor
   const [isNodePanelVisible, setIsNodePanelVisible] = useState<boolean>(false);
   const [isGroupModeModalOpen, setIsGroupModeModalOpen] = useState<boolean>(false);
   const [isWorkflowSnapshotsOpen, setIsWorkflowSnapshotsOpen] = useState<boolean>(false);
-  const [isExecuting, setIsExecuting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSucceeded, setSaveSucceeded] = useState(false);
   const saveInFlightRef = useRef(false);
@@ -202,6 +209,13 @@ const WorkflowEditor: React.FC<{ integration?: WorkflowEditorIntegration; editor
 
   // Queue refresh trigger
   const [queueRefreshTrigger, setQueueRefreshTrigger] = useState<number>(0);
+
+  // Form view: the default surface on a phone. `structure` is the canvas.
+  const [viewMode, setViewMode] = useState<'form' | 'structure'>('form');
+  const [formSpec, setFormSpec] = useState<MobileFormSpec | null>(null);
+  const [isFormEditing, setIsFormEditing] = useState(false);
+  // Guards the one-shot initial view decision per workflow.
+  const formInitializedForRef = useRef<string | null>(null);
   const [uploadState, setUploadState] = useState<any>({ isUploading: false });
   const [renderTrigger, setRenderTrigger] = useState(0); // State to force re-renders
 
@@ -1279,6 +1293,125 @@ const WorkflowEditor: React.FC<{ integration?: WorkflowEditorIntegration; editor
     else await integration.exit(await captureVisibleWorkflowJson());
   }, [integration, officialCanvasEnabled, captureVisibleWorkflowJson]);
 
+  // ---------------------------------------------------------------------
+  // Form view state
+  // ---------------------------------------------------------------------
+
+  // The form always operates on the ROOT graph: widget modifications are kept
+  // per subgraph session, and a form field addresses root node ids.
+  const rootGraph = sessionStack[0]?.graph || comfyGraphRef.current;
+
+  /**
+   * Persists a spec into the workflow. It has to land in two places: the stored
+   * workflow_json (what reload and cloud sync read) and the live graph's own
+   * `extra` (what a later canvas save serializes from). Writing only the former
+   * would let the next Save drop the form.
+   */
+  const persistFormSpec = useCallback(async (next: MobileFormSpec) => {
+    const latest = useGlobalStore.getState().workflow || workflow;
+    if (!latest?.workflow_json) return;
+    const updatedJson = writeFormSpec(latest.workflow_json, next);
+    const live = useGlobalStore.getState().sessionStack[0]?.graph || comfyGraphRef.current;
+    if (live) live.extra = { ...(live.extra || {}), ...(updatedJson.extra || {}) };
+    const updated: IComfyWorkflow = { ...latest, workflow_json: updatedJson, graph: latest.graph, modifiedAt: new Date() };
+    syncWorkflow(updated);
+    setWorkflow(updated);
+    try {
+      const { graph: _graph, parsedData: _parsed, ...persistable } = updated as IComfyWorkflow & { parsedData?: unknown };
+      await updateWorkflow(persistable as IComfyWorkflow);
+    } catch (error) {
+      console.error('[Form] failed to persist form spec', error);
+      toast.error(t('form.saveFailed'));
+    }
+  }, [workflow, syncWorkflow, updateWorkflow, t]);
+
+  const handleFormSpecChange = useCallback((next: MobileFormSpec) => {
+    setFormSpec(next);
+    void persistFormSpec(next);
+  }, [persistFormSpec]);
+
+  // Load the stored spec, or suggest one, once per workflow. A suggestion is
+  // held in memory only: it becomes a stored spec the first time it is edited.
+  useEffect(() => {
+    if (!workflow?.id || isLoading || !rootGraph) return;
+    if (formInitializedForRef.current === workflow.id) return;
+    formInitializedForRef.current = workflow.id;
+
+    const stored = readFormSpec(workflow.workflow_json);
+    const spec = stored && stored.mode === 'custom'
+      ? stored
+      : suggestFormSpec(rootGraph, { getValue: widgetEditor.getWidgetValue });
+    setFormSpec(spec);
+
+    // The form is the default view, with two exceptions: nothing to show, and
+    // no server metadata — without object_info the widget names a field binds
+    // to are unreliable, so the canvas is the honest surface.
+    const hasFields = usableFieldCount(resolveSpec(rootGraph, spec, widgetEditor.getWidgetValue)) > 0;
+    const metadataReady = !!objectInfo && !metadataError;
+    if (!hasFields || !metadataReady) setViewMode('structure');
+  }, [workflow?.id, workflow?.workflow_json, isLoading, rootGraph, objectInfo, metadataError, widgetEditor.getWidgetValue]);
+
+  // Reset per-workflow view state when the editor moves to another workflow.
+  useEffect(() => {
+    setIsFormEditing(false);
+  }, [workflow?.id]);
+
+  const handleRegenerateForm = useCallback(() => {
+    if (!rootGraph) return;
+    const suggested = suggestFormSpec(rootGraph, { getValue: widgetEditor.getWidgetValue });
+    handleFormSpecChange(touchSpec(suggested));
+    toast.success(t('form.regenerated'));
+  }, [rootGraph, widgetEditor.getWidgetValue, handleFormSpecChange, t]);
+
+  /** Widgets currently on the form, for the node panel's pin buttons. */
+  const pinnedTargets = useMemo(() => allTargets(formSpec), [formSpec]);
+
+  const handleTogglePin = useCallback((target: MobileFormTarget) => {
+    const base = formSpec || { version: 1 as const, mode: 'auto' as const, sections: [], updatedAt: new Date().toISOString() };
+    const existing = pinnedTargets.some((candidate) => targetsEqual(candidate, target));
+    if (existing) {
+      // Remove the field (or the link) that exposes this widget.
+      const next: MobileFormSpec = touchSpec({
+        ...base,
+        sections: base.sections.map((section) => ({
+          ...section,
+          fields: section.fields
+            .filter((field) => !targetsEqual(field.target, target))
+            .map((field) => {
+              const linked = (field.linked || []).filter((entry) => !targetsEqual(entry, target));
+              const copy = { ...field };
+              if (linked.length) copy.linked = linked; else delete copy.linked;
+              return copy;
+            }),
+        })),
+      });
+      handleFormSpecChange(next);
+      toast.success(t('form.unpinned'));
+      return;
+    }
+    handleFormSpecChange(touchSpec(addTargetToSpec(base, target)));
+    toast.success(t('form.pinned'));
+  }, [formSpec, pinnedTargets, handleFormSpecChange, t]);
+
+  // ---------------------------------------------------------------------
+  // Execution
+  // ---------------------------------------------------------------------
+
+  const runner = useWorkflowRunner({
+    getGraph: () => comfyGraphRef.current,
+    getWorkflow: () => useGlobalStore.getState().workflow || workflow,
+    getNodeMetadata: () => nodeMetadata,
+    widgetEditor,
+    isConnected,
+    workflowId: id,
+    workflowName: workflow?.name,
+    getFormSpec: () => formSpec,
+    integration,
+    captureWorkflowJson: captureVisibleWorkflowJson,
+    officialCanvasEnabled,
+    onPromptSubmitted: (promptId) => { currentPromptIdRef.current = promptId; },
+  });
+
   useImperativeHandle(editorRef, () => ({ capture: captureVisibleWorkflowJson,
     reload: async canvas => { if (workflow) await loadWorkflowJsonIntoSession(canvas, workflow); } }),
   [captureVisibleWorkflowJson, loadWorkflowJsonIntoSession, workflow]);
@@ -1691,113 +1824,14 @@ const WorkflowEditor: React.FC<{ integration?: WorkflowEditorIntegration; editor
 
   // #region prompt actions
   // Execute workflow using our completed Graph to API conversion
-  const handleExecute = async () => {
-    if (integration) {
-      try { await integration.execute(await captureVisibleWorkflowJson()); }
-      catch (error) { integration.onError(error); }
-      return;
-    }
-    if (!comfyGraphRef.current || !isConnected || !workflow) {
-      toast.error(t('workflow.submitFailed'));
-      return;
-    }
+  // Execution now lives in useWorkflowRunner, shared with the stack view. It
+  // keeps this editor's full behaviour (agent-draft branch, canvas-v2 prompt
+  // building, seed control) and adds two fixes: seed changes made during the
+  // call reach the submitted graph, and linked form fields are unified first.
+  const handleExecute = runner.execute;
+  const handleInterrupt = runner.interrupt;
+  const handleClearQueue = runner.clearQueue;
 
-    try {
-      setIsExecuting(true);
-
-
-      // Canvas v2: seed handling (control_after_generate) runs inside the
-      // bridge right before graphToPrompt — the legacy-model path would
-      // double-randomize and desync, so skip it when executing via bridge.
-      const v2Bridge = getActiveCanvasBridge();
-      const useOfficialPrompt = officialCanvasEnabled && !!v2Bridge?.isReady;
-      if (!useOfficialPrompt) try {
-        const seedChanges = await autoChangeSeed(workflow, nodeMetadata, {
-          getWidgetValue: (nodeId: number, paramName: string, defaultValue: any) => {
-            const value = widgetEditor.getWidgetValue(nodeId, paramName, defaultValue);
-            return value;
-          },
-          setWidgetValue: (nodeId: number, paramName: string, value: any) => {
-            widgetEditor.setWidgetValue(nodeId, paramName, value);
-          }
-        });
-
-        if (seedChanges.length > 0) {
-          seedChanges.forEach(change => {
-          });
-
-          // Verify changes are in widget editor state
-        } else {
-        }
-      } catch (error) {
-        console.error('Error during seed processing:', error);
-        // Continue execution even if seed processing fails
-      }
-
-      // Step 3/4: Build the API-format prompt.
-      // Canvas v2: serialize through the official frontend (graphToPrompt) so
-      // custom-node semantics match ComfyUI exactly. Widget edits and seed
-      // changes were already mirrored into the official graph (postMessage
-      // ordering guarantees they land before this request).
-      let execution: PreparedWorkflowExecution;
-      if (useOfficialPrompt && v2Bridge) {
-        const promptData = await v2Bridge.getPrompt();
-        execution = {
-          prompt: promptData.output ?? {},
-          workflow: promptData.workflow,
-        };
-      } else {
-        const originalGraph = comfyGraphRef.current;
-        const executionGraph = createExecutionGraph(
-          originalGraph,
-          widgetEditor.modifiedWidgetValues,
-        );
-        const converted = convertGraphToAPI(executionGraph);
-        execution = {
-          prompt: converted.apiWorkflow,
-          workflow: serializeGraph(executionGraph),
-        };
-      }
-
-      // Step 5: Submit to server with workflow tracking information
-      const promptId = await ComfyUIService.executeWorkflow(execution, {
-        workflowId: id, // Use the workflow ID from URL params
-        workflowName: workflow?.name || t('workflow.newWorkflowName')
-      });
-
-      currentPromptIdRef.current = promptId;
-    } catch (error) {
-      console.error('Workflow execution failed:', error);
-      toast.error(t('workflow.submitFailed'));
-    } finally {
-      setIsExecuting(false);
-    }
-  };
-
-  // Handle interrupt
-  const handleInterrupt = useCallback(async () => {
-
-    if (!currentPromptIdRef.current) {
-    }
-
-    try {
-      await ComfyUIService.interruptExecution();
-    } catch (error) {
-      console.error('INTERRUPT: Failed to interrupt:', error);
-      toast.error(t('workflow.interruptFailed'));
-    }
-  }, []);
-
-  // Handle clear queue
-  const handleClearQueue = useCallback(async () => {
-    try {
-      await ComfyUIService.clearQueue();
-      toast.success(t('workflow.queueCleared'));
-    } catch (error) {
-      console.error('Failed to clear queue:', error);
-      toast.error(t('workflow.clearQueueFailed'));
-    }
-  }, []);
 
   // #endregion prompt actions
 
@@ -2403,11 +2437,9 @@ const WorkflowEditor: React.FC<{ integration?: WorkflowEditorIntegration; editor
     }
 
     try {
-      // Use autoChangeSeed function with force randomization
-      const seedChanges = await autoChangeSeed(workflow, nodeMetadata, {
-        getWidgetValue: widgetEditor.getWidgetValue,
-        setWidgetValue: widgetEditor.setWidgetValue
-      }, isForceRandomize);
+      // Through the runner so linked form fields end up sharing one seed
+      // rather than each sampler getting its own random number.
+      const seedChanges = await runner.randomizeSeedsDetailed(isForceRandomize);
 
       if (seedChanges.length > 0) {
         toast.success(t('workflow.randomizedSeeds', { count: seedChanges.length }), {
@@ -2430,7 +2462,7 @@ const WorkflowEditor: React.FC<{ integration?: WorkflowEditorIntegration; editor
         duration: 5000,
       });
     }
-  }, [workflow, nodeMetadata, widgetEditor.getWidgetValue, widgetEditor.setWidgetValue, forceRender]);
+  }, [workflow, nodeMetadata, runner, forceRender, t]);
 
   // Handle subgraph extraction
   const handleExtractSubgraphs = useCallback(() => {
@@ -3728,6 +3760,12 @@ const WorkflowEditor: React.FC<{ integration?: WorkflowEditorIntegration; editor
   }
 
   // Main render
+  // The official canvas owns its own graph, so the form (which binds to the
+  // legacy ComfyGraph) is only offered on the mobile canvas.
+  const isFormView = viewMode === 'form' && !officialCanvasEnabled && !historyWorkflowSession;
+  // Offer the switch whenever the legacy canvas is in play — including when the
+  // form is currently empty, so "edit form" stays reachable.
+  const formSwitchAvailable = !officialCanvasEnabled && !historyWorkflowSession && !!rootGraph;
   const hasUnsavedWorkflowChanges = integration ? integration.hasUnsavedChanges
     : historyWorkflowDirty || widgetEditor.hasModifications() || (officialCanvasEnabled && canvasDirty);
 
@@ -3780,6 +3818,8 @@ const WorkflowEditor: React.FC<{ integration?: WorkflowEditorIntegration; editor
         onOpenChat={integration ? () => { void exitIntegratedEditor().catch(integration.onError); }
           : authMode === 'gateway' && workflow ? () => navigate(`/chat/new?workflow=${encodeURIComponent(workflow.id)}`) : undefined}
         chatActive={chatActive}
+        viewMode={formSwitchAvailable ? viewMode : undefined}
+        onViewModeChange={(mode) => { setViewMode(mode); if (mode === 'structure') setIsFormEditing(false); }}
       />
 
       {historyWorkflowSession && (
@@ -3821,9 +3861,38 @@ const WorkflowEditor: React.FC<{ integration?: WorkflowEditorIntegration; editor
         />
       )}
 
+      {/* Form view — the default surface. It covers the canvas rather than
+          unmounting it, so the renderer and its refs stay intact for the
+          switch back. */}
+      {isFormView && (
+        <WorkflowFormView
+          graph={rootGraph}
+          spec={formSpec}
+          onSpecChange={handleFormSpecChange}
+          isEditing={isFormEditing}
+          onEditingChange={setIsFormEditing}
+          onRegenerate={handleRegenerateForm}
+          widgetEditor={widgetEditor as any}
+          uploadState={uploadState}
+          onFilePreview={fileOperations.handleFilePreview}
+          onFileUpload={(nodeId: number, paramName: string) => {
+            fileOperations.handleFileUpload(nodeId, paramName, fileInputRef);
+          }}
+          onFileUploadDirect={fileOperations.handleFileUploadDirect}
+          onControlAfterGenerateChange={handleControlAfterGenerateChange}
+          onOpenNode={(nodeId: number) => {
+            setViewMode('structure');
+            setIsFormEditing(false);
+            // Let the canvas lay out before it is asked to focus a node.
+            window.setTimeout(() => canvasInteraction.handleNavigateToNode(nodeId), 60);
+          }}
+          topOffset={canvasToggleTop - 16}
+        />
+      )}
+
       {/* Canvas controls: float just below the header and follow its
           dynamic height (progress bar etc.) */}
-      {!historyWorkflowSession && (
+      {!historyWorkflowSession && !isFormView && (
         <div
           className="fixed right-3 z-30 flex flex-col items-end gap-2 transition-[top] duration-200"
           style={{ top: canvasToggleTop }}
@@ -4145,7 +4214,7 @@ const WorkflowEditor: React.FC<{ integration?: WorkflowEditorIntegration; editor
       )}
 
       {/* Workflow Controls Panel (Right Top) - Hidden during repositioning, connection mode, full-screen preview, and official canvas mode */}
-      {(!officialCanvasEnabled && !historyWorkflowSession && !canvasInteraction.repositionMode.isActive && !connectionMode.connectionMode.isActive && !isLatentPreviewFullscreen) && (
+      {(!officialCanvasEnabled && !historyWorkflowSession && !isFormView && !canvasInteraction.repositionMode.isActive && !connectionMode.connectionMode.isActive && !isLatentPreviewFullscreen) && (
         <FloatingControlsPanel
           onRandomizeSeeds={handleRandomizeSeeds}
           onShowGroupModer={() => setIsGroupModeModalOpen(true)}
@@ -4224,6 +4293,8 @@ const WorkflowEditor: React.FC<{ integration?: WorkflowEditorIntegration; editor
           onSaveEditing={widgetEditor.saveEditingParam}
           onEditingValueChange={widgetEditor.updateEditingValue}
           onControlAfterGenerateChange={handleControlAfterGenerateChange}
+          pinnedTargets={pinnedTargets}
+          onTogglePin={formSwitchAvailable ? handleTogglePin : undefined}
           onFilePreview={fileOperations.handleFilePreview}
           onFileUpload={(nodeId: number, paramName: string) => {
             fileOperations.handleFileUpload(nodeId, paramName, fileInputRef);
