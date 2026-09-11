@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, type ClipboardEvent, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from 'react';
 import { ArrowUp, ImagePlus, Plus, Square } from 'lucide-react';
 import { ACCEPT } from './attachments';
 import { PendingAttachments } from './ChatAttachments';
@@ -19,6 +19,7 @@ export function ChatComposer({ value, onChange, disabled, placeholder, attachmen
   const at = useAgentText();
   const textarea = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
+  const [attachMenuOpen, setAttachMenuOpen] = useState(false);
 
   const resize = useCallback(() => {
     const el = textarea.current; if (!el) return;
@@ -45,15 +46,21 @@ export function ChatComposer({ value, onChange, disabled, placeholder, attachmen
   const hasAttachments = attachments.length > 0;
   const nearLimit = value.length > MAX_LENGTH - 500;
   const showStop = Boolean(running && onStop);
+  const closeAttachMenu = () => setAttachMenuOpen(false);
   return <form data-agent-composer className={`rounded-[22px] border transition-colors ${showStop ? 'border-[#3069f0]/40' : disabled ? 'border-white/[0.06] opacity-60' : 'border-white/[0.1] focus-within:border-[#3069f0]/60 focus-within:shadow-[0_0_0_3px_rgba(48,105,240,0.15)]'}`} style={{ background: '#14161c' }}
     onSubmit={e => { e.preventDefault(); if (canSend) onSend(); }}>
+    {attachMenuOpen && <div className="fixed inset-0 z-40" onClick={closeAttachMenu} aria-hidden />}
+    {attachMenuOpen && <div role="menu" className="fixed bottom-[76px] left-3 right-3 z-50 mx-auto max-w-[320px] rounded-[14px] border border-white/10 bg-[#14161c] shadow-[0_12px_40px_rgba(0,0,0,0.5)] p-1.5 space-y-0.5">
+      {onPickFromLibrary && <button type="button" role="menuitem" onClick={() => { closeAttachMenu(); onPickFromLibrary(); }}
+        className="w-full h-11 px-3.5 flex items-center gap-3 rounded-[10px] text-[13.5px] font-medium text-[#e9ebef] active:bg-white/[0.08] transition-colors"><ImagePlus size={17} strokeWidth={1.8} className="text-[#5b8af5]" />{at('从相册选择')}</button>}
+      <button type="button" role="menuitem" onClick={() => { closeAttachMenu(); picker.current?.click(); }}
+        className="w-full h-11 px-3.5 flex items-center gap-3 rounded-[10px] text-[13.5px] font-medium text-[#e9ebef] active:bg-white/[0.08] transition-colors"><Plus size={17} strokeWidth={1.8} className="text-[#5b8af5]" />{at('上传本地文件')}</button>
+    </div>}
     {hasAttachments && <div className="px-3 pt-2.5"><PendingAttachments items={attachments} onRemove={onRemoveAttachment} onRetry={onRetryAttachment} /></div>}
     <div className="flex items-end gap-1.5 pl-2 pr-2 py-2">
       <input ref={picker} type="file" accept={ACCEPT} multiple hidden onChange={e => { onAddFiles(Array.from(e.target.files ?? [])); e.target.value = ''; }} />
-      <button type="button" aria-label={at('添加图片或文件')} disabled={disabled} onClick={() => picker.current?.click()}
-        className="w-9 h-9 shrink-0 rounded-full flex items-center justify-center text-[#c8ccd4] bg-white/[0.06] active:bg-white/[0.12] disabled:opacity-40 transition-colors"><Plus size={19} strokeWidth={2} /></button>
-      {onPickFromLibrary && <button type="button" aria-label={at('从相册选择')} disabled={disabled} onClick={onPickFromLibrary}
-        className="w-9 h-9 shrink-0 rounded-full flex items-center justify-center text-[#c8ccd4] bg-white/[0.06] active:bg-white/[0.12] disabled:opacity-40 transition-colors"><ImagePlus size={19} strokeWidth={2} /></button>}
+      <button type="button" aria-label={at('添加图片或文件')} aria-expanded={attachMenuOpen} disabled={disabled} onClick={() => setAttachMenuOpen(open => !open)}
+        className={`w-9 h-9 shrink-0 rounded-full flex items-center justify-center transition-colors disabled:opacity-40 ${attachMenuOpen ? 'bg-[#3069f0]/20 text-[#5b8af5]' : 'text-[#c8ccd4] bg-white/[0.06] active:bg-white/[0.12]'}`}><ImagePlus size={19} strokeWidth={2} /></button>
       <textarea ref={textarea} aria-label={at('给助手的消息')} value={value} onChange={e => onChange(e.target.value)} onKeyDown={onKeyDown} onPaste={onPaste} rows={1} maxLength={MAX_LENGTH} disabled={disabled} placeholder={showStop && runningLabel ? runningLabel : placeholder}
         className="flex-1 min-w-0 min-h-[36px] py-2 px-1.5 resize-none bg-transparent text-[14px] leading-[20px] text-[#e9ebef] placeholder:text-[#5c6675] focus:outline-none disabled:cursor-not-allowed" />
       {showStop
