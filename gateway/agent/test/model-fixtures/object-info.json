@@ -2444,5 +2444,66 @@
     "search_aliases": null,
     "essentials_category": null,
     "has_intermediate_output": false
+  },
+  "VAEEncode": {
+    "input": {
+      "required": {
+        "pixels": [
+          "IMAGE"
+        ],
+        "vae": [
+          "VAE"
+        ]
+      }
+    },
+    "output": [
+      "LATENT"
+    ],
+    "output_node": false
+  },
+  "ImageScaleToTotalPixels": {
+    "input": {
+      "required": {
+        "image": [
+          "IMAGE",
+          {}
+        ],
+        "upscale_method": [
+          "COMBO",
+          {
+            "multiselect": false,
+            "options": [
+              "nearest-exact",
+              "bilinear",
+              "area",
+              "bicubic",
+              "lanczos"
+            ]
+          }
+        ],
+        "megapixels": [
+          "FLOAT",
+          {
+            "default": 1.0,
+            "min": 0.01,
+            "max": 16.0,
+            "step": 0.01
+          }
+        ],
+        "resolution_steps": [
+          "INT",
+          {
+            "advanced": true,
+            "default": 1,
+            "min": 1,
+            "max": 256
+          }
+        ]
+      }
+    },
+    "output": [
+      "IMAGE"
+    ],
+    "output_node": false
   }
 }

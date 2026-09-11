@@ -433,7 +433,7 @@ export class AgentService {
       create_model_workflow: tool({ description: 'Create a reviewed Z-Image Turbo or MiniMax H3 workflow. To switch an existing workflow for a new user request (e.g. image to video), supply its current baseVersion; old versions remain restorable. Omit baseVersion only for an empty session. Inspect templates first. Use user-selected input paths or prepare_output_image results as references. Does not execute.', inputSchema: z.object({
         baseVersion:z.number().int().nonnegative().optional(),
         profileId:z.string(), text:z.string().min(1).max(8000), width:z.number().int().positive().optional(), height:z.number().int().positive().optional(), frames:z.number().int().positive().optional(), seed:z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
-        referenceImage:z.string().max(500).optional(),referenceAudio:z.string().max(500).optional(),referenceVideo:z.string().max(500).optional(),modelVariant:z.enum(['q5','q6']).optional(),filenamePrefix:z.string().max(300).optional(),
+        referenceImage:z.string().max(500).optional(),referenceAudio:z.string().max(500).optional(),referenceVideo:z.string().max(500).optional(),denoise:z.number().min(0.05).max(0.95).optional(),modelVariant:z.enum(['q5','q6']).optional(),filenamePrefix:z.string().max(300).optional(),
       }).strict(), execute: execute('create_model_workflow', (args: Parameters<typeof createModelWorkflow>[1] & { baseVersion?: number }, callId) => mutation('create_model_workflow', args, callId, () => {
         const session=this.store.session(task.sessionId);
         if(session.version!==(args.baseVersion ?? 0)) throw new AgentHttpError(409,'请读取当前工作流，并传入当前 baseVersion 后切换模板');

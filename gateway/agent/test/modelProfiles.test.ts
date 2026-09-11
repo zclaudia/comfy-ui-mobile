@@ -21,12 +21,28 @@ for(const filename of readdirSync(folder).filter(f=>f!=='object-info.json')) tes
  if(sampler){assert.equal(prompt[String(sampler.id)].inputs.steps,8);assert.equal(changed.canvas.nodes.find(n=>n.id===sampler.id)!.widgets_values!.length,6);}
 });
 test('all reviewed profiles create valid editable workflows with explicit reference inputs',()=>{
- assert.equal(modelTemplates(info).length,7);assert.ok(modelTemplates(info).every(p=>p.available));
+ assert.equal(modelTemplates(info).length,8);assert.ok(modelTemplates(info).every(p=>p.available));
  for(const profile of modelTemplates(info)){
   const canvas=createModelWorkflow(info,{profileId:profile.id,text:'A landscape',referenceImage:'ref_cat.png',referenceAudio:'ref_audio.wav',referenceVideo:'ref_clip.mp4',seed:42});
   const prompt=canvasToPrompt(canvas,info);assert.equal(validatePrompt(prompt,info).length,0);
   assert.deepEqual(canvasToPrompt(promptToCanvas(canvas,prompt,info),info),prompt);
  }
+});
+test('z-image img2img template wires the reference through LoadImage/VAEEncode with a tunable denoise',()=>{
+ const listed=modelTemplates(info).find(p=>p.id==='z-image-turbo-img2img')!;
+ assert.ok(listed.available);assert.deepEqual(listed.requiredInputs,['referenceImage']);assert.match(listed.description,/denoise/);
+ assert.equal(listed.defaults.width,undefined,'img2img resolution follows the reference image');
+ assert.throws(()=>createModelWorkflow(info,{profileId:'z-image-turbo-img2img',text:'x'}),/referenceImage/);
+ assert.throws(()=>createModelWorkflow(info,{profileId:'z-image-turbo-img2img',text:'x',referenceImage:'ref_cat.png',width:1024}),/width\/height/);
+ const canvas=createModelWorkflow(info,{profileId:'z-image-turbo-img2img',text:'x',referenceImage:'ref_cat.png'});
+ const prompt=canvasToPrompt(canvas,info);
+ assert.equal(prompt['17'].inputs.image,'ref_cat.png');
+ assert.equal(prompt['18'].class_type,'ImageScaleToTotalPixels');assert.equal(prompt['7'].class_type,'VAEEncode');
+ assert.deepEqual(prompt['7'].inputs.pixels,['18',0]);assert.equal(prompt['8'].inputs.denoise,0.55);
+ const lighter=canvasToPrompt(createModelWorkflow(info,{profileId:'z-image-turbo-img2img',text:'x',referenceImage:'ref_cat.png',denoise:0.3}),info);
+ assert.equal(lighter['8'].inputs.denoise,0.3);
+ const txt2img=canvasToPrompt(createModelWorkflow(info,{profileId:'z-image-turbo',text:'x',denoise:0.3}),info);
+ assert.equal(txt2img['8'].inputs.denoise,1,'denoise never applies to text-to-image templates');
 });
 test('missing models and references are diagnosed; wrong geometry/frames rejected',()=>{
  const missing=structuredClone(info);missing.UNETLoader.input.required.unet_name[0]=[];

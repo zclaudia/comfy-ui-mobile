@@ -41,6 +41,8 @@ export const coreWidgetLayouts: Record<string, Record<string, number>> = {
   SaveVideo: { filename_prefix: 0, format: 1, codec: 2 },
   LoadAudio: { audio: 0 }, LoadVideo: { file: 0 }, GetVideoComponents: {},
   SaveAudio: { filename_prefix: 0 },
+  VAEEncode: {},
+  ImageScaleToTotalPixels: { upscale_method: 0, megapixels: 1, resolution_steps: 2 },
 
 };
 const isNote = (node: CanvasNode) => ['MarkdownNote', 'Note'].includes(node.type);
@@ -49,7 +51,7 @@ export function widgetLayout(node: CanvasNode): Record<string, number> {
     return { seed: 0, steps: 1, cfg: 2, sampler_name: 3, scheduler: 4, denoise: 5 };
   return coreWidgetLayouts[node.type];
 }
-const optionalWidgets = new Set(['CLIPLoader.device', 'CreateVideo.bit_depth', 'CreateVideo.color_space', 'SaveVideo.codec']);
+const optionalWidgets = new Set(['CLIPLoader.device', 'CreateVideo.bit_depth', 'CreateVideo.color_space', 'SaveVideo.codec', 'ImageScaleToTotalPixels.resolution_steps']);
 const fail = (message: string): never => { throw new WorkflowError([{ code: 'unsupported_canvas', message }]); };
 
 /** Version 0.4 core-node subset only. Imported metadata stays in the original canvas. */

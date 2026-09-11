@@ -231,6 +231,146 @@ export const modelProfileData = [
     }
   },
   {
+    "id": "z-image-turbo-img2img",
+    "source": "图片_Z-Image_标准1024.json + LoadImage/VAEEncode img2img chain",
+    "media": "image",
+    "reference": "referenceImage",
+    "description": "Z-Image Turbo image-to-image: restyles or edits the user-selected referenceImage while keeping its composition. Output resolution follows the reference (scaled to ~1MP), so ignore width/height. Set denoise 0.30-0.45 for light retouching, 0.55-0.65 to refine while keeping the current look, 0.75-0.85 for a full style change such as photo to watercolor or anime (8-step CFG-1 keeps the base below that); omit it for the balanced default. For pure text-to-image with no reference, use z-image-turbo instead.",
+    "prompt": {
+      "1": {
+        "class_type": "UNETLoader",
+        "inputs": {
+          "unet_name": "z_image_turbo_bf16.safetensors",
+          "weight_dtype": "default"
+        }
+      },
+      "2": {
+        "class_type": "CLIPLoader",
+        "inputs": {
+          "clip_name": "qwen_3_4b.safetensors",
+          "type": "lumina2",
+          "device": "default"
+        }
+      },
+      "3": {
+        "class_type": "VAELoader",
+        "inputs": {
+          "vae_name": "ae.safetensors"
+        }
+      },
+      "4": {
+        "class_type": "ModelSamplingAuraFlow",
+        "inputs": {
+          "model": [
+            "1",
+            0
+          ],
+          "shift": 3
+        }
+      },
+      "5": {
+        "class_type": "CLIPTextEncode",
+        "inputs": {
+          "clip": [
+            "2",
+            0
+          ],
+          "text": "A cinematic landscape at sunrise"
+        }
+      },
+      "6": {
+        "class_type": "ConditioningZeroOut",
+        "inputs": {
+          "conditioning": [
+            "5",
+            0
+          ]
+        }
+      },
+      "17": {
+        "class_type": "LoadImage",
+        "inputs": {
+          "image": "__reference_required__"
+        }
+      },
+      "18": {
+        "class_type": "ImageScaleToTotalPixels",
+        "inputs": {
+          "image": [
+            "17",
+            0
+          ],
+          "upscale_method": "lanczos",
+          "megapixels": 1.0,
+          "resolution_steps": 1
+        }
+      },
+      "7": {
+        "class_type": "VAEEncode",
+        "inputs": {
+          "pixels": [
+            "18",
+            0
+          ],
+          "vae": [
+            "3",
+            0
+          ]
+        }
+      },
+      "8": {
+        "class_type": "KSampler",
+        "inputs": {
+          "model": [
+            "4",
+            0
+          ],
+          "positive": [
+            "5",
+            0
+          ],
+          "negative": [
+            "6",
+            0
+          ],
+          "latent_image": [
+            "7",
+            0
+          ],
+          "seed": 2024,
+          "steps": 8,
+          "cfg": 1,
+          "sampler_name": "res_multistep",
+          "scheduler": "simple",
+          "denoise": 0.55
+        }
+      },
+      "9": {
+        "class_type": "VAEDecode",
+        "inputs": {
+          "samples": [
+            "8",
+            0
+          ],
+          "vae": [
+            "3",
+            0
+          ]
+        }
+      },
+      "10": {
+        "class_type": "SaveImage",
+        "inputs": {
+          "images": [
+            "9",
+            0
+          ],
+          "filename_prefix": "ComfyMobile/Agent/z-image-turbo-img2img"
+        }
+      }
+    }
+  },
+  {
     "id": "h3-fl2va",
     "source": "H3_文生视频_FL2VA_官方LoRA_8步.json",
     "media": "video",

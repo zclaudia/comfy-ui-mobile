@@ -8,16 +8,18 @@ export function modelTemplates(info: ObjectInfo) {
   return modelProfileData.map(profile => {
     const prompt = structuredClone(profile.prompt) as unknown as Prompt;
     const diagnostics = validatePrompt(prompt, info).filter(d => d.code !== 'invalid_choice' || !d.nodeId || !assetTypes.has(prompt[d.nodeId]?.class_type));
+    const fallbackDescription = profile.id.startsWith('z-image') ? 'Z-Image Turbo image generation; lumina2 CLIP, CFG 1, 8 steps, zero negative conditioning.' : 'MiniMax H3 joint video/audio; frames must be 17k+5, width/height multiples of 32. Short preview default: 22 frames. Reference assets must be explicitly selected by the user.';
+    const latentInputs = profile.prompt['7'].inputs as Record<string, unknown>;
     return { id:profile.id, media:profile.media, available:diagnostics.length===0, missing:diagnostics,
       requiredInputs:'reference' in profile ? [profile.reference] : [],
-      defaults: {width:profile.prompt['7'].inputs.width, height:profile.prompt['7'].inputs.height, ...('length' in profile.prompt['7'].inputs ? {frames:profile.prompt['7'].inputs.length, fps:24} : {})},
-      description:profile.id.startsWith('z-image') ? 'Z-Image Turbo image generation; lumina2 CLIP, CFG 1, 8 steps, zero negative conditioning.' : 'MiniMax H3 joint video/audio; frames must be 17k+5, width/height multiples of 32. Short preview default: 22 frames. Reference assets must be explicitly selected by the user.',
+      defaults: { ...(latentInputs.width !== undefined ? {width:latentInputs.width as number, height:latentInputs.height as number} : {}), ...('length' in latentInputs ? {frames:latentInputs.length as number, fps:24} : {})},
+      description: 'description' in profile && typeof profile.description === 'string' ? profile.description : fallbackDescription,
     };
   });
 }
 export interface ModelWorkflowOptions {
   profileId:string; text:string; width?:number; height?:number; frames?:number; seed?:number;
-  referenceImage?:string; referenceAudio?:string; referenceVideo?:string;
+  referenceImage?:string; referenceAudio?:string; referenceVideo?:string; denoise?:number;
   modelVariant?:'q5'|'q6'; filenamePrefix?:string;
 }
 export function createModelWorkflow(info: ObjectInfo, options:ModelWorkflowOptions) {
@@ -27,6 +29,8 @@ export function createModelWorkflow(info: ObjectInfo, options:ModelWorkflowOptio
   if('reference' in profile && !options[profile.reference]?.trim()) return fail(`This template requires an explicitly selected ${profile.reference}`);
   const prompt=structuredClone(profile.prompt) as unknown as Prompt;
   if(profile.media==='image' && options.frames!==undefined) fail('Image templates do not accept frame count');
+  // Node 7 carries the latent/video size on every template except reference-derived ones (VAEEncode follows the image).
+  if(!('width' in profile.prompt['7'].inputs) && (options.width!==undefined || options.height!==undefined)) fail('This template derives resolution from the reference image; width/height are not settable');
   if(profile.id.startsWith('z-image') && options.modelVariant) fail('GGUF variants apply only to H3');
   if(profile.id.startsWith('h3-ref') && options.modelVariant==='q6') fail('Ref2VA Q6 is not in the reviewed model set');
   for(const node of Object.values(prompt)) {
@@ -42,6 +46,7 @@ export function createModelWorkflow(info: ObjectInfo, options:ModelWorkflowOptio
       if(options.height!==undefined) input.height=options.height;
     }
     if(node.class_type==='KSampler' && options.seed!==undefined) input.seed=options.seed;
+    if(node.class_type==='KSampler' && 'reference' in profile && options.denoise!==undefined) input.denoise=options.denoise;
     if(node.class_type==='RandomNoise' && options.seed!==undefined) input.noise_seed=options.seed;
     if(node.class_type==='LoadImage') input.image=options.referenceImage!;
     if(node.class_type==='LoadAudio') input.audio=options.referenceAudio!;
