@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Bot, ChevronDown, Film, Image as ImageIcon, Loader2, Network, Settings2, ShieldCheck, Square } from 'lucide-react';
+import { Bot, ChevronDown, Film, Image as ImageIcon, Network, Settings2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { SimpleConfirmDialog } from '@/components/ui/SimpleConfirmDialog';
 import { loadAllWorkflows, updateWorkflowAgentBinding } from '@/infrastructure/storage/IndexedDBWorkflowService';
@@ -245,13 +245,11 @@ export default function ChatPage() {
         {status && <button className="max-w-full flex items-center gap-1.5 text-[11px] text-slate-400" onClick={() => navigate('/settings/agent')} aria-label={at('助手模型')}><Settings2 size={13} className="shrink-0" /><span className="truncate">{status.model ?? at('添加模型')}{status.contextWindow ? ` · ${status.contextWindow.toLocaleString()} tokens` : ''} · {at(status.vision ? '支持图片理解' : '仅文本')}</span></button>}
         {attachments.items.some(a => a.kind === 'image') && status?.vision === false && <p className="text-xs text-amber-300">{at('当前模型仅接收图片路径；如需理解图片内容，请选择支持 Vision 的模型。')}</p>}
         {!id && <div className="flex gap-2 overflow-x-auto scrollbar-hide">{chips.map(chip => <button key={chip.label} onClick={chip.onClick} className="h-[34px] px-3 shrink-0 rounded-[9px] border border-white/[0.08] bg-white/[0.035] text-[12px] font-medium text-[#c8ccd4] flex items-center gap-1.5">{chip.icon}{chip.label}</button>)}</div>}
-        {task && <div role="status" className="h-10 pl-3 pr-1.5 rounded-[10px] border border-[#3069f0]/30 bg-[#3069f0]/10 flex items-center gap-2 text-[12.5px] font-medium text-[#5b8af5]">
-          {task.state === 'waiting_user' ? <ShieldCheck size={14} /> : <Loader2 size={14} className="animate-spin" />}<span className="flex-1">{at(task.state === 'running' && events.filter(e => e.taskId === task.id && e.kind === 'context').at(-1)?.data.status === 'compacting' ? '正在压缩上下文' : states[task.state] ?? '正在处理')}</span>
-          <button className="h-7 px-2.5 rounded-[7px] border border-white/10 bg-white/5 text-[11.5px] font-semibold text-[#c8ccd4] flex items-center gap-1.5" disabled={busy} onClick={() => void action(async () => { if (session) await api.cancel(session.id, task.id); })}><Square size={10} fill="currentColor" />{at('停止')}</button>
-        </div>}
         {session && <DraftStatusLine session={session} saving={saving} canSave={ready && !busy && !saving && !task} onSave={() => void openSave(session.version)} />}
-        <ChatComposer value={draft} onChange={setDraft} disabled={!ready} placeholder={ready ? at('描述你想要的效果，或告诉助手如何调整…') : at('等待模型连接')}
+        <ChatComposer value={draft} onChange={setDraft} disabled={!ready} placeholder={ready ? at('描述你想要的效果…') : at('等待模型连接')}
           attachments={attachments.items} onAddFiles={attachments.add} onPickFromLibrary={ready ? () => setLibraryPicker(true) : undefined} onRemoveAttachment={attachments.remove} onRetryAttachment={attachments.retry}
+          running={!!task} runningLabel={task ? at(task.state === 'running' && events.filter(e => e.taskId === task.id && e.kind === 'context').at(-1)?.data.status === 'compacting' ? '正在压缩上下文' : states[task.state] ?? '正在处理') : undefined}
+          onStop={task && !busy ? () => void action(async () => { if (session) await api.cancel(session.id, task.id); }) : undefined}
           canSend={canSend} onSend={() => void action(send)} />
       </div>
     </footer>
