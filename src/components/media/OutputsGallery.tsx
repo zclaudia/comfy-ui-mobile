@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ComfyFileService } from '@/infrastructure/api/ComfyFileService';
 import { IComfyFileInfo } from '@/shared/types/comfy/IComfyFile';
 import { useConnectionStore } from '@/ui/store/connectionStore';
+import { useAuthenticatedMediaUrl } from '@/hooks/useAuthenticatedMediaUrl';
 import { FilePreviewModal } from '../modals/FilePreviewModal';
 import { SimpleConfirmDialog } from '../ui/SimpleConfirmDialog';
 import { isImageFile, isVideoFile } from '@/shared/utils/ComfyFileUtils';
@@ -52,6 +53,16 @@ const findMatchingImageFile = (
 
   return null;
 };
+
+/** Videos without a generated thumbnail show the browser-extracted first frame, like chat video covers do. */
+function VideoFirstFrameCover({ source }: { source: string }) {
+  const media = useAuthenticatedMediaUrl(source);
+  if (!media.url) {
+    return <div className="w-full h-full flex items-center justify-center" style={{ background: '#0d1016' }}><Video className="h-10 w-10 text-white/20" strokeWidth={1.6} /></div>;
+  }
+  // #t=0.1 makes the browser render the first decoded frame as the poster; the tile itself handles clicks.
+  return <video muted playsInline preload="metadata" src={`${media.url}#t=0.1`} className="w-full h-full object-cover pointer-events-none" aria-hidden />;
+}
 
 interface LazyImageProps {
   file: IComfyFileInfo;
@@ -118,6 +129,14 @@ const LazyImage: React.FC<LazyImageProps> = ({
     subfolder: file.subfolder,
     type: file.type,
     preview: true,
+    modified: file.modified
+  }) : undefined;
+
+  // First-frame fallback URL for videos without a generated thumbnail image
+  const videoPreviewUrl = isVideoFile(file.filename) ? fileService.createDownloadUrl({
+    filename: file.filename,
+    subfolder: file.subfolder,
+    type: file.type,
     modified: file.modified
   }) : undefined;
 
@@ -213,7 +232,7 @@ const LazyImage: React.FC<LazyImageProps> = ({
       {/* Video Thumbnail or Image */}
       {isVideoFile(file.filename) ? (
         <>
-          {/* Use matching image thumbnail if available, otherwise show placeholder */}
+          {/* Prefer the generated thumbnail; fall back to the first decoded video frame, then a placeholder */}
           {matchingImageThumbnail && !hasError ? (
             <AuthenticatedImage
               source={matchingImageThumbnail}
@@ -221,15 +240,11 @@ const LazyImage: React.FC<LazyImageProps> = ({
               loading="lazy"
               decoding="async"
               className="w-full h-full object-cover"
-              onError={() => {
-                setPosterFailed(true);
-                setHasError(true);
-              }}
-              onAuthenticatedError={() => {
-                setPosterFailed(true);
-                setHasError(true);
-              }}
+              onError={() => setPosterFailed(true)}
+              onAuthenticatedError={() => setPosterFailed(true)}
             />
+          ) : videoPreviewUrl && !hasError ? (
+            <VideoFirstFrameCover source={videoPreviewUrl} />
           ) : (
             /* Video placeholder when no thumbnail available */
             <div className="w-full h-full flex items-center justify-center" style={{ background: '#0d1016' }}>
