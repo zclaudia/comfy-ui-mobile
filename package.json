@@ -15,7 +15,6 @@
     "tauri:dev": "tauri dev",
     "tauri:android:init": "tauri android init",
     "tauri:android:dev": "tauri android dev",
-    "pretauri:android:build": "npm run generate-icons",
     "tauri:android:build": "tauri android build",
     "lint": "eslint .",
     "preview": "vite preview",
