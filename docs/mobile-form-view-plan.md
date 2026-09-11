@@ -270,9 +270,13 @@ export interface MobileFormField {
 1. **主编辑器每次执行提交的是上一次的种子。** `handleExecute` 用渲染时捕获的 `widgetEditor.modifiedWidgetValues` 构图，而 `autoChangeSeed` 在同一次调用里写入的新种子只进了 React state，图里看不到。抽出的 runner 改用本地同步映射表（堆栈视图原本就是这么做的）。回归测试见 `tests/agent/workflowRunner.test.ts`。
 2. **`tests/agent/draftCanvasCodec.test.ts` 从不校验内层断言。** 子进程继承了父进程的 `NODE_TEST_CONTEXT`，于是改用二进制通道上报并静默退出 0，`execFileSync` 拿到 0 就算通过。故意插入一条失败断言可复现。现在清理子进程环境并直接运行 bundle，失败会真实冒泡。
 
-### 12.4 发现但未修复的既有缺陷
+### 12.4 后续修复的既有缺陷（2026-09-11）
 
-**部分工作流的 widget 值映射错位，导致提交被服务端拒绝。** 例如工作流「图片 Z Image 标准1024」的 KSampler，`widgets_values` 存了 6 项（缺 `control_after_generate`），而转换器按 7 项布局读取，于是 `cfg` 收到了 `"res_multistep"`，服务端返回 400。在 HEAD 上同样复现，与本次改动无关。修复涉及 `widgets_values` 与 `object_info` 的对齐逻辑，风险较高，单列。
+**缺少 `control_after_generate` 槽位的工作流参数整体错位。** 种子的 `control_after_generate` 不是 `object_info` 里的独立输入，而是由种子配置合成出来的 widget，所以 widget 列表里一定有它，`widgets_values` 里却未必有：更早写入的工作流、以及其他工具导出的工作流只存 6 个值而不是 7 个。初始化时无论数组里有没有都会占掉一个下标，于是种子之后的每个值都后移一位——`steps` 拿到 `cfg` 的值，`cfg` 拿到采样器名，服务端直接返回 400。`setWidgetValue` 和 `serialize` 也按 widget 位置读写 `widgets_values`，所以改值同样会落错槽位。
+
+修复在 [ComfyGraphNode.ts](../src/core/domain/ComfyGraphNode.ts)：只有当该位置确实是四个控制值之一时才认为槽位存在；不存在时在规范化副本里补上一格，让 widget 列表和数组重新对齐。规范化只作用于节点自己的副本，不会改写传入的工作流 JSON。回归测试在 `tests/fixtures/draftCanvasCodec.ts`，跑的是真实的图模块，同时覆盖 6 值和 7 值两种布局。
+
+本机 52 个工作流里有 2 个受影响（「图片 Z Image 标准1024」「图片 Z Image 高分辨率2048」），修复前每次运行都失败，修复后提交的 prompt 各字段正确并成功产出图片。
 
 ### 12.5 验证
 
@@ -283,6 +287,6 @@ export interface MobileFormField {
 | `npm run test:gateway` | 10 通过 |
 | `npm run test:transcript` | 13 通过 |
 | `npm run build` | 通过 |
-| `npm run test:e2e:form:android` | 10/10 通过，连跑两次一致 |
+| `npm run test:e2e:form:android` | 10/10 通过，多次连跑一致 |
 
 安卓 e2e 覆盖：打开工作流默认进表单、表单改值生效、关联两个输入后一处改动写入两个节点、结构视图上同一节点显示相同的值、节点弹窗图钉增删、重启后表单定义仍在且已同步到服务器、从表单运行并在服务端产出真实图片且提交的 prompt 带着表单上的值。

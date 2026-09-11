@@ -21,6 +21,10 @@ import { graphChangeLogger, createWidgetsValuesProxy } from '@/utils/GraphChange
 import { createSpecialNodeWidgets, hasSpecialNodeWidgetProcessor } from '@/core/services/SpecialNodeWidgetProcessor'
 import WorkflowMappingService from '@/core/services/WorkflowMappingService'
 
+/** The only values ComfyUI accepts for a seed's control_after_generate. */
+const CONTROL_AFTER_GENERATE_VALUES = ['fixed', 'increment', 'decrement', 'randomize'] as const;
+type ControlAfterGenerate = typeof CONTROL_AFTER_GENERATE_VALUES[number];
+
 export class ComfyGraphNode implements IComfyGraphNode {
   // Core properties (ComfyGraph compatibility)
   id: number
@@ -194,6 +198,17 @@ export class ComfyGraphNode implements IComfyGraphNode {
     const requiredInputs = nodeMetadata.input.required;
     let valueIndex = 0;
 
+    // A seed's control_after_generate is synthesized from the seed's config
+    // rather than listed as its own input, so the widget list always contains
+    // it while widgets_values may not: workflows written before it became a
+    // separate widget, and those exported by other tools, carry one value
+    // fewer. Since setWidgetValue and serialize address widgets_values by
+    // widget position, a missing slot shifts every later value by one — steps
+    // takes cfg's value and cfg takes the sampler name. Build against a
+    // normalized copy and keep it, rather than mutating the workflow JSON this
+    // node was constructed from.
+    const values: any[] | Record<string, any> = Array.isArray(widgetValues) ? [...widgetValues] : widgetValues;
+
     // Find current node's inputs from workflow metadata (includes preprocessed custom fields)
     const nodeInputs = workflowMetadata?.nodes?.find((n: any) => n.id === this.id)?.inputs || [];
 
@@ -221,7 +236,7 @@ export class ComfyGraphNode implements IComfyGraphNode {
       console.log(`Creating widget for "${inputName}" (${source}) with widget:`, workflowInput?.widget);
 
       // Process input and create widget
-      const result = this.processInput(inputName, inputSpec, widgetValues, valueIndex, workflowInput);
+      const result = this.processInput(inputName, inputSpec, values, valueIndex, workflowInput);
       if (!result) continue;
 
       const { widget, widgetType } = result;
@@ -237,13 +252,19 @@ export class ComfyGraphNode implements IComfyGraphNode {
       this._widgets.push(createdWidget);
 
       // Handle dynamic widgets and control_after_generate
-      valueIndex = this.handleSpecialWidgetCases(inputName, inputSpec[1], widget, widgetValues, valueIndex, workflowMetadata);
+      valueIndex = this.handleSpecialWidgetCases(inputName, inputSpec[1], widget, values, valueIndex, workflowMetadata);
 
       valueIndex++;
     }
 
     // Process optional inputs
-    this.processOptionalInputs(nodeMetadata.input.optional, widgetValues, valueIndex, nodeInputs);
+    this.processOptionalInputs(nodeMetadata.input.optional, values, valueIndex, nodeInputs);
+
+    // Adopt the normalized array so widget positions and stored values agree.
+    if (Array.isArray(values) && Array.isArray(widgetValues) && values.length !== widgetValues.length) {
+      this.widgets_values = createWidgetsValuesProxy(values, this.id, this.type);
+      this.serialize_widgets = true;
+    }
   }
 
   /**
@@ -398,17 +419,34 @@ export class ComfyGraphNode implements IComfyGraphNode {
     // CRITICAL: Use metadata value first, then fallback to widget_values, then default
     let controlValue = 'fixed'; // Default fallback
 
+    // Does the workflow actually store a control value in this slot? Only a
+    // slot holding one of the four control strings is one; anything else is
+    // the next input's value, which must not be consumed.
+    const isArray = Array.isArray(widgetValues);
+    const storedValue = isArray ? (widgetValues as any[])[valueIndex] : undefined;
+    const slotExists = typeof storedValue === 'string'
+      && CONTROL_AFTER_GENERATE_VALUES.includes(storedValue as ControlAfterGenerate);
+
     // First priority: Mobile UI metadata
     if (workflowMetadata?.mobile_ui_metadata?.control_after_generate?.[this.id]) {
       controlValue = workflowMetadata.mobile_ui_metadata.control_after_generate[this.id];
     }
     // Second priority: widget_values array (for backward compatibility)
-    else if (Array.isArray(widgetValues) && valueIndex < widgetValues.length) {
-      const widgetValue = widgetValues[valueIndex];
-      if (typeof widgetValue === 'string' &&
-        ['fixed', 'increment', 'decrement', 'randomize'].includes(widgetValue)) {
-        controlValue = widgetValue;
+    else if (slotExists) {
+      controlValue = storedValue as string;
+    }
+    // Third: an object form addresses values by name, so no slot is involved.
+    else if (!isArray && widgetValues && typeof widgetValues === 'object') {
+      const named = (widgetValues as Record<string, any>).control_after_generate;
+      if (typeof named === 'string' && CONTROL_AFTER_GENERATE_VALUES.includes(named as ControlAfterGenerate)) {
+        controlValue = named;
       }
+    }
+
+    // Give the array the slot the widget list assumes, so the two stay aligned
+    // for setWidgetValue and serialization.
+    if (isArray && !slotExists) {
+      (widgetValues as any[]).splice(valueIndex, 0, controlValue);
     }
 
     const controlWidget: IComfyWidget = {

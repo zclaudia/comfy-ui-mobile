@@ -55,3 +55,52 @@ test('the mobile form spec survives the draft round trip, so a saved form is not
   assert.equal(readFormSpec(serializeGraph(createExecutionGraph(await createGraphFromWorkflow(created, info), new Map([[5, { text: 'edited' }]]))))?.mode, 'custom',
     'an executed copy of the draft still carries the form');
 });
+
+test('a KSampler whose widgets_values omits control_after_generate still maps to the right inputs', async () => {
+  // Workflows authored before control_after_generate became its own widget —
+  // and those exported by other tools — carry six values for a KSampler, not
+  // seven. The widget list is still built with the synthesized control widget,
+  // so every value after the seed used to shift by one: steps took cfg's value
+  // and cfg took the sampler name, which the server rejects outright.
+  const info: ObjectInfo = JSON.parse(readFileSync(`${process.cwd()}/gateway/agent/test/model-fixtures/object-info.json`, 'utf8'));
+  const base = JSON.parse(readFileSync(`${process.cwd()}/tests/fixtures/form-view-workflow.json`, 'utf8'));
+  const sampler = (workflow: Record<string, any>) => workflow.nodes.find((node: Record<string, any>) => node.type === 'KSampler');
+
+  const canonical = sampler(base).widgets_values;
+  assert.deepEqual(canonical, [2024, 'fixed', 8, 1, 'res_multistep', 'simple', 1], 'fixture drifted');
+
+  const legacy = JSON.parse(JSON.stringify(base));
+  delete sampler(legacy).widgets_values_named;
+  sampler(legacy).widgets_values = [2024, 8, 1, 'res_multistep', 'simple', 1];
+
+  const graph = await createGraphFromWorkflow(legacy, info);
+  const node = graph._nodes.find((entry: { type: string }) => entry.type === 'KSampler');
+  const widget = (name: string) => node.getWidget(name)?.value;
+
+  assert.equal(widget('seed'), 2024);
+  assert.equal(widget('steps'), 8, 'steps took the following value');
+  assert.equal(widget('cfg'), 1);
+  assert.equal(widget('sampler_name'), 'res_multistep');
+  assert.equal(widget('scheduler'), 'simple');
+  assert.equal(widget('denoise'), 1);
+  assert.equal(widget('control_after_generate'), 'fixed', 'the synthesized control widget keeps its default');
+
+  // The widget list and widgets_values must stay index-aligned, because
+  // setWidgetValue writes back by widget position.
+  node.setWidgetValue('steps', 12);
+  assert.equal(serializeGraph(graph).nodes.find((entry: { type: string }) => entry.type === 'KSampler').widgets_values[2], 12,
+    'an edit landed in the wrong widgets_values slot');
+});
+
+test('the canonical seven-value KSampler layout is untouched', async () => {
+  const info: ObjectInfo = JSON.parse(readFileSync(`${process.cwd()}/gateway/agent/test/model-fixtures/object-info.json`, 'utf8'));
+  const base = JSON.parse(readFileSync(`${process.cwd()}/tests/fixtures/form-view-workflow.json`, 'utf8'));
+  const graph = await createGraphFromWorkflow(base, info);
+  const node = graph._nodes.find((entry: { type: string }) => entry.type === 'KSampler');
+
+  assert.equal(node.getWidget('steps')?.value, 8);
+  assert.equal(node.getWidget('cfg')?.value, 1);
+  assert.equal(node.getWidget('control_after_generate')?.value, 'fixed');
+  assert.deepEqual(serializeGraph(graph).nodes.find((entry: { type: string }) => entry.type === 'KSampler').widgets_values,
+    [2024, 'fixed', 8, 1, 'res_multistep', 'simple', 1], 'a correct workflow must not be rewritten');
+});
