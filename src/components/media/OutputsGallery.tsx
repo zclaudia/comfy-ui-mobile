@@ -54,14 +54,29 @@ const findMatchingImageFile = (
   return null;
 };
 
-/** Videos without a generated thumbnail show the browser-extracted first frame, like chat video covers do. */
+/** Videos without a generated thumbnail show the browser-extracted first frame, like chat video covers do.
+ * The media fetch is gated on visibility: a full video would otherwise be downloaded for every mounted
+ * tile the moment the list opens, competing for bandwidth even when the tile is off-screen. */
 function VideoFirstFrameCover({ source }: { source: string }) {
-  const media = useAuthenticatedMediaUrl(source);
-  if (!media.url) {
-    return <div className="w-full h-full flex items-center justify-center" style={{ background: '#0d1016' }}><Video className="h-10 w-10 text-white/20" strokeWidth={1.6} /></div>;
-  }
+  const host = useRef<HTMLDivElement>(null);
+  const [inView, setInView] = useState(false);
+  useEffect(() => {
+    const el = host.current;
+    if (!el) return;
+    if (typeof IntersectionObserver === 'undefined') { setInView(true); return; }
+    const observer = new IntersectionObserver(entries => {
+      if (entries.some(entry => entry.isIntersecting)) { setInView(true); observer.disconnect(); }
+    }, { rootMargin: '300px' });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  const media = useAuthenticatedMediaUrl(source, inView);
   // #t=0.1 makes the browser render the first decoded frame as the poster; the tile itself handles clicks.
-  return <video muted playsInline preload="metadata" src={`${media.url}#t=0.1`} className="w-full h-full object-cover pointer-events-none" aria-hidden />;
+  return <div ref={host} className="w-full h-full">
+    {media.url
+      ? <video muted playsInline preload="metadata" src={`${media.url}#t=0.1`} className="w-full h-full object-cover pointer-events-none" aria-hidden />
+      : <div className="w-full h-full flex items-center justify-center" style={{ background: '#0d1016' }}><Video className="h-10 w-10 text-white/20" strokeWidth={1.6} /></div>}
+  </div>;
 }
 
 interface LazyImageProps {
