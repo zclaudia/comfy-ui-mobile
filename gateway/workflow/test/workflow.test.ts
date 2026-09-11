@@ -176,11 +176,11 @@ test('adapter uses configured auth, validates before submit and preserves execut
   assert.deepEqual(await adapter.getObjectInfo(), info);
   const context = { clientId: 'client-1', taskId: 'task-1', version: 3, workflow: sample };
   await assert.rejects(adapter.submit({}, info, context), WorkflowError);
-  assert.equal(requests.length, 1);
+  assert.equal(requests.length, 2, 'object_info plus the extension disk listing for loader enums');
   assert.deepEqual(await adapter.submit(original, info, context), { promptId: 'run-1', number: 2 });
   assert.ok(requests.every(r => new URL(r.path, 'http://localhost').searchParams.get('token') === 'private-token'));
-  assert.deepEqual(requests[1].body!.extra_data.extra_pnginfo.workflow, sample);
-  assert.deepEqual(requests[1].body!.extra_data.comfymobile_agent, { task_id: 'task-1', workflow_version: 3 });
+  assert.deepEqual(requests[2].body!.extra_data.extra_pnginfo.workflow, sample);
+  assert.deepEqual(requests[2].body!.extra_data.comfymobile_agent, { task_id: 'task-1', workflow_version: 3 });
   mode = 'reject';
   await assert.rejects(adapter.submit(original, info, context), (e: unknown) => e instanceof ComfyRequestError && e.status === 400 && !e.outcomeUncertain && !!(e.details as any).node_errors['3']);
   mode = 'disconnect';
@@ -190,6 +190,38 @@ test('adapter uses configured auth, validates before submit and preserves execut
   await adapter.getQueue();
   await adapter.getHistory('run-1');
   await assert.rejects(async () => adapter.getHistory('../queue'), /Invalid prompt ID/);
+});
+
+test('loader file choices merge the extension disk listing so freshly copied input files validate', async t => {
+  const objectInfo: ObjectInfo = {
+    LoadImage: { input: { required: { image: [['example.png']] } }, output: ['IMAGE'] },
+    LoadAudio: { input: { required: { audio: [['ref_audio.wav']] } }, output: ['AUDIO'] },
+  };
+  let listingDisabled = false;
+  const server = createServer((req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    if (req.url!.startsWith('/comfymobile/api/files/list')) {
+      if (listingDisabled) { res.statusCode = 404; return res.end('{}'); }
+      return res.end(JSON.stringify({ status: 'success', images: [
+        { filename: 'std_00001_.png', subfolder: 'ZI', type: 'input' },
+        { filename: 'fresh.png', subfolder: '', type: 'input' },
+        { filename: 'done.png', subfolder: 'x', type: 'output' },
+        { filename: 'notes.txt', subfolder: '', type: 'input' },
+      ], videos: [], files: [{ filename: 'voice.wav', subfolder: 'agent-chat', type: 'input' }] }));
+    }
+    return res.end(JSON.stringify(objectInfo));
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  const adapter = new ComfyAdapter({ comfyUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}` });
+  const merged = await adapter.getObjectInfo();
+  assert.deepEqual(merged.LoadImage!.input!.required!.image![0], ['ZI/std_00001_.png', 'example.png', 'fresh.png']);
+  assert.deepEqual(merged.LoadAudio!.input!.required!.audio![0], ['agent-chat/voice.wav', 'ref_audio.wav']);
+  assert.deepEqual(objectInfo.LoadImage!.input!.required!.image![0], ['example.png'], 'the served object info is never mutated');
+  listingDisabled = true; // without the extension, validation falls back to the unpatched enums
+  const degraded = await adapter.getObjectInfo();
+  assert.deepEqual(degraded.LoadImage!.input!.required!.image![0], ['example.png']);
 });
 
 test('generated image copy uses authenticated multipart input upload and bounds chunked downloads', async t => {

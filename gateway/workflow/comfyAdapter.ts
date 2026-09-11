@@ -1,5 +1,13 @@
 import { checkedPrompt } from './engine.js';
-import type { ObjectInfo } from './engine.js';
+import type { InputDefinition, ObjectInfo } from './engine.js';
+
+/** Loader widgets address input files as `subfolder/filename`; each loader accepts these extensions. */
+const loaderInputs: Array<[className: string, inputName: string, extensions: Set<string>]> = [
+  ['LoadImage', 'image', new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'tiff', 'tif'])],
+  ['LoadVideo', 'file', new Set(['mp4', 'webm', 'mov', 'mkv', 'avi', 'm4v'])],
+  ['LoadAudio', 'audio', new Set(['wav', 'mp3', 'flac', 'ogg', 'm4a', 'aac'])],
+];
+interface ComfyDiskFile { filename?: unknown; subfolder?: unknown; type?: unknown }
 
 export class ComfyRequestError extends Error {
   constructor(public readonly status: number, public readonly details: unknown, public readonly outcomeUncertain = false) {
@@ -101,7 +109,40 @@ export class ComfyAdapter {
       || Object.values(result).some(value => !value || !Array.isArray(value.output))) {
       throw new ComfyRequestError(502, { error: 'invalid_object_info' });
     }
-    return result as ObjectInfo;
+    return this.mergeLoaderDiskFiles(result as ObjectInfo, signal);
+  }
+
+  /** ComfyUI serves loader file choices from a process-lifetime cache, so files copied into input
+   * storage after startup (gallery references, prepared outputs) are missing from its enums and every
+   * strict validation false-rejects them even though LoadImage itself would load them from disk. The
+   * mobile extension's files/list reads the disk; unioning those paths keeps wrong paths rejected while
+   * letting real ones through. Without the extension the unpatched info is returned unchanged. */
+  private async mergeLoaderDiskFiles(info: ObjectInfo, signal?: AbortSignal): Promise<ObjectInfo> {
+    let listing: { images?: ComfyDiskFile[]; videos?: ComfyDiskFile[]; files?: ComfyDiskFile[] };
+    try { listing = await this.request('/comfymobile/api/files/list', undefined, signal) as typeof listing; }
+    catch { return info; }
+    if (!listing || typeof listing !== 'object') return info;
+    const entries = [...listing.images ?? [], ...listing.videos ?? [], ...listing.files ?? []];
+    const diskPaths = new Map(loaderInputs.map(([className, , extensions]) => [className, new Set(entries
+      .filter(file => file.type === 'input' && typeof file.filename === 'string' && extensions.has(String(file.filename).split('.').pop()!.toLowerCase()))
+      .map(file => (typeof file.subfolder === 'string' && file.subfolder ? `${file.subfolder}/${file.filename}` : String(file.filename))))]));
+    let patched = info;
+    for (const [className, inputName] of loaderInputs) {
+      const schema = patched[className];
+      if (!schema) continue;
+      const definition = schema.input?.required?.[inputName];
+      if (!Array.isArray(definition) || !Array.isArray(definition[0])) continue;
+      const choices = definition[0] as string[];
+      const missing = [...diskPaths.get(className)!].filter(path => !choices.includes(path)).sort();
+      if (!missing.length) continue;
+      const options = definition[1] as Exclude<InputDefinition[1], undefined> | undefined;
+      const merged: InputDefinition = [[...choices, ...missing].sort(), options];
+      patched = {
+        ...patched,
+        [className]: { ...schema, input: { ...schema.input, required: { ...schema.input!.required!, [inputName]: merged } } },
+      };
+    }
+    return patched;
   }
 
   /** Formal workflow reads only. The browser remains the sole writer of library files. */

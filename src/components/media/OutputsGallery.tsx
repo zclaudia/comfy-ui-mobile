@@ -471,13 +471,16 @@ export const OutputsGallery: React.FC<OutputsGalleryProps> = ({
             type: file.type
           }], 'input');
 
-          if (result.success) {
+          // The endpoint returns aggregate success even when every file errored, so check per-file results.
+          const failedResult = (result.results ?? []).find(entry => entry?.status === 'error');
+          if (result.success && !failedResult) {
             console.log(`✅ File copied to input folder: ${file.filename} `);
             // Return the full path including subfolder since it's now in input
             const fullPath = file.subfolder ? `${file.subfolder}/${file.filename}` : file.filename;
             onFileSelect(fullPath);
           } else {
-            setError(`${t('gallery.copyError') || 'Failed to copy file'}: ${result.error}`);
+            const reason = failedResult?.message || result.error;
+            setError(`${t('gallery.copyError') || 'Failed to copy file'}${reason ? `: ${reason}` : ''}`);
             return;
           }
         } else {

@@ -66,6 +66,7 @@ test('authenticated App model routes configure a running provider without restar
   const provider = createServer(async (request, response) => {
     response.setHeader('Content-Type', 'application/json');
     if (request.url === '/object_info') { response.end(JSON.stringify(info)); return; }
+    if (request.url?.startsWith('/comfymobile/api/files/list')) { response.end(JSON.stringify({ status: 'success', images: [], videos: [], files: [] })); return; }
     const chunks: Buffer[] = [];
     for await (const chunk of request) chunks.push(Buffer.from(chunk));
     const body = JSON.parse(Buffer.concat(chunks).toString());
