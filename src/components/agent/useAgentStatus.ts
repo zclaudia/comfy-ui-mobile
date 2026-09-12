@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AgentApi, type AgentStatus } from '@/infrastructure/api/AgentApi';
 import { useConnectionStore } from '@/ui/store/connectionStore';
 
-export type AgentAvailability = 'loading' | 'no-gateway' | 'no-provider' | 'error' | 'ready';
+export type AgentAvailability = 'loading' | 'no-gateway' | 'no-provider' | 'outdated' | 'error' | 'ready';
 
 /** Resolves whether the chat feature can be used with the current connection. Re-runs when the connection changes. */
 export function useAgentStatus() {
@@ -21,7 +21,13 @@ export function useAgentStatus() {
     let timedOut = false;
     const timeout = setTimeout(() => { timedOut = true; controller.abort(); }, 4000);
     api.status(controller.signal)
-      .then(value => { clearTimeout(timeout); if (controller.signal.aborted) return; setStatus(value); setState(value.providerReady ? 'ready' : 'no-provider'); })
+      .then(value => {
+        clearTimeout(timeout);
+        if (controller.signal.aborted) return;
+        // The app speaks schema 2 only. An older Gateway is a server-side upgrade, not a connection fault.
+        if (value.agentSchemaVersion !== 2) { setStatus(null); setState('outdated'); return; }
+        setStatus(value); setState(value.providerReady ? 'ready' : 'no-provider');
+      })
       .catch(() => { clearTimeout(timeout); if (timedOut || !controller.signal.aborted) setState('error'); });
     return () => { clearTimeout(timeout); controller.abort(); };
   }, [api, url, authMode, attempt]);

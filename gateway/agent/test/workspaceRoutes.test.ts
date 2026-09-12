@@ -12,8 +12,6 @@ import { AgentService } from '../service.js';
 import { handleAgentRequest } from '../routes.js';
 import { WorkspaceComfy, mediaKey } from './workspaceFixture.js';
 import type { Asset, Run } from '../workspace/types.js';
-import { migrateLegacyWorkspace } from '../workspace/migration.js';
-import { createModelWorkflow } from '../modelProfiles.js';
 
 async function setup() {
   const directory = mkdtempSync(join(tmpdir(), 'workspace-http-'));
@@ -69,47 +67,6 @@ test('permanent cleanup requires an owned archived session and reviewed confirma
     assert.equal(f.adapter.submits, 0);
     assert.equal(f.service.workspace!.repository.assets(session.id).items.length, 0);
     assert.deepEqual(f.service.store.db.prepare('PRAGMA foreign_key_check').all(), []);
-  } finally { await f.close(); }
-});
-
-test('migrated transcript and old read-only version URLs resolve exact objects without changing original events', async () => {
-  const f = await setup();
-  try {
-    const canvas = createModelWorkflow(f.adapter.info, { profileId: 'z-image-turbo', text: 'old image' });
-    const session = f.service.store.create('owner', 'Mixed old chat', canvas);
-    const upload = { filename: 'same.png', subfolder: '', type: 'input' as const, kind: 'image' as const };
-    const task = f.service.store.enqueue(session.id, randomUUID(), 'old user', 60_000, [upload, upload]);
-    f.service.store.update({ ...task, state: 'completed' });
-    f.service.store.event(session.id, task.id, 'workflow', { version: 1, summary: 'old image' });
-    f.service.store.event(session.id, task.id, 'state', { state: 'waiting_comfy', version: 1, promptId: 'old-prompt' });
-    const outputs = Array.from({ length: 12 }, (_, index) => ({ filename: index ? 'same.png' : 'sound.wav', subfolder: '', type: 'output', kind: index ? 'image' : 'audio' }));
-    f.service.store.event(session.id, task.id, 'result', { version: 1, promptId: 'old-prompt', success: true, outputs });
-    f.service.store.event(session.id, task.id, 'result', { version: 99, promptId: 'missing-origin', success: true, outputs: [outputs[1]] });
-    f.service.store.commitVersion(session.id, 1, createModelWorkflow(f.adapter.info, { profileId: 'z-image-turbo', text: 'new head' }), 'changed');
-    const original = f.service.store.db.prepare('SELECT * FROM events WHERE session_id=? ORDER BY seq').all(session.id);
-    migrateLegacyWorkspace(f.service.workspace!.repository, 'server');
-    const endpoint = `/sessions/${session.id}`;
-    const snapshot = await f.request(endpoint); assert.equal(snapshot.status, 200);
-    const events = snapshot.body.events as { seq: number; kind: string; data: { version?: number; workspaceLegacy?: { reference?: { draftId: string; revision: number }; run?: Run; outputs: { index: number; assetId: string }[]; attachments: { index: number; assetId: string }[]; incomplete: boolean } } }[];
-    const result = events.find(event => event.kind === 'result' && event.data.version === 1)!;
-    const mapped = result.data.workspaceLegacy!;
-    assert.equal(mapped.reference!.revision, 1); assert.equal(mapped.run!.legacy!.incomplete, true);
-    assert.deepEqual(mapped.outputs.map(output => output.index), Array.from({ length: 12 }, (_, i) => i));
-    assert.equal(new Set(mapped.outputs.map(output => output.assetId)).size, 12);
-    assert.equal(events.find(event => event.kind === 'state' && event.data.workspaceLegacy)?.data.workspaceLegacy!.run!.id, mapped.run!.id);
-    assert.equal(events.find(event => event.kind === 'workflow')!.data.workspaceLegacy!.reference!.draftId, mapped.reference!.draftId);
-    const attachments = events.find(event => event.kind === 'user')!.data.workspaceLegacy!.attachments;
-    assert.equal(attachments.length, 2); assert.notEqual(attachments[0].assetId, attachments[1].assetId);
-    const incomplete = events.find(event => event.data.version === 99)!.data.workspaceLegacy!;
-    assert.equal(incomplete.incomplete, true); assert.equal(incomplete.reference, undefined); assert.equal(incomplete.run, undefined); assert.deepEqual(incomplete.outputs, []);
-    const old = await f.request(`${endpoint}/versions/1`);
-    assert.equal(old.status, 200); assert.equal(old.body.readOnly, true); assert.equal(old.body.reference.revision, 1); assert.deepEqual(old.body.revision.canvas, canvas);
-    assert.equal((await f.request(`${endpoint}/versions/99`)).status, 404);
-    assert.equal((await f.request(`${endpoint}/versions/1`, 'GET', undefined, { 'x-test-owner': 'other' })).status, 404);
-    assert.equal((await f.request(`${endpoint}/versions/1`, 'POST', { canvas })).status, 426);
-    assert.deepEqual(f.service.store.db.prepare('SELECT * FROM events WHERE session_id=? AND seq<=? ORDER BY seq').all(session.id, Number(original.at(-1)!.seq)), original);
-    assert.equal((await f.request(`${endpoint}/drafts/${mapped.reference!.draftId}`)).body.draft.headRevision, 2);
-    assert.equal(f.adapter.submits, 0);
   } finally { await f.close(); }
 });
 

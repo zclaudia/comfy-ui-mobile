@@ -25,7 +25,6 @@
     "test:e2e:cloud:android": "node tests/e2e/cloud-workflow-android.e2e.mjs",
     "prepare:manual:android": "node tests/e2e/prepare-manual-test-emulator.mjs",
     "build:agent": "tsc -p gateway/tsconfig.json",
-    "migrate:agent-workspace": "npm run build:agent && node gateway/dist/agent/workspace/migrateCli.js",
     "test:agent": "npm run build:agent && tsx --test gateway/workflow/test/*.test.ts gateway/agent/test/*.test.ts",
     "test:e2e:agent": "node --test tests/e2e/agent-live.test.mjs",
     "test:e2e:models": "node tests/e2e/model-adaptation-live.mjs",

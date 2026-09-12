@@ -2273,7 +2273,9 @@
         "还没有导入或创建工作流": "No workflow imported or created yet",
         "产出文件": "Output files",
         "本对话还没有生成文件": "This chat has not generated any file yet",
-        "本对话的产出文件": "Files produced in this chat"
+        "本对话的产出文件": "Files produced in this chat",
+        "Gateway 版本过旧": "Gateway is out of date",
+        "此版本应用需要支持多工作流会话的 Gateway。请把服务器上的 Gateway 升级到 0.4 或更高版本后重试。": "This app needs a Gateway with multi-draft chat support. Upgrade the Gateway on your server to 0.4 or later and try again."
     },
     "tabs": {
         "chats": "Chats",

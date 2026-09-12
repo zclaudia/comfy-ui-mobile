@@ -19,11 +19,12 @@ test('provider credential accidentally placed in model field is rejected without
 });
 
 test('workspace media defaults to the persistent database directory and requires a stable server identity', () => {
-  const base = { GATEWAY_AUTH_TOKEN: AUTH_TOKEN, GATEWAY_AGENT_STORE: '/data/agent.sqlite', AGENT_WORKSPACE_V2: 'true' };
+  const base = { GATEWAY_AUTH_TOKEN: AUTH_TOKEN, GATEWAY_AGENT_STORE: '/data/agent.sqlite', GATEWAY_AGENT_ENABLED: 'true' };
   assert.throws(() => loadGatewayConfig(base), /AGENT_WORKSPACE_SERVER_ID/);
   const configured = loadGatewayConfig({ ...base, AGENT_WORKSPACE_SERVER_ID: 'main-comfy' });
   assert.deepEqual(configured.agentWorkspace, { directory: '/data/assets', serverId: 'main-comfy' });
-  assert.equal(loadGatewayConfig({ ...base, AGENT_WORKSPACE_V2: 'false' }).agentWorkspace, undefined);
+  // A Gateway with the assistant switched off still resolves a media directory; it just never starts the service.
+  assert.equal(loadGatewayConfig({ ...base, GATEWAY_AGENT_ENABLED: 'false' }).agentWorkspace.directory, '/data/assets');
   assert.equal(loadGatewayConfig({ ...base, AGENT_WORKSPACE_SERVER_ID: 'main-comfy', AGENT_WORKSPACE_MEDIA_DIR: '/media/assets' }).agentWorkspace.directory, '/media/assets');
 });
 

@@ -256,7 +256,6 @@ const AppRouter: React.FC = () => {
         <Route path="/agent" element={<Navigate to="/chats" replace />} />
         <Route path="/chat/new" element={<ChatPageRoute />} />
         <Route path="/chat/:id" element={<ChatPageRoute />} />
-        <Route path="/chat/:id/versions/:legacyVersion" element={<ChatPageRoute />} />
         <Route path="/chat/:sessionId/drafts/:draftId/canvas" element={<AgentCanvasPage />} />
         <Route path="/workflow/:id" element={<WorkflowEditorRoute />} />
         <Route path="/workflow-stack/:id" element={<WorkflowStackPage />} />

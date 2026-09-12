@@ -23,12 +23,7 @@ export function useAgentActivityPoll() {
     const refresh = async () => {
       try {
         const status = await api.status(controller.signal)
-        if (status.activeTasks !== undefined) {
-          if (!controller.signal.aborted) setActive(status.activeTasks > 0)
-        } else {
-          const { sessions } = await api.sessions(controller.signal)
-          if (!controller.signal.aborted) setActive(sessions.some(s => s.active))
-        }
+        if (!controller.signal.aborted) setActive((status.activeTasks ?? 0) > 0)
       } catch {
         // keep the last known value; the next tick retries
       }

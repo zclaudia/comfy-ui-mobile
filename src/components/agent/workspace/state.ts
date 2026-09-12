@@ -1,5 +1,5 @@
 import type { AgentEvent } from '../../../infrastructure/api/AgentApi';
-import type { Asset, Draft, LegacyWorkspaceEvent, RequestContext, Run, Selection, WorkspaceSnapshot } from '../../../shared/types/agentWorkspace';
+import type { Asset, Draft, RequestContext, Run, Selection, WorkspaceSnapshot } from '../../../shared/types/agentWorkspace';
 
 export interface WorkspaceViewState {
   snapshot: WorkspaceSnapshot | null; events: AgentEvent[]; cursor: number; highWater: number;
@@ -35,8 +35,6 @@ export function mergeWorkspaceSnapshot(previous: WorkspaceViewState, snapshot: W
   for (const event of snapshot.events) {
     if (events.has(event.seq)) continue;
     events.set(event.seq, event);
-    const legacy = event.data.workspaceLegacy as LegacyWorkspaceEvent | undefined;
-    if (legacy?.run) state = mergeEntities(state, { runs: [legacy.run] }, snapshot.highWater);
     if (event.kind === 'draft_created' || event.kind === 'draft_changed') state = mergeEntities(state, { drafts: [event.data.draft as Draft] }, event.seq);
     if (event.kind === 'revision_created') {
       if (event.data.draft) state = mergeEntities(state, { drafts: [event.data.draft as Draft] }, event.seq);
@@ -53,10 +51,7 @@ export function mergeWorkspaceSnapshot(previous: WorkspaceViewState, snapshot: W
 /** Keep one evolving card at the first durable event for each Run or question; tool lifecycle events remain intact. */
 export function workspaceTranscriptEvents(events: AgentEvent[]): AgentEvent[] {
   const runs = new Set<string>(), questions = new Set<string>();
-  return [...events].sort((a, b) => a.seq - b.seq).flatMap(original => {
-    const legacy = original.data.workspaceLegacy as LegacyWorkspaceEvent | undefined;
-    // Keep the original seq/task/timestamp and payload; only the presentation becomes a Run card.
-    const event = legacy?.run ? { ...original, kind: 'run_state', data: { ...original.data, run: legacy.run } } : original;
+  return [...events].sort((a, b) => a.seq - b.seq).flatMap(event => {
     if (event.kind === 'run_state') { const id = String(event.data.run?.id); if (runs.has(id)) return []; runs.add(id); return [event]; }
     if (event.kind === 'selection_requested') { const id = String(event.data.selection?.id); if (questions.has(id)) return []; questions.add(id); return [event]; }
     return ['workspace_result', 'workspace_execution_error', 'selection_resolved', 'asset_ready', 'asset_state', 'asset_registered'].includes(event.kind) ? [] : [event];

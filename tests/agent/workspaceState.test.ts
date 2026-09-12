@@ -45,22 +45,6 @@ test('one evolving run card retains tool calls, individual batches and user cont
   assert.deepEqual(workspaceTranscriptEvents(events).map(event => event.seq), [1, 2, 3, 5, 7]);
 });
 
-test('legacy mapping keeps event identity, deduplicates a migrated run and never derives a target from old filenames', () => {
-  const mapped = { reference: { draftId: 'image', revision: 1 }, run: { ...run('succeeded'), legacy: { incomplete: true, eventSeqs: [3, 7] } }, outputs: [{ index: 0, assetId: 'exact-old-asset' }], attachments: [], incomplete: false };
-  const original = [event(7, 'result', { version: 1, outputs: [{ filename: 'same.png' }], workspaceLegacy: mapped }), event(3, 'state', { version: 1, workspaceLegacy: { ...mapped, outputs: [] } }), event(10, 'result', { version: 99, outputs: [{ filename: 'same.png' }], workspaceLegacy: { outputs: [], attachments: [], incomplete: true } }), event(1, 'user', { text: 'original', attachments: [{ filename: 'same.png' }], workspaceLegacy: { outputs: [], attachments: [{ index: 0, assetId: 'upload-asset' }], incomplete: false } })];
-  const before = structuredClone(original);
-  const rendered = workspaceTranscriptEvents(original);
-  assert.deepEqual(rendered.map(item => item.seq), [1, 3, 10]);
-  assert.equal(rendered[1].kind, 'run_state'); assert.equal(rendered[1].taskId, 'task'); assert.equal(rendered[1].created, 3);
-  assert.equal(rendered[1].data.run.id, 'run'); assert.equal(rendered[2].kind, 'result'); assert.equal(rendered[2].data.run, undefined);
-  assert.deepEqual(original, before);
-  const state = mergeWorkspaceSnapshot(emptyWorkspaceState(), snapshot(20, original));
-  assert.equal(state.runs.run.legacy?.incomplete, true); assert.equal(state.runs.run.revision, 1);
-  const newer = mergeWorkspaceSnapshot(state, snapshot(21, [event(21, 'run_state', { run: { ...run('failed'), diagnostic: 'new evidence' } })]));
-  const late = mergeWorkspaceSnapshot(newer, snapshot(20, [event(12, 'result', { workspaceLegacy: mapped })]));
-  assert.equal(late.runs.run.state, 'failed');
-});
-
 test('editing an old result and selecting reference images preserve separate explicit identities', () => {
   const target = targetContext({ draftId: 'video', revision: 2 });
   const selected = withReference(target, asset.id);

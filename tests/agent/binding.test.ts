@@ -1,18 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { SESSION_NAME_PLACEHOLDERS, chooseDefaultTab, resolveSavedTarget, serverIdOf, sessionTitle } from '../../src/components/agent/binding';
-import type { Workflow } from '../../src/shared/types/app/IComfyWorkflow';
-
-const wf = (id: string, extra: Partial<Workflow> = {}): Workflow => ({ id, name: id, workflow_json: { nodes: [], links: [] } as any, nodeCount: 0, createdAt: new Date(0), isValid: true, ...extra });
-
-test('resolveSavedTarget prefers id and falls back to the cloud filename', () => {
-  const list = [wf('a'), wf('cloud_1', { cloud: { provider: 'comfyui', filename: '海报.json' } })];
-  const save = (workflowId: string, filename: string) => ({ serverId: 's', workflowId, filename, name: 'x', draftVersion: 1, graphHash: 'h', etag: 'e', opId: 'op', at: 0 });
-  assert.equal(resolveSavedTarget(save('a', 'a.json'), list)?.id, 'a');
-  assert.equal(resolveSavedTarget(save('gone', '海报.json'), list)?.id, 'cloud_1');
-  assert.equal(resolveSavedTarget(save('gone', 'nope.json'), list), undefined);
-  assert.equal(resolveSavedTarget(undefined, list), undefined);
-});
+import { SESSION_NAME_PLACEHOLDERS, chooseDefaultTab, relativeTime, serverIdOf, sessionTitle } from '../../src/components/agent/binding';
 
 test('serverIdOf normalises the ComfyUI origin', () => {
   assert.equal(serverIdOf('http://192.168.2.150:8188/'), 'http://192.168.2.150:8188');
@@ -43,4 +31,14 @@ test('sessionTitle treats the localised new-session names as unnamed', () => {
   }
   assert.equal(sessionTitle({ name: 'New workflow', preview: 'x' }, '新对话'), 'x');
   assert.equal(sessionTitle({ name: '新对话', preview: 'x' }, '新对话'), 'x', 'the new-chat placeholder is not a chosen name either');
+});
+
+test('relativeTime steps from minutes to a date as a session ages', () => {
+  const at = (text: string, values: Record<string, string | number> = {}) => text.replace('{{count}}', String(values.count ?? ''));
+  const now = Date.UTC(2026, 0, 20, 12, 0, 0);
+  assert.equal(relativeTime(now - 20_000, now, at), '刚刚');
+  assert.equal(relativeTime(now - 45 * 60_000, now, at), '45 分钟前');
+  assert.equal(relativeTime(now - 5 * 3_600_000, now, at), '5 小时前');
+  assert.equal(relativeTime(now - 3 * 86_400_000, now, at), '3 天前');
+  assert.equal(relativeTime(now - 30 * 86_400_000, now, at), new Date(now - 30 * 86_400_000).toLocaleDateString());
 });

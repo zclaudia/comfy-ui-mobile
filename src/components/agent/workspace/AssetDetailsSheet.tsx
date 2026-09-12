@@ -32,9 +32,8 @@ export function AssetDetailsSheet({ assetId, onClose, onSelect, onAdjust, onCanv
     {error && <p role="alert" className="text-xs text-amber-300 py-2">{at(error)}</p>}
     {asset?.origin === 'uploaded' && <p className="py-3 text-xs text-slate-400">{at('这是一份上传素材，没有原始生成工作流')}</p>}
     {source && <section className="py-3 space-y-2">
-      {source.legacy?.incomplete && <p className="text-xs text-amber-300">{at('旧生成记录缺少完整执行快照；以下仅为当时保存的工作流。')}</p>}
       <p className="text-sm font-medium">{view.drafts[source.draftId]?.name ?? at('生成工作流')} · {at('工作流第 {{version}} 版', { version: source.revision })}</p>
-      <div className="flex flex-wrap gap-2"><button className={accentChip} onClick={() => { onAdjust(source); onClose(); }}>{at(source.legacy?.incomplete ? '调整保存的工作流' : '调整原生成方式')}</button><button className={chipButton} onClick={() => onCanvas(source)}>{at('查看当时工作流')}</button></div>
+      <div className="flex flex-wrap gap-2"><button className={accentChip} onClick={() => { onAdjust(source); onClose(); }}>{at('调整原生成方式')}</button><button className={chipButton} onClick={() => onCanvas(source)}>{at('查看当时工作流')}</button></div>
       {!!source.inputs?.length && <><p className="text-xs text-slate-400 pt-2">{at('当次使用的素材')}</p><div className="flex gap-2 overflow-x-auto">{source.inputs.map(input => <button key={input.bindingId} className="w-28 shrink-0 text-left" onClick={() => onSelect(input.assetId)}><WorkspaceMedia assetId={input.assetId} compact /><span className="text-xs text-blue-400">{at('查看这份素材')}</span></button>)}</div></>}
     </section>}
     <section className="border-t border-white/10 mt-3 pt-3"><h3 className="text-sm font-medium mb-2">{at('后续使用')}</h3>

@@ -12,7 +12,7 @@ import type { ObjectInfo } from '../../workflow/engine.js';
 
 function setup() {
   const store = new AgentStore(':memory:'); const repo = new WorkspaceRepository(store);
-  const session = store.create('owner', 'creative'); repo.initializeSession(session.id);
+  const session = repo.createSession('owner', 'creative');
   const info: ObjectInfo = JSON.parse(readFileSync(new URL('./model-fixtures/object-info.json', import.meta.url), 'utf8'));
   const workflows = new WorkspaceWorkflows(repo); const selections = new WorkspaceSelections(repo);
   const image = (name: string) => repo.registerAsset({ id: randomUUID(), sessionId: session.id, kind: 'image', name, origin: 'uploaded', displayOrdinal: 1, captureState: 'ready', blobDigest: 'a'.repeat(64), metadata: {}, created: Date.now() });
@@ -99,8 +99,8 @@ test('selection survives service restart, rejects cross-task and stale answers, 
     const a = f.createImage(); const i = f.image('cat');
     const context = { targetDraftId: a.draft.id, sourceRevision: 1, selectedAssetIds: [i.id] };
     const requestId = randomUUID();
-    const task = f.store.enqueue(f.session.id, requestId, 'adjust', 60_000, [], undefined, { schemaVersion: 2, requestContext: context });
-    assert.throws(() => f.store.enqueue(f.session.id, requestId, 'adjust', 60_000, [], undefined, { schemaVersion: 2, requestContext: {} }), /ID/);
+    const task = f.store.enqueue(f.session.id, requestId, 'adjust', 60_000, undefined, { schemaVersion: 2, requestContext: context });
+    assert.throws(() => f.store.enqueue(f.session.id, requestId, 'adjust', 60_000, undefined, { schemaVersion: 2, requestContext: {} }), /ID/);
     f.store.update({ ...task, state: 'running' });
     const request = { requestId: 'choose-source', question: 'Which image?', candidates: [{ type: 'asset' as const, assetId: i.id }, { type: 'draft' as const, draftId: a.draft.id, revision: 1 }] };
     const question = f.selections.request(f.session.id, task.id, request);
@@ -121,9 +121,9 @@ test('selection survives service restart, rejects cross-task and stale answers, 
 test('selection cancellation and foreign candidates cannot write or resume a different conversation', () => {
   const f = setup();
   try {
-    const other = f.store.create('owner', 'other'); f.repo.initializeSession(other.id);
+    const other = f.repo.createSession('owner', 'other');
     const draft = f.workflows.create(other.id, { templateId: 'z-image-turbo', name: 'other', text: 'dog' }, { requestId: randomUUID() }, f.info);
-    const task = f.store.enqueue(f.session.id, randomUUID(), 'choose', 60_000, [], undefined, { schemaVersion: 2, requestContext: {} }); f.store.update({ ...task, state: 'running' });
+    const task = f.store.enqueue(f.session.id, randomUUID(), 'choose', 60_000, undefined, { schemaVersion: 2, requestContext: {} }); f.store.update({ ...task, state: 'running' });
     assert.throws(() => f.selections.request(f.session.id, task.id, { requestId: 'foreign', question: 'Which?', candidates: [{ type: 'draft', draftId: draft.draft.id }] }), /找不到/);
     const question = f.selections.request(f.session.id, task.id, { requestId: 'clarify', question: 'Describe the edit', candidates: [] });
     f.store.update({ ...f.store.task(task.id), state: 'cancelled' }); f.selections.cancelForTask(f.session.id, task.id);

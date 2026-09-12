@@ -60,7 +60,7 @@ test('selected videos do not consume image-token headroom or prevent metadata-on
       const asset = service.workspace!.assets.registerUpload(session.id, { ...ref, kind: 'video' }, randomUUID());
       await service.workspace!.assets.read(session.id, asset.id); assets.push(asset.id);
     }
-    const task = service.enqueue(session.id, 'owner', randomUUID(), '列出所选的四段视频，不要生成。', [], { selectedAssetIds: assets });
+    const task = service.enqueue(session.id, 'owner', randomUUID(), '列出所选的四段视频，不要生成。', { selectedAssetIds: assets });
     for (let i = 0; i < 4 && activeStates.includes(service.store.task(task.id).state); i++) await service.tick();
     assert.equal(service.store.task(task.id).state, 'completed');
     assert.equal(calls, 2, 'ordinary completion and its audit fit without needless compaction');
@@ -94,7 +94,7 @@ test('Agent scheduler completes image → video → edit original image → upda
     const operation = (key: string) => repo.operations(session.id, service.store.tasks(session.id)[0].id).find(op => op.stepKey === key)!.id;
     const finish = () => script.push(answer, () => call('finish_response', { answer: '本次生成已完成。' }));
     const execute = async (text: string, context: RequestContext = {}) => {
-      const task = service.enqueue(session.id, 'owner', randomUUID(), text, [], context);
+      const task = service.enqueue(session.id, 'owner', randomUUID(), text, context);
       for (let i = 0; i < 20 && activeStates.includes(service.store.task(task.id).state); i++) await service.tick();
       const latest = service.store.task(task.id);
       assert.equal(latest.state, 'completed', JSON.stringify({ error: latest.error, events: service.store.events(session.id).slice(-6) }));
@@ -154,7 +154,7 @@ test('Agent scheduler completes image → video → edit original image → upda
     assert.deepEqual(provenance.source, { runId: oldVideo.id, draftId: b.id, revision: 1, currentHeadRevision: 2, incomplete: false });
     assert.deepEqual(provenance.inputs[0].source, { runId: i1.sourceRunId, draftId: a.id, revision: 1, currentHeadRevision: 2, incomplete: false });
     assert.equal(provenance.inputs[0].assetId, i1.id);
-    const followup = service.enqueue(session.id, 'owner', randomUUID(), '改这段旧视频当时使用的原图', [], { targetDraftId: b.id, sourceRevision: 1, selectedAssetIds: oldVideo.outputAssetIds });
+    const followup = service.enqueue(session.id, 'owner', randomUUID(), '改这段旧视频当时使用的原图', { targetDraftId: b.id, sourceRevision: 1, selectedAssetIds: oldVideo.outputAssetIds });
     // This evidence comes from immutable Runs, not the latest image head or summarized history.
     followup.messages = [];
     assert.deepEqual(runtime.state(followup).selectedAssetProvenance, [provenance]);
@@ -178,10 +178,10 @@ test('Agent scheduler completes image → video → edit original image → upda
     assert.doesNotThrow(() => runtime.assertHistoricalInputBase(followup.id, a.id, 3), 'this task can continue its own historical edit');
     assert.throws(() => runtime.assertHistoricalInputBase(followup.id, a.id, 2), /历史基础/);
     assert.equal(adapter.submits, 4);
-    const explicit = service.enqueue(session.id, 'owner', randomUUID(), '修改图片当前版本', [], { targetDraftId: a.id, sourceRevision: 3, selectedAssetIds: oldVideo.outputAssetIds });
+    const explicit = service.enqueue(session.id, 'owner', randomUUID(), '修改图片当前版本', { targetDraftId: a.id, sourceRevision: 3, selectedAssetIds: oldVideo.outputAssetIds });
     assert.doesNotThrow(() => runtime.assertHistoricalInputBase(explicit.id, a.id, 3));
     service.cancel(session.id, 'owner', explicit.id);
-    const choose = service.enqueue(session.id, 'owner', randomUUID(), '选择另一图片版本', [], { targetDraftId: b.id, selectedAssetIds: oldVideo.outputAssetIds });
+    const choose = service.enqueue(session.id, 'owner', randomUUID(), '选择另一图片版本', { targetDraftId: b.id, selectedAssetIds: oldVideo.outputAssetIds });
     choose.state = 'running'; service.store.update(choose);
     const question = runtime.selections.request(session.id, choose.id, { requestId: 'choose-version', question: '选择图片版本', candidates: [{ type: 'draft', draftId: a.id, revision: 2 }] });
     assert.throws(() => runtime.assertHistoricalInputBase(choose.id, a.id, 2), /历史基础/);

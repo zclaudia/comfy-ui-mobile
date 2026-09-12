@@ -3,7 +3,6 @@ import test from 'node:test';
 import {readFileSync,readdirSync} from 'node:fs';
 import {canvasToPrompt,promptToCanvas,applyCanvasPatch} from '../../workflow/canvas.js';
 import {createModelWorkflow,modelTemplates} from '../modelProfiles.js';
-import {collectMediaOutputs} from '../media.js';
 import {validatePrompt} from '../../workflow/engine.js';
 const folder=new URL('./model-fixtures/',import.meta.url);
 const info=JSON.parse(readFileSync(new URL('object-info.json',folder),'utf8'));
@@ -60,7 +59,4 @@ test('autogrow reference slots are typed and bounded; dynamic combo choices vali
  delete p['7'].inputs['ref_images.ref_image_99'];p['7'].inputs['ref_images.ref_image_0']=['4',0];assert.ok(validatePrompt(p,info).some(d=>d.code==='incompatible_link'));
  p['16'].inputs.format='invalid';assert.ok(validatePrompt(p,info).some(d=>d.code==='invalid_choice'));
 });
-test('media outputs recognize H3 video/audio and preserve backward image outputs without duplicates',()=>{
- const outputs=collectMediaOutputs({a:{images:[{filename:'a.png',type:'output'}]},b:{images:[{filename:'b.mp4',type:'output'}]},c:{audio:[{filename:'c.flac',type:'temp'}]},d:{videos:[{filename:'b.mp4',type:'output'},{filename:'bad.html'}]}});
- assert.deepEqual(outputs.map(o=>o.kind),['image','video','audio']);assert.equal(outputs.length,3);
-});
+

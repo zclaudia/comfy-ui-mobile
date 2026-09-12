@@ -43,7 +43,7 @@ function setup() {
   const dbPath = join(directory, 'agent.sqlite');
   const store = new AgentStore(dbPath);
   const repository = new WorkspaceRepository(store);
-  const session = store.create('owner', 'test'); repository.initializeSession(session.id);
+  const session = repository.createSession('owner', 'test');
   const adapter = new MediaComfy();
   const options = { directory: join(directory, 'media'), serverId: 'comfy-original' };
   const assets = new AssetService(repository, adapter, options);
@@ -161,7 +161,7 @@ test('EXIF orientation is applied to dimensions and foreign-session access never
     const bytes = await sharp({ create: { width: 24, height: 48, channels: 3, background: 'red' } }).withMetadata({ orientation: 6 }).jpeg().toBuffer();
     const metadata = await inspectMedia(bytes, 'image');
     assert.equal(metadata.width, 48); assert.equal(metadata.height, 24);
-    const other = f.store.create('owner', 'another'); f.repository.initializeSession(other.id);
+    const other = f.repository.createSession('owner', 'another');
     assert.throws(() => f.assets.capture(other.id, f.assetId), /找不到/);
     await assert.rejects(f.assets.materialize(other.id, f.assetId, 'LoadImage', 'ref', new AbortController().signal), /找不到/);
     assert.equal(f.adapter.reads, 0); assert.equal(f.adapter.uploads, 0);

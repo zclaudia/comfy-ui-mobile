@@ -1,6 +1,26 @@
 # 多工作流会话实施记录
 
-目标：完整实现 `agent-conversation-workspace-design.md`，包含 P0～P5 与第 14 节全部验收项。进行中，尚未完成。
+目标：完整实现 `agent-conversation-workspace-design.md`，包含 P0～P5 与第 14 节全部验收项。
+
+## 2026-09-12：生产切换与 V1 下线
+
+本仓库只服务单一使用者，已按"可接受有损迁移"的决定完成切换，不再保留旧版单工作流实现：
+
+- 生产 Gateway（ai-server）切到多工作流会话。切换前备份整库到
+  `backups/20260912T092436Z-pre-v2/`，旧镜像打标签 `comfy-mobile-gateway:pre-v2`；
+  会话相关表（sessions/versions/events/tasks/session_context/receipts/version_requests）
+  清空，保留 `agent_settings` 中的模型档案，`devices.json` 未改动。原库只有 2 个测试会话、
+  3 个版本、141 条事件，没有入库记录，因此没有执行数据迁移。
+- 验收：本地隔离环境用真实模型与真实 ComfyUI 跑通四轮（出图 → 图生视频 → 回头改图 →
+  用新图更新视频），4 个 Run 全部 succeeded、视频技术参数在两版之间逐字段一致；生产通过
+  应用界面完成一轮真实生成，并把草稿写入真实工作流库（ETag 回读一致）。
+- V1 下线：删除旧聊天客户端、旧 HTTP 路由、service 中的旧执行路径、旧库存储字段与工具，
+  以及迁移/legacy 映射层（`workspace/{legacy,migration,migrateCli}.ts`、前端
+  `LegacyWorkspaceCard`、各实体的 `legacy` 字段与 `legacy_workspace_refs` 表）。
+  `AGENT_WORKSPACE_V2` 开关取消，多工作流成为唯一实现；`AGENT_WORKSPACE_SERVER_ID`
+  在启用助手时必填。包含旧会话的数据库会被拒绝启动，客户端遇到非 2 的 schema 版本会提示升级
+  Gateway。调度层的提示词缓存稳定性、供应商重试退款、完成审计开关与 token 校准迁移到
+  `gateway/agent/test/scheduler.test.ts`。
 
 ## 阶段状态
 
@@ -9,7 +29,7 @@
 - [x] P2：有目标的工具、计划、选择、上下文与四轮流程；旧视频回头改原图修复后连续三例通过。
 - [x] P3：新版 API、聊天 UI、明确目标/参考、历史来源、旧链接映射与四语文案。
 - [x] P4：手机/官方草稿画布、离线恢复、条件同步、独立入库与实际文件冲突验证。
-- [ ] P5：自动回归、真实模型/GPU、浏览器和 Android 验收已覆盖主链路；剩余关键案例复验中。
+- [x] P5：自动回归、真实模型/GPU 与浏览器验收覆盖主链路；实体 Android 界面复验仍由使用者自行确认。
 
 ## 当前工作
 
@@ -29,7 +49,7 @@
 - `runtime.ts`、`tools.ts`、`prompts.ts` 接入原有 AgentService 的模型调用、预算、压缩、确认与调度边界。Task 固定 requestContext；模型操作使用独立草稿和素材 ID。压缩提示保留多对象引用；事实表不依赖摘要保留全部历史。
 - `workspace/routes.ts` 提供 V2 会话、草稿/版本、素材/媒体、Run、消息、选择与确认接口；写请求要求 `X-Agent-Schema-Version: 2`。快照包含事件高水位，媒体读取支持鉴权和 Range。旧全局版本写入口明确拒绝。
 - `migrateCli.ts` 默认只读盘点；显式迁移持有独占数据库锁，先备份再迁移，拒绝活动任务、入库操作和覆盖已有备份。保留旧版本/事件和确定性映射。AgentService 阻止未迁移库启用 V2，也阻止已有 V2 数据使用旧写入模式。
-- `AGENT_WORKSPACE_V2` 为当前接入开关，`AGENT_WORKSPACE_SERVER_ID` 必填；媒体目录默认位于 SQLite 同一持久化目录中的 assets/。部署说明见 Gateway Agent README。目前不能在旧客户端上启用。
+- 多工作流是唯一实现（0.4 起取消 `AGENT_WORKSPACE_V2` 开关），`AGENT_WORKSPACE_SERVER_ID` 在启用助手时必填；媒体目录默认位于 SQLite 同一持久化目录中的 assets/。部署说明见 Gateway Agent README。
 
 现有图→视频临时补丁和设计文档均是本会话已有修改，后续按新领域模型替换，不回退其他工作区内容。
 

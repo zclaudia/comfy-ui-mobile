@@ -16,9 +16,6 @@ import { createGatewayServer } from '../../server.js';
 import { loadGatewayConfig } from '../../config.js';
 import { WorkspaceComfy, mediaKey } from './workspaceFixture.js';
 import { digest } from '../workspace/digest.js';
-import { createModelWorkflow } from '../modelProfiles.js';
-import { migrateLegacyWorkspace } from '../workspace/migration.js';
-import { SHARED_AGENT_OWNER } from '../../auth.js';
 
 const directory = mkdtempSync(join(tmpdir(), 'workspace-ui-'));
 const videoPath = join(directory, 'synthetic.mp4');
@@ -118,23 +115,6 @@ const model = new MockLanguageModelV3({ doGenerate: async options => {
   return { content: [{ type: 'text' as const, text: '模拟生成已完成。这是界面验证素材，没有调用外部模型或 GPU。' }], finishReason: { unified: 'stop' as const, raw: undefined }, usage, warnings: [] };
 } });
 const service: AgentService = new AgentService(config, { model, adapter });
-if (process.env.WORKSPACE_UI_LEGACY === '1') {
-  const legacy = service.store.create(SHARED_AGENT_OWNER, 'Legacy migration acceptance', createModelWorkflow(adapter.info, { profileId: 'z-image-turbo', text: 'legacy original cat' }));
-  const uploaded = { filename: 'legacy-upload.png', subfolder: '', type: 'input' as const, kind: 'image' as const };
-  adapter.files.set(mediaKey(uploaded), await sharp({ create: { width: 192, height: 256, channels: 3, background: '#e0a020' } }).png().toBuffer());
-  const task = service.store.enqueue(legacy.id, randomUUID(), 'Historical cat picture with an uploaded reference', 60_000, [uploaded]);
-  service.store.update({ ...task, state: 'completed' });
-  service.store.event(legacy.id, task.id, 'workflow', { version: 1, summary: 'legacy original cat' });
-  service.store.event(legacy.id, task.id, 'state', { state: 'waiting_comfy', version: 1, promptId: 'legacy-generation' });
-  const output = { filename: 'legacy-result.png', subfolder: '', type: 'output' as const, kind: 'image' as const };
-  adapter.files.set(mediaKey(output), await sharp({ create: { width: 192, height: 256, channels: 3, background: '#7754c2' } }).png().toBuffer());
-  service.store.event(legacy.id, task.id, 'result', { version: 1, promptId: 'legacy-generation', success: true, outputs: [output, output] });
-  service.store.event(legacy.id, task.id, 'result', { version: 99, promptId: 'unmapped', success: true, outputs: [{ ...output, filename: 'unknown-original.png' }] });
-  service.store.event(legacy.id, task.id, 'state', { state: 'completed' });
-  service.store.commitVersion(legacy.id, 1, createModelWorkflow(adapter.info, { profileId: 'z-image-turbo', text: 'legacy newer head' }), 'newer saved workflow');
-  migrateLegacyWorkspace(service.workspace!.repository, config.agentWorkspace.serverId);
-  console.log(`WORKSPACE_LEGACY_SESSION=${legacy.id}`);
-}
 // Keep error classes shared with the injected source service; mixing the dist handler turns expected 409s into 500s.
 const gateway = createGatewayServer(config, { agentService: service, agentRequestHandler: handleAgentRequest }); const address = await gateway.start();
 console.log(`WORKSPACE_UI_URL=http://127.0.0.1:${address.port}`);

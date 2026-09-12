@@ -8,6 +8,7 @@ import { MockLanguageModelV3 } from 'ai/test';
 import type { ModelMessage } from 'ai';
 import { compactContext, ContextError, estimateTokens, isContextOverflow, isMemory } from '../context.js';
 import { AgentStore } from '../store.js';
+import { WorkspaceRepository } from '../workspace/repository.js';
 import { AgentService } from '../service.js';
 import { ComfyAdapter } from '../../workflow/comfyAdapter.js';
 import { info } from './fixture.js';
@@ -76,7 +77,7 @@ test('legacy history has no 20-message or 8000-character cutoff and durable chec
   const path = join(folder, 'agent.sqlite');
   try {
     const store = new AgentStore(path);
-    const session = store.create('owner', 'long chat');
+    const session = new WorkspaceRepository(store).createSession('owner', 'long chat');
     for (let i = 0; i < 32; i++) store.event(session.id, null, 'user', { text: `turn-${i}: ${'长'.repeat(8100)}` });
     assert.equal(store.recentMessages(session.id).length, 32);
     assert.ok(String(store.recentMessages(session.id)[0].content).length > 8000);
@@ -91,8 +92,6 @@ test('legacy history has no 20-message or 8000-character cutoff and durable chec
     assert.ok(isMemory(next[0]));
     assert.equal(next[1].content, 'next message');
     assert.equal(reopened.events(session.id).filter(e => e.kind === 'user').length, 34);
-    reopened.deleteSession(session.id);
-    assert.equal(reopened.context(session.id), undefined);
     reopened.close();
   } finally { rmSync(folder, { recursive: true, force: true }); }
 });
@@ -101,7 +100,10 @@ class Adapter extends ComfyAdapter {
   constructor() { super({ comfyUrl: 'http://unused.invalid' }); }
   override async getObjectInfo() { return structuredClone(info); }
 }
-const config = { agentStorePath: ':memory:', comfyUrl: 'http://unused.invalid', agentPollMs: 60000 };
+const media = mkdtempSync(join(tmpdir(), 'agent-context-media-'));
+process.on('exit', () => rmSync(media, { recursive: true, force: true }));
+const config = { agentStorePath: ':memory:', comfyUrl: 'http://unused.invalid', agentPollMs: 60000,
+  agentWorkspace: { directory: media, serverId: 'server' } };
 async function drain(service: AgentService, id: string) {
   for (let i = 0; i < 15; i++) {
     await service.tick();

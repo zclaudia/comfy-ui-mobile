@@ -101,10 +101,6 @@ export function createWorkspaceSchema(db: DatabaseSync) {
       blob_digest TEXT NOT NULL, data TEXT NOT NULL CHECK(json_valid(data)),
       PRIMARY KEY(server_id,workflow_id,asset_id,blob_digest)
     );
-    CREATE TABLE IF NOT EXISTS legacy_workspace_refs(
-      session_id TEXT NOT NULL REFERENCES sessions(id), kind TEXT NOT NULL, legacy_key TEXT NOT NULL,
-      data TEXT NOT NULL CHECK(json_valid(data)), PRIMARY KEY(session_id,kind,legacy_key)
-    );
     CREATE TRIGGER IF NOT EXISTS immutable_draft_revision BEFORE UPDATE ON draft_revisions
       BEGIN SELECT RAISE(ABORT, 'Workflow revisions are immutable'); END;
     CREATE TRIGGER IF NOT EXISTS immutable_asset_content BEFORE UPDATE ON assets

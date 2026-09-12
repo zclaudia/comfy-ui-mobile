@@ -149,8 +149,7 @@ export class WorkspaceCleanup {
     for (const [table, ids] of [['assets', snapshot.keepAssets], ['runs', snapshot.keepRuns], ['drafts', snapshot.keepDrafts], ['revisions', snapshot.keepRevisions], ['tasks', snapshot.keepTasks]] as const) {
       const insert = db.prepare(`INSERT INTO cleanup_keep_${table} VALUES(?)`); for (const id of ids) insert.run(id);
     }
-    db.prepare('DELETE FROM receipts WHERE task_id IN (SELECT id FROM tasks WHERE session_id=?)').run(sid);
-    for (const table of ['events', 'session_context', 'version_requests', 'versions', 'workspace_requests', 'workspace_request_cancellations', 'workspace_selections', 'legacy_workspace_refs']) db.prepare(`DELETE FROM ${table} WHERE session_id=?`).run(sid);
+    for (const table of ['events', 'session_context', 'workspace_requests', 'workspace_request_cancellations', 'workspace_selections']) db.prepare(`DELETE FROM ${table} WHERE session_id=?`).run(sid);
     db.prepare('DELETE FROM workspace_operations WHERE session_id=?').run(sid);
     db.prepare('DELETE FROM run_inputs WHERE session_id=? AND run_id NOT IN (SELECT id FROM cleanup_keep_runs)').run(sid);
     db.prepare("DELETE FROM revision_assets WHERE session_id=? AND draft_id || ':' || revision NOT IN (SELECT id FROM cleanup_keep_revisions)").run(sid);

@@ -28,7 +28,6 @@ export function WorkspaceMedia({ assetId, compact = false }: { assetId: string; 
       <span>{at(asset.kind === 'image' ? '图片 {{index}}' : asset.kind === 'video' ? '视频 {{index}}' : asset.kind === 'audio' ? '音频 {{index}}' : '文件 {{index}}', { index: asset.displayOrdinal })}</span>
       {asset.metadata.width && asset.metadata.height && <span>{asset.metadata.width} × {asset.metadata.height}</span>}
       {asset.captureState !== 'ready' && <span className="text-amber-300">{at(captureLabels[asset.captureState])}</span>}
-      {asset.legacy?.unverified && <span className="text-amber-300">{at('旧素材：当前可读内容尚未证实与历史原文件一致')}</span>}
       {(failed || media.error) && <span className="text-amber-300">{at('媒体加载失败')}</span>}
     </figcaption>}
   </figure>;

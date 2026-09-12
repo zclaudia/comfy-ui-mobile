@@ -1,22 +1,24 @@
 # Workflow agent MVP
 
-## Multi-draft workspace implementation status
+## Multi-draft workspace
 
-The optional V2 backend now provides independent drafts/revisions, durable assets,
-Run-based execution and recovery, structured request context, persisted selection
-cards, and draft-scoped HTTP/tool contracts. The app now chooses its chat client by
-the server's schema version; V2 chat has creation/reference selection, independent
-result cards, confirmation, history and source details, plus paginated session search
-and archive restoration. Editable draft canvases support mobile/official switching,
-local recovery and conditional synchronization. Independent library saving uses
-fixed revisions, materialized references, ETag checks and server readback. Migrated
-links remain read-only; users explicitly choose a draft before continuing edits.
-Leave production V2 disabled until the full acceptance matrix in
-[`docs/agent-conversation-workspace-design.md`](../../docs/agent-conversation-workspace-design.md)
-is complete. Current evidence and remaining items are tracked in
+The chat is a multi-draft workspace: independent drafts and revisions, durable
+assets, Run-based execution and recovery, structured request context, persisted
+selection cards, and draft-scoped HTTP/tool contracts. The chat UI offers creation
+and reference selection, independent result cards, preview confirmation, history and
+source details, plus paginated session search and archive restoration. Editable draft
+canvases support mobile/official switching, local recovery and conditional
+synchronization. Library saving uses fixed revisions, materialized references, ETag
+checks and server readback.
+
+The pre-draft single-workflow chat (schema version 1) and its migration path were
+removed in 0.4. This Gateway refuses to open a database that still holds unmigrated
+pre-draft sessions, and the app refuses to talk to a Gateway that does not report
+`agentSchemaVersion: 2`. Design and acceptance history live in
+[`the design doc`](../../docs/agent-conversation-workspace-design.md) and
 [`the implementation record`](../../docs/agent-conversation-workspace-implementation.md).
-Scripted provider tests verify orchestration, not real model intent
-resolution or GPU/video quality.
+Scripted provider tests verify orchestration, not real model intent resolution or
+GPU/video quality.
 
 For isolated V2 browser checks (requires `ffmpeg`), run:
 
@@ -51,17 +53,18 @@ terminal event pages under `tests/output/workspace-live/`. A failed or timed-out
 observation never automatically replays a POST; inspect the saved task first.
 Visual fidelity must be checked separately from successful execution and binding.
 
-For an isolated V2 backend, set:
+Workspace configuration:
 
 ```dotenv
-AGENT_WORKSPACE_V2=true
 AGENT_WORKSPACE_SERVER_ID=main-comfy
 # Defaults to assets/ alongside GATEWAY_AGENT_STORE, keeping both in the same persistent volume.
 # AGENT_WORKSPACE_MEDIA_DIR=/data/assets
 ```
 
-The server identity must identify the actual configured ComfyUI connection and stay
-stable across restarts. V2 mutating requests require `X-Agent-Schema-Version: 2`.
+`AGENT_WORKSPACE_SERVER_ID` is required whenever the assistant is enabled. It must
+identify the actual configured ComfyUI connection and stay stable for the life of the
+database: stored source references and library-save targets are matched against it.
+Mutating requests require `X-Agent-Schema-Version: 2`.
 
 Deploy the matching Gateway, client, and ComfyUI extension together. Official draft
 canvases require both `fe/mobileBridge.js` and `fe/managedExecution.js` from
@@ -113,42 +116,19 @@ the actual file extension with separate image/video test files and a concurrent
 ETag conflict. Archived-session cleanup preserves pinned/shared provenance and
 retries failed blob deletion through a durable operation. See the implementation log.
 
-Migrated transcript responses include `data.workspaceLegacy` references resolved from
-`legacy_workspace_refs`; original event rows and sequence numbers are unchanged.
-`GET /sessions/:sid/versions/:version` resolves only a recorded legacy version mapping
-and returns a read-only revision. Missing mappings return 404; legacy writes still
-require upgrading to an explicit draft API. Legacy Run summaries expose incomplete
-execution evidence, and legacy media provenance remains visibly unverified where the
-historical original bytes cannot be established.
+A database that still contains pre-draft sessions cannot be opened by this build:
+the service refuses to start rather than half-reading it. Export anything worth
+keeping with a 0.3 Gateway, then clear those sessions (`sessions`, `versions`,
+`events`, `tasks`, `session_context`, `receipts`, `version_requests`) before
+upgrading; `agent_settings` holds the model profiles and should be kept. Rolling back
+to 0.3 requires restoring the pre-upgrade database together with the old executable
+and client; preserve any workspace media and rows written since the upgrade first.
 
-Existing databases require an explicit migration with the Gateway stopped. First
-perform a read-only inventory:
-
-```sh
-npm run migrate:agent-workspace -- --database gateway/.data/agent.sqlite
-```
-
-After active tasks and library writes have been completed or explicitly stopped,
-stop the Gateway and run the migration with a new backup filename and the source
-server identity:
-
-```sh
-npm run migrate:agent-workspace -- --database gateway/.data/agent.sqlite --apply --backup gateway/.data/agent-before-workspace.sqlite --server-id main-comfy
-```
-
-The CLI holds an exclusive database lock across the WAL-consistent backup and
-transactional migration. It refuses active work or backup overwrite, retains old
-tables/events, and does not run media capture or GPU work during migration. Restart
-with V2 enabled only with the matching client. A database with workspace data cannot
-be opened by the legacy mode of this Gateway. Rollback requires restoring the
-pre-migration database and matching application together; preserve any new media
-and V2 data before restoring. Do not roll back just the executable after V2 writes.
-
-The sections below describe the existing V1 client/runtime unless explicitly stated.
-
-The Gateway now hosts a Vercel AI SDK agent, SQLite task/version/event storage,
-ComfyUI execution polling, and authenticated APIs. The App entry is the **对话**
-tab (`/chats`); each session owns a draft (its version history) and may record which library workflow it started from and where the user last saved it. Nothing reaches the library without an explicit save.
+The Gateway hosts a Vercel AI SDK agent, SQLite session/task/event storage plus the
+workspace tables, ComfyUI execution polling, and authenticated APIs. The App entry is
+the **对话** tab (`/chats`); a session owns any number of drafts, each with its own
+revision history, and records which library workflow a draft started from and where
+the user last saved it. Nothing reaches the library without an explicit save.
 
 ## Run locally
 
@@ -261,26 +241,28 @@ smaller budget; authentication/network errors do not trigger compaction retries.
 
 ## Prompt layout and caching
 
-The system prompt (`gateway/agent/prompts.ts`) and the tool schemas are a stable
-prefix: they depend only on the profile's vision flag, never on the session or the
-step. Everything that changes per step — session version, current workflow, last
-execution result, remaining call/preview budget and the preview policy — is sent as
-a trailing `[Session state]` user message that is rebuilt every call and never
-persisted into the task history. Provider prefix caches therefore cover the system
-text, tool definitions and the conversation so far instead of being invalidated
-each step. Keep it that way: add volatile facts to `stepState`, not to the system
-prompt, and keep the tool object's key order deterministic.
+The workspace system prompt (`gateway/agent/workspace/prompts.ts`) and the tool
+schemas are a stable prefix: they depend only on the profile's vision flag and on
+whether the step is a completion review, never on the session or the step number.
+Everything that changes per step — the workspace state, remaining call/preview budget
+and the preview policy — is sent as a trailing `[Workspace state]` user message that
+is rebuilt every call and never persisted into the task history. Provider prefix
+caches therefore cover the system text, tool definitions and the conversation so far
+instead of being invalidated each step. Keep it that way: add volatile facts to
+`WorkspaceRuntime.state`, not to the system prompt, and keep the tool object's key
+order deterministic. `gateway/agent/test/scheduler.test.ts` asserts this.
 
 ## Preview confirmation
 
-Each session has a preview policy. `auto` (default) lets `submit_preview` run as
-soon as the model calls it. `confirm` (**⋯ → 生成前确认** in the chat header) validates
-the submission, then parks the task in `waiting_user` with a card in the chat; the
-model is told to wait and is not called again. **Run** or **Skip** records the
-decision and re-queues the task; the scheduler performs the submission itself (so a
-crash between the decision and the ComfyUI POST is recovered like any queued step)
-or tells the model the user declined. Time spent waiting is credited back to the task
-deadline. Stopping the task while it waits cancels it as usual. A held task still
+Each session has a preview policy. `auto` (default) lets a Run submit as soon as the
+model asks for it. `confirm` (**⋯ → 生成前确认** in the chat header) prepares the Run,
+then parks the task in `waiting_user` with the Run card offering **确认生成** and
+**跳过此次生成**; the model is told to wait and is not called again. The decision is
+posted to `POST /sessions/:id/approve` with `{taskId, runId, approvalDigest, approved}`
+— the digest pins the exact revision and inputs the user saw — and the scheduler
+performs the submission itself, so a crash between the decision and the ComfyUI POST
+is recovered like any queued step. Time spent waiting is credited back to the task
+deadline. Stopping the task while it waits cancels it as usual; a held task still
 blocks new messages in that session until it is answered or stopped.
 
 ## Scheduling, retries and timeouts
@@ -331,36 +313,21 @@ arbitrary node addition/deletion and advanced SaveVideo encoding widget layouts
 remain unsupported. H3 dimensions must be multiples of 32 and frame counts 17k+5.
 
 `search_templates` and `inspect_environment` report installed-model availability.
-`create_model_workflow` creates one of: `z-image-turbo`, `z-image-turbo-hires`,
-`h3-fl2va`, `h3-fl2va-lite`, `h3-ref-image`, `h3-ref-audio`, `h3-ref-video`.
-The fixed profiles match the reviewed model filenames and combinations. FL2VA
-can select the installed Q5/Q6 variant. Reference templates require an explicit
-`referenceImage`, `referenceAudio` or `referenceVideo` filename already uploaded
-through ComfyUI/the App, or an input path returned by `prepare_output_image` for
-an image the user refers to from this conversation. The agent never chooses private
-reference assets for the user. The chat composer supports user-selected attachment uploads.
+`create_workflow` creates one of: `z-image-turbo`, `z-image-turbo-hires`,
+`z-image-turbo-img2img`, `h3-fl2va`, `h3-fl2va-lite`, `h3-ref-image`, `h3-ref-audio`,
+`h3-ref-video`. The fixed profiles match the reviewed model filenames and
+combinations. FL2VA can select the installed Q5/Q6 variant.
 
-A conversation can generate an image, then use it to generate video in a later
-turn. `list_session_outputs` reads successful runs from durable result events
-(10 runs per page; `before` is the last `resultSeq`), independently of context
-compaction and the task-list limit. `prepare_output_image` selects a `resultSeq`
-and zero-based `outputIndex` from this session, downloads the image (up to 20 MB),
-and uploads a copy into `input/` with an `agent-<sessionId>-<resultSeq>-<index>`
-filename prefix. Core [LoadImage](https://github.com/Comfy-Org/ComfyUI/blob/master/nodes.py)
-lists only input-root files in its schema; root copies keep strict workflow choice
-validation compatible with that behavior. The tool returns the
-actual loader path and source run/version; a persisted receipt reuses that copy
-on subsequent calls and across restarts. Only PNG/JPEG/WebP/GIF/AVIF images are
-supported by this copy tool. Missing source files produce an actionable error.
-
-`create_model_workflow` and `create_from_template` accept optional `baseVersion`:
-omitting it still requires an empty session, while supplying the current version
-switches the draft to a reviewed template as a new immutable version. Old versions,
-execution results and library copies remain available. For image-to-video, prepare
-the selected output first, then create `h3-ref-image` with its `referenceImage` path
-and current `baseVersion`, validate and submit. Multiple matching images require
-the user to clarify their selection. Recent run references are included in session
-state each step; generated images are still not automatically sent to the LLM.
+Reference templates bind assets, never file paths: the request context carries
+`selectedAssetIds` the user picked in the chat, and `create_workflow` / `edit_workflow`
+attach them to a node input through `references` / `bindingChanges`. The runtime
+materializes an asset into ComfyUI's input folder when a Run is compiled, verifying
+the bytes against the stored blob digest, and records the exact file in the Run's
+input manifest. The agent never chooses a reference asset for the user; ambiguity is
+resolved with `request_selection`, which persists a selection card in the chat. A
+conversation can therefore generate an image and use that image in a video Run later
+without any download/re-upload step, and an old Run keeps pointing at the asset it
+actually used.
 
 Z-Image defaults to 1024 square (hires: 2048×1152), 8 steps, CFG 1. H3 defaults to
 864×480, 22 frames at 24fps (about 0.92s), with the reviewed LoRA/scheduler. Longer
@@ -400,18 +367,25 @@ All paths start with `/api/gateway/agent`; use existing cookie/device authentica
 | PUT `/models/:id` | Replace profile fields; omitted key retains, empty key clears; 409 while used by active tasks |
 | POST `/models/:id/activate` | Select the default for subsequent messages; returns model list |
 | DELETE `/models/:id` | Remove unused profile/key; if active, select the first remaining model or none |
-| GET/POST `/sessions` | List own sessions with `preview`, `lastMessage`, `lastActivity`, `active`, `lastState`, `sourceRef`, `lastLibrarySave`, `librarySaveOp`, `thumbnail` / create with optional canvas copy and `sourceRef` `{serverId, workflowId, filename, name, etag?}` (a record of origin; the session name is never taken from it) |
-| GET `/sessions/:id?after=N` | Snapshot plus up to 200 events after cursor N |
-| POST `/sessions/:id/messages` | `{requestId: UUID, message?, attachments?: [{filename, subfolder?, type?: 'input'\|'temp', kind: 'image'\|'video'\|'audio'\|'file', name?, size?, width?, height?}]}` (max 8; message or attachments required; `width`/`height` come together, read locally by the App for images and videos, and are described to the model with the orientation so it can check fit before wiring a reference); files are uploaded to ComfyUI's input folder by the App beforehand and described to the model as loader-node paths; with vision enabled on the task’s model profile up to 4 PNG/JPEG/WebP/GIF attachments (≤5MB each, ≤16MB together; larger files stay path-only) are also sent to the model as image input for that task's own message, fetched from ComfyUI once per task and never persisted in task messages; idempotent request ID, one active task per session |
+| GET/POST `/sessions` | Paginated session list (`before`, `limit`, `archived`, `search`) / create `{name}`; drafts are imported afterwards |
+| GET `/sessions/:id?after=N` | Snapshot: session, first pages of drafts and runs, tasks, pending selections, events after cursor N and the event high-water mark |
+| PATCH/POST `/sessions/:id` | `{name?, previewPolicy?: 'auto'\|'confirm', archivedAt?: number\|null}` / `cleanup` plans and executes permanent deletion of an archived session |
+| POST `/sessions/:id/messages` | `{requestId: UUID, message, context: {targetDraftId?, sourceRevision?, selectedAssetIds?, replyToEventSeq?, action?}}`; idempotent request ID, one active task per session |
 | POST `/sessions/:id/cancel` | `{taskId}` |
-| POST `/sessions/:id/approve` | `{taskId, callId, approved}`; answer a held `submit_preview` (409 unless the task is `waiting_user` for that call) |
-| GET `/sessions/:id/versions?before=N&limit=50` | Version metadata newest first, `hasMore` when older versions exist (the snapshot carries the latest 50 plus `versionsHasMore`) |
-| GET `/sessions/:id/versions/:version` | Read immutable canvas/version |
-| POST `/sessions/:id/save` | `{version}` |
-| POST `/sessions/:id/restore` | `{version, baseVersion}`; create a new version when no task is active |
-| PATCH `/sessions/:id` | `{name?, sourceRef? \| null, workspaceMode?: 'draft', librarySaveOp?, lastLibrarySave?, previewPolicy?: 'auto' \| 'confirm'}`; a library save operation must start as `pending`, only moves forward (`pending → applying → reconciling → succeeded/conflict/failed`), and a second operation is refused with 409 while one is in flight; `lastLibrarySave` is accepted only with a `succeeded` operation of the same `opId` (or `opId: 'legacy'` together with `workspaceMode: 'draft'` when migrating a pre-draft session) |
-| DELETE `/sessions/:id` | Cancel active tasks, then delete the session with its tasks, versions and events |
-| POST `/sessions/:id/versions` | `{canvas, baseVersion, summary?, requestId?}`; commit the App canvas as a new version (422 when unsupported, 409 on stale base or active task); a repeated `requestId` returns the version it already created |
+| POST `/sessions/:id/approve` | `{taskId, runId, approvalDigest, approved}`; answer a held Run (409 unless the task waits for that Run) |
+| POST `/sessions/:id/selections/:qid/answer` | `{taskId, selectedIndices, answer?}`; answer a persisted selection card |
+| GET/POST `/sessions/:id/drafts` | Paginated drafts (`kind`, `archived`) / import `{source:'template'\|'canvas', …, requestId}` |
+| GET/PATCH `/sessions/:id/drafts/:did` | Draft summary / `{name?, archivedAt?}` |
+| GET/POST `/sessions/:id/drafts/:did/versions` | Paginated revisions / commit a canvas edit against `expectedHeadRevision` |
+| GET `/sessions/:id/drafts/:did/versions/:rev` | One immutable revision with its bindings |
+| POST `/sessions/:id/drafts/:did/{restore,fork,fork-local,discard-local}` | Revision history operations, each idempotent by `requestId` |
+| GET/POST `/sessions/:id/runs` | Paginated runs (`draftId`) / start an explicit Run `{draftId, revision, requestId}` without the model |
+| GET `/sessions/:id/runs/:rid[/assets]` | One Run and the assets it produced |
+| GET/POST `/sessions/:id/assets` | Paginated assets (`kind`, `runId`, `draftId`) / register an uploaded file as an asset |
+| GET `/sessions/:id/assets/:aid[/content\|/uses\|/library-uses]` | Asset detail, authenticated bytes with Range support, and where it was used |
+| POST `/sessions/:id/drafts/:did/library-saves` and `/sessions/:id/library-saves/:opId/{prepare,applying,reconcile,cancel}` | Library save intent, client write and server readback |
+
+The exact request and response shapes live in `gateway/agent/workspace/routes.ts`.
 
 ## Verification
 
@@ -426,35 +400,15 @@ execution failure/repair, uncertain submission, restart, cancellation, budgets,
 authentication/device isolation and workflow round trips. No real GPU or external
 LLM calls occur.
 
-For local browser checks after building:
+For local browser checks, use the workspace harness documented at the top of this
+file (`gateway/agent/test/workspaceUiHarness.ts`): it prints an isolated URL backed by
+temporary storage, a scripted model and a synthetic ComfyUI server, and it is excluded
+from the production agent build.
 
-```sh
-node_modules/.bin/tsx gateway/agent/test/uiHarness.ts
-```
-
-This test-only harness prints a local URL and uses temporary storage, a synthetic
-model and synthetic ComfyUI server. Log in to that isolated URL with the fixture
-token `local-agent-ui-test-token`; never use it for a deployed Gateway. Create a
-session and send a message to run the scripted template/edit/preview/save flow.
-Stop with Ctrl-C to remove its temporary data. The synthetic image is explicitly
-labelled as a test preview. The script is excluded from the production agent build.
-
-Live provider smoke test (explicit external-call opt-in):
-
-```sh
-AGENT_LIVE_TEST=1 node --env-file=gateway/.env --import tsx gateway/agent/test/liveSmoke.ts
-```
-
-This uploads a generated 64px fixture to ComfyUI, asks the real model to repair an
-invalid filename, validates, runs one copy preview and saves the version. Reports
-and isolated SQLite data go to `tests/output/agent-live/`. It does not use existing
-user images. On 2026-09-05, MiniMax-M3 completed the real copy/save path in 6 model
-calls; the output was independently retrieved and verified as a 64×64 PNG. A
-previous 1px fixture triggered a ComfyUI decoding error, which the model reported
-accurately without retrying beyond the one-preview budget.
-
-Remaining acceptance gate: actual text-to-image generation and image-quality
-evaluation with a compatible installed checkpoint. The tested ComfyUI instance
-currently exposes no checkpoint choices for the basic template; diffusion-loader
-models require another template/codec. Mock and copy tests do not establish
-text-to-image quality or broad workflow compatibility.
+Real model and GPU checks are opt-in and run against an isolated Gateway:
+`tests/e2e/workspace-live.e2e.mjs` performs four real rounds (image → video → edit
+image → update video) and `tests/e2e/workspace-reference-live.e2e.mjs` checks batch
+selection and an independent fork. Both write evidence under
+`tests/output/workspace-live/`. A failed or timed-out observation never replays a
+POST automatically; inspect the saved task first. Visual quality always needs
+separate human review.

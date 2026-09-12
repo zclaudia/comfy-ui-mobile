@@ -7,7 +7,6 @@ import type { Canvas } from '../../workflow/canvas.js';
 import { runSummary } from './types.js';
 import type { Asset, Draft, Revision, WorkspaceSession } from './types.js';
 import { librarySaveSummary } from './library.js';
-import { legacyTranscriptEvents, legacyVersion } from './legacy.js';
 
 const id = z.string().uuid();
 const revision = z.number().int().positive();
@@ -101,7 +100,7 @@ export async function handleWorkspaceRequest(service: AgentService, owner: strin
       const after = z.coerce.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).parse(url.searchParams.get('after') ?? 0);
       return send(200, repo.transaction(() => {
         const highWater = Number(repo.db.prepare('SELECT COALESCE(MAX(seq),0) AS seq FROM events WHERE session_id=?').get(sessionId)!.seq);
-        const events = legacyTranscriptEvents(repo, sessionId, service.store.events(sessionId, after).filter(event => event.seq <= highWater));
+        const events = service.store.events(sessionId, after).filter(event => event.seq <= highWater);
         const tasks = service.store.tasks(sessionId).slice(0, 20).map(task => { const result: Partial<Task> = { ...task }; delete result.messages; return result; });
         const cursor = events.at(-1)?.seq ?? after;
         const questions = tasks.flatMap(task => task.workspace?.waitingReason?.type === 'selection' ? [runtime.selections.get(sessionId, task.workspace.waitingReason.questionId)] : []);
@@ -123,7 +122,7 @@ export async function handleWorkspaceRequest(service: AgentService, owner: strin
     if (body.assetIds) context.selectedAssetIds = [...new Set([...(context.selectedAssetIds ?? []), ...body.assetIds])];
     if ((context.selectedAssetIds?.length ?? 0) > 8) throw new AgentHttpError(422, '本轮参考素材不能超过 8 个');
     if (!body.message && !context.action) throw new AgentHttpError(400, '请描述用途或选择具体操作');
-    const task = service.enqueue(sessionId, owner, body.requestId, body.message, [], context);
+    const task = service.enqueue(sessionId, owner, body.requestId, body.message, context);
     return send(202, { taskId: task.id, state: task.state });
   }
   if (parts.length === 3 && parts[2] === 'cancel' && method === 'POST') {
@@ -234,7 +233,6 @@ export async function handleWorkspaceRequest(service: AgentService, owner: strin
     if (parts.length === 3) { const result = repo.runs(sessionId, { ...page(), ...(url.searchParams.has('draftId') ? { draftId: id.parse(url.searchParams.get('draftId')) } : {}) }); return send(200, { ...result, items: result.items.map(runSummary) }); }
     if (parts.length === 4) { const run = repo.run(sessionId, id.parse(parts[3])); return send(200, { run: { ...run, ...runSummary(run), outputAssetIds: run.outputAssetIds } }); }
   }
-  if (parts.length === 4 && parts[2] === 'versions' && method === 'GET') return send(200, legacyVersion(repo, sessionId, revision.parse(Number(parts[3]))));
   if (parts[2] === 'versions' || parts[2] === 'restore' || parts[2] === 'save') throw new AgentHttpError(426, '请升级客户端并指定具体草稿；会话不再拥有全局工作流版本');
   throw new AgentHttpError(404, '接口不存在');
 }

@@ -18,7 +18,7 @@ import { WorkspaceComfy as Comfy, mediaKey as key } from './workspaceFixture.js'
 async function setup() {
   const directory = mkdtempSync(join(tmpdir(), 'workspace-runs-'));
   const store = new AgentStore(':memory:'); const repo = new WorkspaceRepository(store);
-  const session = store.create('owner', 'movie'); repo.initializeSession(session.id);
+  const session = repo.createSession('owner', 'movie');
   const adapter = new Comfy();
   const assets = new AssetService(repo, adapter, { directory, serverId: 'server' });
   const runs = new RunService(repo, assets, { maxPreviews: 3, reconciliationGraceMs: 0 });

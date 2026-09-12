@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { AgentModels, modelInput } from '../models.js';
 import { AgentStore } from '../store.js';
+import { WorkspaceRepository } from '../workspace/repository.js';
 import { AgentService } from '../../dist/agent/service.js';
 import { createGatewayServer } from '../../server.js';
 import { loadGatewayConfig } from '../../config.js';
@@ -29,8 +30,8 @@ test('model profiles survive restart, redact secrets, retain/clear keys, and pro
     assert.equal(models.get(first.id)?.apiKey, profile.apiKey);
     assert.throws(() => models.save({ ...noKey, baseUrl: 'https://other.invalid/v1' }, first.id), /重新填写密钥/);
     assert.throws(() => models.save({ ...noKey, baseUrl: 'https://user:password@other.invalid/v1' }, first.id));
-    const session = store.create('owner', 'test');
-    const task = store.enqueue(session.id, randomUUID(), 'hello', 10000, [], first.id);
+    const session = new WorkspaceRepository(store).createSession('owner', 'test');
+    const task = store.enqueue(session.id, randomUUID(), 'hello', 10000, first.id);
     assert.throws(() => models.remove(first.id), /运行中的任务/);
     assert.throws(() => models.save(noKey, first.id), /运行中的任务/);
     const second = models.save({ ...noKey, name: 'another' });
@@ -82,13 +83,14 @@ test('authenticated App model routes configure a running provider without restar
   const providerUrl = `http://127.0.0.1:${(provider.address() as any).port}`;
   const token = 'test-model-management-auth-token';
   const config = { ...loadGatewayConfig({ GATEWAY_AUTH_TOKEN: token, GATEWAY_DEVICE_STORE: join(folder, 'devices.json'), GATEWAY_STATIC_DIR: folder }),
-    host: '127.0.0.1', port: 0, comfyUrl: providerUrl, agentStorePath: join(folder, 'agent.sqlite'), agentPollMs: 60000 };
+    host: '127.0.0.1', port: 0, comfyUrl: providerUrl, agentStorePath: join(folder, 'agent.sqlite'), agentPollMs: 60000,
+    agentWorkspace: { directory: join(folder, 'assets'), serverId: 'server' } };
   const service = new AgentService(config);
   const gateway = createGatewayServer(config, { agentService: service });
   const address = await gateway.start();
   t.after(() => gateway.stop());
   const url = `http://127.0.0.1:${address.port}/api/gateway/agent`;
-  const call = (path: string, method = 'GET', body?: unknown, auth = token) => fetch(url + path, { method, headers: { ...(auth ? { Authorization: `Bearer ${auth}` } : {}), 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+  const call = (path: string, method = 'GET', body?: unknown, auth = token) => fetch(url + path, { method, headers: { ...(auth ? { Authorization: `Bearer ${auth}` } : {}), 'Content-Type': 'application/json', 'X-Agent-Schema-Version': '2' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
   assert.equal((await call('/models', 'GET', undefined, '')).status, 401);
   assert.equal((await call('/models', 'POST', profile, '')).status, 401);
   assert.equal((await call('/models', 'POST', { ...profile, contextWindow: 1 })).status, 400);
@@ -101,14 +103,14 @@ test('authenticated App model routes configure a running provider without restar
   assert.equal(status.vision, false);
   assert.equal(status.contextWindow, 32768);
   const session = (await (await call('/sessions', 'POST', { name: 'managed model' })).json()).session;
-  const sent = await call(`/sessions/${session.id}/messages`, 'POST', { requestId: randomUUID(), message: 'hello', attachments: [{ filename: 'ref.png', kind: 'image' }] });
+  const sent = await call(`/sessions/${session.id}/messages`, 'POST', { requestId: randomUUID(), message: 'hello', context: {} });
   assert.equal(sent.status, 202);
   const taskId = (await sent.json()).taskId;
   for (let i = 0; i < 4; i++) await service.tick();
   assert.equal(service.store.task(taskId).state, 'completed');
   assert.equal(requests.length, 2, 'production provider is invoked after configuring it through HTTP');
   assert.ok(requests.every(r => r.model === profile.model && r.max_tokens === 1000));
-  assert.ok(!JSON.stringify(requests).includes('image_url'), 'vision disabled sends paths only');
+  assert.ok(!JSON.stringify(requests).includes('image_url'), 'vision disabled sends no image parts');
   const snapshots = await Promise.all(['/status', '/models', `/sessions/${session.id}`].map(async p => (await call(p)).text()));
   assert.ok(snapshots.every(value => !value.includes(profile.apiKey)));
   assert.equal((await call(`/models/${model.id}`, 'PUT', { ...profile, baseUrl: `${providerUrl}/v1`, vision: true })).status, 200);

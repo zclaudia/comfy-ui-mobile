@@ -11,11 +11,13 @@ export function AgentGuide({ state, onRetry }: { state: Exclude<AgentAvailabilit
   const at = useAgentText();
   if (state === 'loading') return <div className="flex-1 flex items-center justify-center text-[#71798a]"><Loader2 className="animate-spin" size={20} /></div>;
   const gateway = state === 'no-gateway';
+  const outdated = state === 'outdated';
   return <div className="flex-1 min-h-0 px-6 flex flex-col items-center justify-center gap-4 text-center" data-agent-guide={state}>
     <div className="w-[52px] h-[52px] rounded-[14px] bg-white/[0.04] border border-white/[0.08] flex items-center justify-center"><Server size={26} strokeWidth={1.6} className="text-[#71798a]" /></div>
-    <h2 className="text-[16px] font-semibold text-[#e9ebef]">{at(gateway ? '助手需要通过 Gateway 连接' : state === 'no-provider' ? '配置助手模型' : '暂时无法连接助手')}</h2>
+    <h2 className="text-[16px] font-semibold text-[#e9ebef]">{at(gateway ? '助手需要通过 Gateway 连接' : outdated ? 'Gateway 版本过旧' : state === 'no-provider' ? '配置助手模型' : '暂时无法连接助手')}</h2>
     <p className="text-[12.5px] leading-relaxed text-[#66758a] max-w-[300px]">{at(gateway
       ? '你现在直连的是 ComfyUI。对话助手运行在 Comfy Mobile Gateway 上，负责理解需求、修改工作流和在后台等待生成。工作流库和画廊不受影响，可以照常使用。'
+      : outdated ? '此版本应用需要支持多工作流会话的 Gateway。请把服务器上的 Gateway 升级到 0.4 或更高版本后重试。'
       : state === 'no-provider' ? 'Gateway 已连接，添加语言模型后即可开始对话。'
       : '已连接 Gateway，但助手接口没有响应。可能是 Gateway 未启用助手或正在重启。')}</p>
     {gateway && <div className="w-full flex flex-col gap-2 text-left">

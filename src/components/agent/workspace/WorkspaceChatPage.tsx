@@ -36,11 +36,10 @@ import { workspaceCanvasPath, recoveryCanvasPath } from './canvasNavigation';
 import { WorkspaceLibrarySheet } from './WorkspaceLibrarySheet';
 import { DraftManagementSheet } from './DraftManagementSheet';
 import { DraftRecoveryImportSheet } from './DraftRecoveryImportSheet';
-import { LegacyUserAttachments, LegacyWorkspaceCard } from './LegacyWorkspaceCard';
 
 const activeStates = new Set(['queued', 'running', 'waiting_comfy', 'waiting_user', 'reconciling']);
 export function WorkspaceChatPage({ baseUrl, status }: { baseUrl: string; status: AgentStatus }) {
-  const at = useAgentText(); const navigate = useNavigate(); const { id, legacyVersion } = useParams(); const [params] = useSearchParams();
+  const at = useAgentText(); const navigate = useNavigate(); const { id } = useParams(); const [params] = useSearchParams();
   const api = useMemo(() => new WorkspaceApi(baseUrl, status.serverId), [baseUrl, status.serverId]);
   const view = useWorkspaceSnapshot(api, id); const session = view.snapshot?.session;
   const [text, setText] = useState(() => params.get('draft') ?? ''); const [context, setContext] = useState<RequestContext>({});
@@ -54,7 +53,6 @@ export function WorkspaceChatPage({ baseUrl, status }: { baseUrl: string; status
   const [importRecovery, setImportRecovery] = useState(false);
   const [libraryRef, setLibraryRef] = useState<RevisionRef | null>(null);
   const [inspection, setInspection] = useState<{ ref: RevisionRef; canvas: Workflow['workflow_json'] } | null>(null);
-  const [legacyError, setLegacyError] = useState('');
   const [createdSession, setCreatedSession] = useState<WorkspaceSession | null>(null);
   const created = useRef<WorkspaceSession | null>(null);
   const imports = useRef(new Map<string, { requestId: string; result?: { draft: Draft } }>());
@@ -72,19 +70,6 @@ export function WorkspaceChatPage({ baseUrl, status }: { baseUrl: string; status
   const events = useMemo(() => workspaceTranscriptEvents(view.events).map(event => event.kind === 'user' && event.data.directRun
     ? { ...event, data: { ...event.data, text: at('按指定工作流版本生成') } } : event), [view.events, at]);
   const { merge, getWatermark } = view;
-  const oldVersion = legacyVersion ?? params.get('legacyVersion') ?? params.get('version');
-  useEffect(() => {
-    setLegacyError('');
-    if (!id || oldVersion == null) return;
-    const version = Number(oldVersion); const controller = new AbortController();
-    if (!Number.isSafeInteger(version) || version < 1) { setLegacyError('无效的草稿版本链接'); return; }
-    void api.legacyVersion(id, version, controller.signal).then(result => {
-      if (!controller.signal.aborted) {
-        setInspection({ ref: result.reference, canvas: result.revision.canvas });
-      }
-    }).catch(error => { if (!controller.signal.aborted) setLegacyError(error instanceof Error ? error.message : '操作失败'); });
-    return () => controller.abort();
-  }, [api, id, oldVersion, at, navigate]);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   useEffect(() => { if (task) setActive(true); }, [task, setActive]);
   useEffect(() => { if (follow.current) scroll.current?.scrollTo({ top: scroll.current.scrollHeight, behavior: 'smooth' }); }, [events.length, task?.state]);
@@ -177,7 +162,6 @@ export function WorkspaceChatPage({ baseUrl, status }: { baseUrl: string; status
     if (event.kind === 'revision_created') return <button className="text-xs text-slate-400 text-left" onClick={() => adjust({ draftId: String(event.data.draftId), revision: Number(event.data.revision) })}>{view.drafts[String(event.data.draftId)]?.name} · {at('工作流第 {{version}} 版', { version: Number(event.data.revision) })} · {at(String(event.data.summary))}</button>;
     if (event.kind === 'context' && event.data.status === 'compacted') return <p className="text-xs text-slate-500">{at('已压缩较早上下文，完整聊天记录仍保留')}</p>;
     if (event.kind === 'retry') return <RetryNotice attempt={event.data.attempt} max={event.data.maxAttempts} delayMs={event.data.delayMs} />;
-    if (event.data.workspaceLegacy || ['workflow', 'result', 'execution_error', 'saved', 'approval'].includes(event.kind)) return <LegacyWorkspaceCard event={event} actions={actions} busy={busy || !!task} />;
     return null;
   };
 
@@ -191,11 +175,10 @@ export function WorkspaceChatPage({ baseUrl, status }: { baseUrl: string; status
     <div className="relative flex-1 min-h-0">
       <div ref={scroll} className="h-full overflow-y-auto overscroll-contain max-w-4xl mx-auto px-4 py-4 space-y-4" onScroll={event => { const element = event.currentTarget; follow.current = element.scrollHeight - element.scrollTop - element.clientHeight < 100; setNearBottom(follow.current); }}>
         {view.error && <NoticeCard text={view.error} action="重试" onAction={view.refresh} />}
-        {legacyError && <NoticeCard text={legacyError} action="返回聊天" onAction={() => navigate(`/chat/${id}`, { replace: true })} />}
         {!status.providerReady && <NoticeCard text="Gateway 已连接，添加语言模型后即可开始对话。" action="添加模型" onAction={() => navigate('/settings/agent')} />}
         {session?.archivedAt && <NoticeCard text="此会话已归档" action="恢复会话" onAction={() => void action(async () => { await api.update(session.id, { archivedAt: null }); view.refresh(); })} />}
         {!id && <div className="flex flex-col items-center py-12 text-center gap-3"><Bot size={36} className="text-blue-400" /><h2 className="text-base font-semibold">{at('你想创作什么？')}</h2><p className="text-xs text-slate-400 max-w-xs">{at('在同一对话中生成图片、制作视频，也可以随时回头调整。')}</p><div className="flex flex-wrap justify-center gap-2"><button className={chipButton} onClick={() => setText(at(NEW_CHAT_PRESETS.image))}>{at('生成一张图片')}</button><button className={chipButton} onClick={() => setText(at(NEW_CHAT_PRESETS.video))}>{at('生成一段短视频')}</button><button className={chipButton} onClick={() => setPicker(true)}>{at('从我的工作流开始')}</button></div></div>}
-        {!!id && <AgentTranscript events={events} tasks={view.snapshot?.tasks ?? []} caughtUp={view.caughtUp} renderContent={renderContent} baseUrl={baseUrl} renderUserAttachments={event => <LegacyUserAttachments event={event} onSource={setSource} />} renderUserContext={event => {
+        {!!id && <AgentTranscript events={events} tasks={view.snapshot?.tasks ?? []} caughtUp={view.caughtUp} renderContent={renderContent} baseUrl={baseUrl} renderUserContext={event => {
           const sent = event.data.context as RequestContext | undefined;
           return sent ? <div className="space-y-2 mb-2">{sent.targetDraftId && <p className="text-[11px] text-slate-400">{at('本次调整')}：{view.drafts[sent.targetDraftId]?.name ?? at('工作流')}{sent.sourceRevision && ` · ${at('工作流第 {{version}} 版', { version: sent.sourceRevision })}`}</p>}{!!sent.selectedAssetIds?.length && <div className="flex gap-2 overflow-x-auto">{sent.selectedAssetIds.map(assetId => <button key={assetId} className="w-24 shrink-0" onClick={() => setSource(assetId)}><WorkspaceMedia assetId={assetId} compact /></button>)}</div>}</div> : null;
         }} />}
@@ -231,7 +214,7 @@ export function WorkspaceChatPage({ baseUrl, status }: { baseUrl: string; status
       if (!session) { setPendingWorkflow(workflow); return; }
       void action(async () => { const watermark = view.getWatermark(); const draft = await importWorkflow(session, workflow); imports.current.delete(`${session.id}:${workflow.id}`); view.merge({ drafts: [draft] }, watermark); adjust({ draftId: draft.id, revision: draft.headRevision }); view.refresh(); });
     }} />
-    <SheetFrame open={!!inspection} onOpenChange={open => { if (!open) { setInspection(null); if (oldVersion != null) navigate(`/chat/${id}`, { replace: true }); } }} title={at('当时的工作流（只读）')}>
+    <SheetFrame open={!!inspection} onOpenChange={open => { if (!open) setInspection(null); }} title={at('当时的工作流（只读）')}>
       {inspection && <button className={`${accentChip} mb-3`} onClick={() => navigate(workspaceCanvasPath(sessionId, inspection.ref))}>{at('打开草稿画布')}</button>}
       {inspection && <div className="space-y-3"><p className="text-sm">{view.drafts[inspection.ref.draftId]?.name} · {at('工作流第 {{version}} 版', { version: inspection.ref.revision })}</p><p className="text-xs text-slate-400">{at('此处展示固定版本，继续调整会创建新版本。')}</p><div className="space-y-2">{inspection.canvas.nodes.map(node => <div key={node.id} className="p-2 rounded-lg border border-white/10 text-xs"><p>{node.title ?? node.type}</p><p className="text-[11px] text-slate-500 break-words">{(node.widgets_values ?? []).filter(value => typeof value === 'string' || typeof value === 'number').map(value => String(value).startsWith('asset:') ? at('已关联参考素材') : String(value)).join(' · ')}</p></div>)}</div><button className={accentChip} onClick={() => { adjust(inspection.ref); setInspection(null); }}>{at('继续调整')}</button></div>}
     </SheetFrame>

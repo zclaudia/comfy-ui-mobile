@@ -34,14 +34,14 @@ export class WorkspaceRuntime {
   enqueue(sessionId: string, requestId: string, message: string, context: RequestContext, duration: number, modelId?: string) {
     this.repository.validateContext(sessionId, context);
     if (this.repository.session(sessionId).archivedAt) throw new AgentHttpError(409, '请先取消归档再继续对话');
-    return this.store.enqueue(sessionId, requestId, message, duration, [], modelId, { schemaVersion: 2, requestContext: context });
+    return this.store.enqueue(sessionId, requestId, message, duration, modelId, { schemaVersion: 2, requestContext: context });
   }
   enqueueRun(sessionId: string, requestId: string, draftId: string, revision: number, duration: number) {
     return this.repository.transaction(() => {
       const context: RequestContext = { targetDraftId: draftId, sourceRevision: revision, action: 'rerun' };
       this.repository.validateContext(sessionId, context);
       if (this.repository.session(sessionId).archivedAt) throw new AgentHttpError(409, '请先取消归档再生成');
-      const task = this.store.enqueue(sessionId, requestId, '按指定工作流版本生成', duration, [], undefined,
+      const task = this.store.enqueue(sessionId, requestId, '按指定工作流版本生成', duration, undefined,
         { schemaVersion: 2, requestContext: context, directRun: true });
       if (task.workspace?.activeRunId || !activeStates.includes(task.state)) return task;
       task.state = 'running'; this.store.update(task);

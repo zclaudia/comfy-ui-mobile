@@ -1,13 +1,8 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync, rmSync, statSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
 import { AgentStore } from '../store.js';
 import { WorkspaceRepository } from '../workspace/repository.js';
-import { backupDatabase, migrateLegacyWorkspace, planMigration } from '../workspace/migration.js';
 import type { Asset, Run } from '../workspace/types.js';
 import { textToImage } from '../templates.js';
 import { info } from './fixture.js';
@@ -17,8 +12,7 @@ const request = () => ({ requestId: randomUUID() });
 function fixture() {
   const store = new AgentStore(':memory:');
   const repository = new WorkspaceRepository(store);
-  const session = store.create('owner', '创作');
-  repository.initializeSession(session.id);
+  const session = repository.createSession('owner', '创作');
   return { store, repository, session };
 }
 function uploaded(sessionId: string): Asset {
@@ -87,7 +81,7 @@ test('request and operation identities survive retries, enforce dependencies and
 test('cross-session drafts, revisions, asset bindings, tasks and runs cannot be confused', () => {
   const { store, repository: repo, session } = fixture();
   try {
-    const other = store.create('owner', 'Other'); repo.initializeSession(other.id);
+    const other = repo.createSession('owner', 'Other');
     const foreign = repo.createDraft(other.id, { name: 'foreign', canvas: canvas(), outputKinds: ['image'] }, request());
     const asset = repo.registerAsset(uploaded(other.id));
     assert.throws(() => repo.draft(session.id, foreign.draft.id), /找不到/);
@@ -122,91 +116,6 @@ test('pagination reaches all old revisions and assets; asset content identity ca
     assert.throws(() => repo.updateAsset(session.id, assets[0], { blobDigest: 'b'.repeat(64) }), /不可改写/);
     assert.throws(() => repo.updateAsset(session.id, assets[1], { captureState: 'ready' }), /摘要/);
   } finally { store.close(); }
-});
-
-test('migration preserves full old history, source evidence, duplicate output names and incomplete executions', () => {
-  const store = new AgentStore(':memory:');
-  const repo = new WorkspaceRepository(store);
-  try {
-    const session = store.create('owner', '旧会话', canvas());
-    const empty = store.create('owner', '纯聊天');
-    for (let version = 1; version < 105; version++) store.commitVersion(session.id, version, canvas(String(version)), 'old edit');
-    const first = store.enqueue(session.id, randomUUID(), 'image', 60_000, [{ filename: 'upload.png', subfolder: 'agent-chat', type: 'input', kind: 'image' }]);
-    store.update({ ...first, state: 'completed' });
-    store.event(session.id, first.id, 'result', { success: true, version: 1, promptId: 'first', outputs: [
-      { filename: 'same.png', subfolder: '', type: 'output', kind: 'image' }, { filename: 'same.png', subfolder: '', type: 'output', kind: 'image' },
-    ] });
-    const resultSeq = store.events(session.id).at(-1)!.seq;
-    store.putReceipt(first.id, `output-image:${resultSeq}:0`, { filename: 'copied.png', subfolder: '', type: 'input' });
-    for (let i = 0; i < 110; i++) { const task = store.enqueue(session.id, randomUUID(), 'later', 60_000); store.update({ ...task, state: 'completed' }); }
-    const stopped = store.enqueue(session.id, randomUUID(), 'stopped', 60_000);
-    store.update({ ...stopped, state: 'cancelled', execution: { attempt: 'uncertain-attempt', version: 105, submitted: 1 } });
-    store.event(session.id, stopped.id, 'execution_error', { diagnostic: 'unknown old rejection' });
-    const original = store.db.prepare('SELECT * FROM versions ORDER BY version').all();
-    const originalEvents = store.db.prepare('SELECT * FROM events ORDER BY seq').all();
-    const plan = planMigration(store.db);
-    assert.equal(plan.tasks, 112);
-    assert.deepEqual(plan.unresolvedTerminalExecutionIds, [stopped.id]);
-    const migrated = migrateLegacyWorkspace(repo, 'original-server');
-    assert.equal(migrated.revisions, 105);
-    assert.equal(migrated.drafts, 1);
-    assert.equal(migrated.runs, 2);
-    assert.equal(migrated.assets, 3);
-    assert.equal(migrated.incompleteEventSeqs.length, 1);
-    const draft = repo.drafts(session.id).items[0];
-    assert.equal(draft.headRevision, 105);
-    assert.equal(draft.legacy, true);
-    assert.equal(repo.revision(session.id, draft.id, 1).sourceRevision, undefined);
-    assert.equal(repo.drafts(empty.id).items.length, 0);
-    assert.equal('version' in repo.session(session.id), false);
-    assert.deepEqual(store.db.prepare('SELECT * FROM versions ORDER BY version').all(), original);
-    assert.deepEqual(store.db.prepare('SELECT * FROM events WHERE seq<=? ORDER BY seq').all(Number(originalEvents.at(-1)!.seq)), originalEvents);
-    const images = repo.assets(session.id).items.filter(asset => asset.origin === 'generated');
-    assert.equal(images.length, 2);
-    assert.notEqual(images[0].id, images[1].id);
-    assert.equal(images[0].blobDigest, undefined, 'do not claim old media bytes have been verified');
-    assert.ok(images.some(asset => repo.locations(session.id, asset.id).some(location => location.role === 'input' && !location.verifiedDigest)));
-    assert.ok(repo.runs(session.id).items.some(run => run.state === 'unknown' && run.submissionKey === 'uncertain-attempt'));
-    assert.equal(migrateLegacyWorkspace(repo, 'original-server').alreadyMigrated, true);
-    assert.equal(repo.assets(session.id).items.length, 3);
-  } finally { store.close(); }
-});
-
-test('migration blocks active work and rolls back the entire conversion on inconsistent history', () => {
-  const store = new AgentStore(':memory:'); const repo = new WorkspaceRepository(store);
-  try {
-    const session = store.create('owner', 'old', canvas());
-    const task = store.enqueue(session.id, randomUUID(), 'active', 60_000);
-    assert.throws(() => migrateLegacyWorkspace(repo, 'server'), /活动任务/);
-    assert.equal(store.db.prepare('SELECT COUNT(*) AS n FROM workspace_sessions').get()!.n, 0);
-    store.update({ ...task, state: 'completed' });
-    const corrupt = store.create('owner', 'corrupt', canvas());
-    store.db.prepare('DELETE FROM versions WHERE session_id=?').run(corrupt.id);
-    assert.throws(() => migrateLegacyWorkspace(repo, 'server'), /缺少工作流版本/);
-    assert.equal(store.db.prepare('SELECT COUNT(*) AS n FROM drafts').get()!.n, 0);
-    assert.equal(store.db.prepare('SELECT COUNT(*) AS n FROM workspace_sessions').get()!.n, 0);
-    assert.equal(planMigration(store.db).alreadyMigrated, false);
-  } finally { store.close(); }
-});
-
-test('consistent backup includes WAL data and is usable without the original database', t => {
-  const folder = mkdtempSync(join(tmpdir(), 'workspace-migrate-'));
-  t.after(() => rmSync(folder, { recursive: true, force: true }));
-  const store = new AgentStore(join(folder, 'agent.sqlite'));
-  const session = store.create('owner', 'backup', canvas());
-  const path = join(folder, 'before-workspace.sqlite');
-  backupDatabase(store.db, path);
-  assert.equal(statSync(path).mode & 0o777, 0o600);
-  assert.throws(() => backupDatabase(store.db, path), /不会覆盖/);
-  const repo = new WorkspaceRepository(store);
-  migrateLegacyWorkspace(repo, 'server');
-  store.close();
-  const restored = new DatabaseSync(path, { readOnly: true });
-  try {
-    assert.equal((JSON.parse(String(restored.prepare('SELECT data FROM sessions WHERE id=?').get(session.id)!.data)) as { name: string }).name, 'backup');
-    assert.equal(restored.prepare("SELECT name FROM sqlite_master WHERE name='workspace_migrations'").get(), undefined);
-    assert.equal(restored.prepare('SELECT COUNT(*) AS n FROM versions').get()!.n, 1);
-  } finally { restored.close(); }
 });
 
 test('run and generated asset identities prevent duplicate polling inserts', () => {

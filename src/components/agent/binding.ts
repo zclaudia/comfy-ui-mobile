@@ -1,5 +1,4 @@
-import type { Workflow } from '../../shared/types/app/IComfyWorkflow';
-import type { LibrarySave, SourceRef } from '../../infrastructure/api/AgentApi';
+import type { SourceRef } from '../../infrastructure/api/AgentApi';
 
 export const LAST_TAB_KEY = 'comfy_mobile_last_tab';
 export type TabPath = '/chats' | '/workflows' | '/outputs';
@@ -14,12 +13,6 @@ export const NEW_CHAT_PRESETS = {
 /** Library workflows are addressed across devices by `serverId + workflowId`; the server id is the normalised ComfyUI origin. */
 export function serverIdOf(url: string): string {
   return url.trim().replace(/\/+$/, '').toLowerCase();
-}
-
-/** The library entry a session last saved into, if this device still holds it. Id first, then the cloud filename. */
-export function resolveSavedTarget(save: LibrarySave | undefined, workflows: Workflow[]): Workflow | undefined {
-  if (!save) return undefined;
-  return workflows.find(w => w.id === save.workflowId) ?? workflows.find(w => w.cloud?.filename === save.filename);
 }
 
 export function chooseDefaultTab(lastTab: string | null, agentAvailable: boolean): TabPath {
@@ -38,10 +31,14 @@ export function sessionTitle(session: { name?: string; preview?: string; sourceR
   return session.preview?.trim() || fallback;
 }
 
-/** Cover media kind for a session row: trust the gateway's kind, otherwise read the extension of older records. */
-export function thumbnailKind(thumbnail: { filename: string; kind?: 'image' | 'video' | 'audio' }): 'image' | 'video' | 'audio' {
-  if (thumbnail.kind) return thumbnail.kind;
-  if (/\.(mp4|webm|mkv|mov|m4v)$/i.test(thumbnail.filename)) return 'video';
-  if (/\.(wav|mp3|flac|ogg|m4a|aac|opus)$/i.test(thumbnail.filename)) return 'audio';
-  return 'image';
+/** Session-list timestamps. Kept next to the other pure chat helpers so the list pages share one implementation. */
+export function relativeTime(timestamp: number, now: number, at: (text: string, values?: Record<string, string | number>) => string): string {
+  const minutes = Math.max(0, Math.round((now - timestamp) / 60_000));
+  if (minutes < 1) return at('刚刚');
+  if (minutes < 60) return at('{{count}} 分钟前', { count: minutes });
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return at('{{count}} 小时前', { count: hours });
+  const days = Math.round(hours / 24);
+  if (days < 7) return at('{{count}} 天前', { count: days });
+  return new Date(timestamp).toLocaleDateString();
 }

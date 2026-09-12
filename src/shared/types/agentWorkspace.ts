@@ -14,7 +14,7 @@ export interface WorkspaceSession {
 }
 export interface Draft {
   id: string; sessionId: string; name: string; headRevision: number; outputKinds: MediaKind[]; created: number; updated: number;
-  archivedAt?: number; forkedFrom?: RevisionRef; legacy?: boolean; sourceRef?: SourceRef;
+  archivedAt?: number; forkedFrom?: RevisionRef; sourceRef?: SourceRef;
   latestRun?: Run;
   lastLibrarySave?: { opId: string; draftId: string; revision: number; revisionDigest: string; exportGraphHash: string; serverId: string; workflowId: string; filename: string; name: string; etag: string; at: number };
 }
@@ -38,7 +38,6 @@ export interface Asset {
   id: string; sessionId: string; kind: MediaKind; name: string; origin: 'generated' | 'uploaded'; sourceRunId?: string; sourceMessageSeq?: number;
   displayOrdinal: number; captureState: 'pending_capture' | 'capturing' | 'ready' | 'missing' | 'capture_failed' | 'remote_only'; blobDigest?: string;
   metadata: { mediaType?: string; size?: number; width?: number; height?: number; duration?: number }; created: number; captured?: number; error?: string;
-  legacy?: { resultSeq?: number; outputIndex?: number; unverified: boolean };
 }
 export interface Run extends RevisionRef {
   id: string; sessionId: string; taskId?: string; generation?: number;
@@ -47,11 +46,6 @@ export interface Run extends RevisionRef {
   inputManifest?: { bindingId: string; assetId: string; blobDigest: string; serverId: string; materializedRef: AgentMediaRef }[];
   approvalDigest?: string; approvedAt?: number; created: number; submitted?: number; completed?: number; outputsIncomplete?: boolean; diagnostic?: unknown;
   preview?: { width?: number; height?: number; frames?: number; fps?: number };
-  legacy?: { incomplete: boolean; eventSeqs: number[] };
-}
-export interface LegacyWorkspaceEvent {
-  reference?: RevisionRef; run?: Run;
-  outputs: { index: number; assetId: string }[]; attachments: { index: number; assetId: string }[]; incomplete: boolean;
 }
 export interface Selection {
   id: string; sessionId: string; taskId: string; requestId: string; question: string;

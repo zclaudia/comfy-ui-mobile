@@ -57,10 +57,11 @@ export const loadGatewayConfig = (env = process.env, cwd = process.cwd()) => {
 
   const launcherUrl = String(env.COMFYUI_LAUNCHER_URL ?? '').trim();
   const agentModel = String(env.AGENT_LLM_MODEL || '').trim();
-  const workspaceEnabled = parseBoolean(env.AGENT_WORKSPACE_V2, false);
   const workspaceServerId = String(env.AGENT_WORKSPACE_SERVER_ID || '').trim();
   const agentStorePath = path.resolve(cwd, env.GATEWAY_AGENT_STORE || 'gateway/.data/agent.sqlite');
-  if (workspaceEnabled && (!workspaceServerId || workspaceServerId.length > 300)) throw new Error('AGENT_WORKSPACE_SERVER_ID is required for the multi-draft workspace');
+  // The chat is always the multi-draft workspace; its server identity is part of every stored draft and library save.
+  const agentEnabled = parseBoolean(env.GATEWAY_AGENT_ENABLED, false);
+  if (agentEnabled && (!workspaceServerId || workspaceServerId.length > 300)) throw new Error('AGENT_WORKSPACE_SERVER_ID is required when the assistant is enabled');
   if (/(sk-|sess-|Bearer\s)/i.test(agentModel)) {
     throw new Error('AGENT_LLM_MODEL appears to contain a credential; check AGENT_LLM_MODEL and AGENT_LLM_API_KEY');
   }
@@ -110,9 +111,9 @@ export const loadGatewayConfig = (env = process.env, cwd = process.cwd()) => {
     requestTimeoutMs: parseInteger(env.GATEWAY_UPSTREAM_TIMEOUT_MS, 10 * 60 * 1000),
     rateLimitPerMinute: parseInteger(env.GATEWAY_RATE_LIMIT_PER_MINUTE, 600),
     loginRateLimitPerMinute: parseInteger(env.GATEWAY_LOGIN_RATE_LIMIT_PER_MINUTE, 10),
-    agentEnabled: parseBoolean(env.GATEWAY_AGENT_ENABLED, false),
+    agentEnabled,
     agentStorePath,
-    ...(workspaceEnabled ? { agentWorkspace: { directory: env.AGENT_WORKSPACE_MEDIA_DIR ? path.resolve(cwd, env.AGENT_WORKSPACE_MEDIA_DIR) : path.join(path.dirname(agentStorePath), 'assets'), serverId: workspaceServerId } } : {}),
+    agentWorkspace: { directory: env.AGENT_WORKSPACE_MEDIA_DIR ? path.resolve(cwd, env.AGENT_WORKSPACE_MEDIA_DIR) : path.join(path.dirname(agentStorePath), 'assets'), serverId: workspaceServerId },
     agentModel,
     agentBaseUrl: String(env.AGENT_LLM_BASE_URL || '').trim(),
     agentApiKey: String(env.AGENT_LLM_API_KEY || '').trim(),
