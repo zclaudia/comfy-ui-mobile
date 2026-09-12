@@ -26,6 +26,7 @@ import { WorkspaceContext } from './WorkspaceContext';
 import { messageIdentity, targetContext, videoContext, withReference, workspaceTranscriptEvents } from './state';
 import { WorkspaceMedia } from './WorkspaceMedia';
 import { AssetPicker, DraftHistory, DraftPicker } from './WorkspaceSheets';
+import { WorkspaceSummaryBar } from './WorkspaceSummaryBar';
 import { RunCard, SelectionCard } from './WorkspaceCards';
 import type { RunActions } from './WorkspaceCards';
 import { AssetDetailsSheet } from './AssetDetailsSheet';
@@ -44,7 +45,7 @@ export function WorkspaceChatPage({ baseUrl, status }: { baseUrl: string; status
   const view = useWorkspaceSnapshot(api, id); const session = view.snapshot?.session;
   const [text, setText] = useState(() => params.get('draft') ?? ''); const [context, setContext] = useState<RequestContext>({});
   const [busy, setBusy] = useState(false); const working = useRef(false); const alive = useRef(true);
-  const [draftsOpen, setDraftsOpen] = useState(false); const [assetsOpen, setAssetsOpen] = useState(false);
+  const [draftsOpen, setDraftsOpen] = useState(false); const [assetsOpen, setAssetsOpen] = useState(false); const [outputsOpen, setOutputsOpen] = useState(false);
   const [replacement, setReplacement] = useState<Run | null>(null); const [history, setHistory] = useState<Draft | null>(null);
   const [source, setSource] = useState<string | null>(null); const [rename, setRename] = useState(false);
   const [picker, setPicker] = useState(params.get('pick') === '1'); const [pendingWorkflow, setPendingWorkflow] = useState<Workflow | null>(null);
@@ -186,6 +187,7 @@ export function WorkspaceChatPage({ baseUrl, status }: { baseUrl: string; status
       onSaveToLibrary={target ? () => setLibraryRef({ draftId: target.id, revision: context.sourceRevision ?? target.headRevision }) : undefined}
       confirmPreviews={session?.previewPolicy === 'confirm'} onToggleConfirmPreviews={session ? () => void action(async () => { await api.update(session.id, { previewPolicy: session.previewPolicy === 'confirm' ? 'auto' : 'confirm' }); view.refresh(); }) : undefined} />
     {session && <div className="shrink-0 px-4 py-2 border-b border-white/5 flex gap-2 items-center"><button data-workspace-open-drafts className={chipButton} onClick={() => setDraftsOpen(true)}><Layers size={14} />{at('创作')} <span className="text-slate-500">{view.snapshot?.drafts.items.length}{view.snapshot?.drafts.nextCursor ? '+' : ''}</span></button><button className={chipButton} onClick={() => { setReplacement(null); setAssetsOpen(true); }}><Plus size={13} />{at('参考素材')}</button><span className="flex-1" /><span className="text-[11px] text-slate-500">{at('草稿自动保存')}</span></div>}
+    {session && <WorkspaceSummaryBar onAdjust={adjust} onAsset={setSource} onViewDrafts={() => setDraftsOpen(true)} onViewOutputs={() => setOutputsOpen(true)} />}
     <div className="relative flex-1 min-h-0">
       <div ref={scroll} className="h-full overflow-y-auto overscroll-contain max-w-4xl mx-auto px-4 py-4 space-y-4" onScroll={event => { const element = event.currentTarget; follow.current = element.scrollHeight - element.scrollTop - element.clientHeight < 100; setNearBottom(follow.current); }}>
         {view.error && <NoticeCard text={view.error} action="重试" onAction={view.refresh} />}
@@ -215,6 +217,7 @@ export function WorkspaceChatPage({ baseUrl, status }: { baseUrl: string; status
     <DraftPicker open={draftsOpen} onOpenChange={setDraftsOpen} onPick={draft => adjust({ draftId: draft.id, revision: draft.headRevision })} onHistory={setHistory} onImport={() => { setDraftsOpen(false); setPicker(true); }} onManage={setManagedDraft} onImportRecovery={() => { setDraftsOpen(false); setImportRecovery(true); }} />
     {importRecovery && <DraftRecoveryImportSheet serverId={status.serverId ?? ''} onClose={() => setImportRecovery(false)} onImported={identity => navigate(workspaceCanvasPath(sessionId, { draftId: identity.draftId, revision: identity.openedRevision }, identity.copyId))} />}
     {managedDraft && <DraftManagementSheet key={managedDraft.id} draft={managedDraft} onClose={() => setManagedDraft(null)} disabled={busy || !!task || !!session?.archivedAt} />}
+    <AssetPicker open={outputsOpen} onOpenChange={setOutputsOpen} origin="generated" title="本对话的产出文件" empty="本对话还没有生成文件" onPick={asset => { setOutputsOpen(false); setSource(asset.id); }} />
     <AssetPicker open={assetsOpen} onOpenChange={open => { setAssetsOpen(open); if (!open) setReplacement(null); }} kind={replacement ? 'image' : undefined} selected={context.selectedAssetIds} onPick={asset => {
       if (replacement) { const run = replacement; setAssetsOpen(false); setReplacement(null); void action(() => send({ text: at('用选中的新图片更新这个视频，保留动作和其他参数。'), context: { ...targetContext(run), selectedAssetIds: [asset.id] } })); }
       else if (context.selectedAssetIds?.includes(asset.id)) setContext(previous => ({ ...previous, selectedAssetIds: previous.selectedAssetIds?.filter(id => id !== asset.id) })); else reference(asset);

@@ -2264,7 +2264,16 @@
         "离线页面已准备，已缓存的草稿可在断网后重新打开": "Offline pages are ready. Cached drafts can be reopened without a connection.",
         "正在准备离线页面": "Preparing offline pages",
         "离线页面尚未准备，断网刷新可能无法打开": "Offline pages are not ready. Reloading without a connection may fail.",
-        "无法导出恢复备份，请重试": "Could not export the recovery backup. Please try again."
+        "无法导出恢复备份，请重试": "Could not export the recovery backup. Please try again.",
+        "本对话产出": "This chat's output",
+        "工作流 {{drafts}} · 文件 {{files}}": "Workflows {{drafts}} · Files {{files}}",
+        "操作过的工作流": "Workflows worked on",
+        "查看全部": "View all",
+        "{{count}} 个文件": "{{count}} files",
+        "还没有导入或创建工作流": "No workflow imported or created yet",
+        "产出文件": "Output files",
+        "本对话还没有生成文件": "This chat has not generated any file yet",
+        "本对话的产出文件": "Files produced in this chat"
     },
     "tabs": {
         "chats": "Chats",

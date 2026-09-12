@@ -48,13 +48,16 @@ export function DraftPicker({ open, onOpenChange, onPick, onHistory, onImport, o
   </SheetFrame>;
 }
 
-export function AssetPicker({ open, onOpenChange, onPick, kind, selected = [], header }: { open: boolean; onOpenChange: (open: boolean) => void; onPick: (asset: Asset) => void; kind?: MediaKind; selected?: string[]; header?: ReactNode }) {
+export function AssetPicker({ open, onOpenChange, onPick, kind, selected = [], header, title = '选择参考素材', origin, empty = '暂无可选素材' }: { open: boolean; onOpenChange: (open: boolean) => void; onPick: (asset: Asset) => void; kind?: MediaKind; selected?: string[]; header?: ReactNode; title?: string; origin?: Asset['origin']; empty?: string }) {
   const { api, sessionId, view } = useWorkspace(); const at = useAgentText(); const { merge, getWatermark } = view;
   const load = useCallback(async (before: number | undefined, signal: AbortSignal) => { const watermark = getWatermark(); const result = await api.assets(sessionId, { before, kind, limit: 20 }, signal); if (!signal.aborted) merge({ assets: result.items }, watermark); return result; }, [api, sessionId, kind, merge, getWatermark]);
   const page = useWorkspacePage(open, load);
-  return <SheetFrame open={open} onOpenChange={onOpenChange} title={at('选择参考素材')}>
+  // Origin filtering happens here rather than on the wire: a page may hold none of the wanted kind, so the empty
+  // notice waits until paging is exhausted.
+  const items = page.items.filter(item => !origin || (view.assets[item.id] ?? item).origin === origin);
+  return <SheetFrame open={open} onOpenChange={onOpenChange} title={at(title)}>
     {header && <div className="mb-3">{header}</div>}
-    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">{page.items.map(item => {
+    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">{items.map(item => {
       const asset = view.assets[item.id] ?? item; const run = asset.sourceRunId ? view.runs[asset.sourceRunId] : undefined;
       const source = run ? view.drafts[run.draftId] : undefined;
       return <button key={asset.id} className={`min-w-0 p-2 rounded-xl border text-left ${selected.includes(asset.id) ? 'border-blue-400 bg-blue-500/10' : 'border-white/10'}`} onClick={() => onPick(asset)} data-workspace-pick-asset={asset.id}>
@@ -63,7 +66,7 @@ export function AssetPicker({ open, onOpenChange, onPick, kind, selected = [], h
         <span className="block text-[10px] text-slate-400">{at('素材 {{index}}', { index: asset.displayOrdinal })} · {new Date(asset.created).toLocaleString()}</span>
       </button>;
     })}</div>
-    {!page.loading && !page.items.length && <p className="py-6 text-xs text-center text-slate-500">{at('暂无可选素材')}</p>}
+    {!page.loading && !items.length && page.nextCursor === undefined && <p className="py-6 text-xs text-center text-slate-500">{at(empty)}</p>}
     <PageFooter {...page} />
   </SheetFrame>;
 }
